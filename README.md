@@ -1,31 +1,26 @@
+# Projeto Letras Web
 
-  # Wireframe painel Alfabetizador Online
+Painel web para controle, visualizacao e configuracao do app mobile.
 
-  Painel de controle para o sistema de alfabetização online.
+## Realtime (WebSocket)
 
-  ## Arquitetura
+1. Copie `.env.example` para `.env`.
+2. Configure `VITE_WS_URL` e `VITE_WS_TOKEN`.
+3. Rode o projeto.
 
-  Este projeto ja possui uma base de arquitetura para integracao entre app mobile, painel web e backend com WebSocket.
+O painel exibe:
+- status da conexao em tempo real
+- quantidade de usuarios online
 
-  Consulte `docs/ARCHITECTURE.md` para:
-  - contratos de evento (web <-> backend)
-  - fluxo de usuarios logados em tempo real
-  - responsabilidades por time
-  - checklist de producao
+## Organizacao do Projeto
 
-  ## Realtime (WebSocket)
+- GitHub Project (estilo Trello): veja `PROJECT_SETUP.md`
+- Padrao de branch e commit: veja `CONTRIBUTING.md`
+- Templates de issue e PR: pasta `.github/`
 
-  1. Copie `.env.example` para `.env`.
-  2. Configure `VITE_WS_URL` e `VITE_WS_TOKEN`.
-  3. Inicie o projeto normalmente.
+## Rodando local
 
-  O painel exibe no topo:
-  - status da conexao em tempo real
-  - quantidade de usuarios online
-
-  ## Running the code
-
-  Run `npm i` to install the dependencies.
-
-  Run `npm run dev` to start the development server.
-  
+```bash
+npm i
+npm run dev
+```

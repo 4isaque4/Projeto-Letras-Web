@@ -1,0 +1,44 @@
+name: "Feature - Backend"
+description: "Nova funcionalidade de API, websocket, banco ou regra de negocio."
+title: "[BCK] "
+labels:
+  - type:feature
+  - area:backend
+  - status:backlog
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexto
+      description: Qual problema sera resolvido no backend?
+      placeholder: Ex.: painel precisa da lista de usuarios online por perfil.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Escopo backend
+      description: Liste endpoints, eventos ws, tabelas ou servicos afetados.
+      placeholder: Ex.: /sessions, websocket gateway, tabela user_sessions.
+    validations:
+      required: true
+  - type: textarea
+    id: contracts
+    attributes:
+      label: Contrato para o frontend
+      description: Defina payload esperado, status codes e nomes de evento.
+      placeholder: |
+        WS event: presence:summary
+        payload: { onlineUsers: number, activeTutors: number }
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Criterios de aceite
+      placeholder: |
+        - endpoint/evento funcionando
+        - validacao e auth aplicadas
+        - logs e erros tratados
+    validations:
+      required: true

@@ -1,0 +1,41 @@
+name: "Feature - Frontend"
+description: "Nova funcionalidade do painel web (UI/UX/client state)."
+title: "[FRT] "
+labels:
+  - type:feature
+  - area:frontend
+  - status:backlog
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexto
+      description: Qual problema de negocio ou de UX esta sendo resolvido?
+      placeholder: Ex.: tutor nao consegue visualizar usuarios online por turma.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Escopo frontend
+      description: Liste telas, componentes e estados que serao alterados.
+      placeholder: Ex.: Topbar, Dashboard, realtimeStore, componente de tabela.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Criterios de aceite
+      description: Defina criterios objetivos para considerar a entrega pronta.
+      placeholder: |
+        - Exibe total de usuarios online em tempo real
+        - Atualiza sem refresh
+        - Mostra estado de desconexao
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencias de backend
+      description: Liste eventos, endpoints ou payloads necessarios.
+      placeholder: Ex.: evento ws "presence:summary" com campo onlineUsers.

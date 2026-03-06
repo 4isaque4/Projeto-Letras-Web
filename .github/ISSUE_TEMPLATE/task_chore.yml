@@ -1,0 +1,29 @@
+name: "Task - Chore/Infra"
+description: "Melhoria tecnica, refactor, configuracao ou manutencao."
+title: "[TASK] "
+labels:
+  - type:chore
+  - area:infra
+  - status:backlog
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objetivo
+      placeholder: Ex.: melhorar pipeline, lint, estrutura de pastas, observabilidade.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Escopo
+      placeholder: Liste exatamente o que sera alterado.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Definicao de pronto
+      placeholder: Ex.: comandos passam, docs atualizada, time alinhado.
+    validations:
+      required: true
