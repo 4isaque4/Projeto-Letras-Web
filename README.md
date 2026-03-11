@@ -24,3 +24,7 @@ O painel exibe:
 npm i
 npm run dev
 ```
+
+## Deploy VPS (Hostinger)
+
+Guia de setup base e deploy em VPS Ubuntu: veja `DEPLOY_HOSTINGER.md`.
