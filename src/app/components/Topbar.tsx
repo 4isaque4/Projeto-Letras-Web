@@ -1,4 +1,5 @@
 import { Search, Bell, User } from "lucide-react";
+import { env } from "../core/config/env";
 import { useRealtimeStatus } from "../core/realtime/useRealtimeStatus";
 
 export default function Topbar() {
@@ -38,6 +39,14 @@ export default function Topbar() {
           <span className="text-xs font-medium text-gray-700">
             {realtime.onlineUsers.length} online
           </span>
+          {env.useMocks && (
+            <>
+              <span className="text-xs text-gray-500">|</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                Simulado
+              </span>
+            </>
+          )}
         </div>
 
         <button className="p-2 hover:bg-gray-100 border border-gray-300">

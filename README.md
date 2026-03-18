@@ -6,7 +6,8 @@ Painel web para controle, visualizacao e configuracao do app mobile.
 
 1. Copie `.env.example` para `.env`.
 2. Configure `VITE_WS_URL` e `VITE_WS_TOKEN`.
-3. Rode o projeto.
+3. Enquanto nao houver backend/mobile ativo, use `VITE_USE_MOCKS=true` para rodar com dados simulados.
+4. Rode o projeto.
 
 O painel exibe:
 - status da conexao em tempo real

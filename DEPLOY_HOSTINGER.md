@@ -72,6 +72,7 @@ REPO_URL=https://github.com/4isaque4/Projeto-Letras-Web.git
 BRANCH=main
 VITE_WS_URL=wss://SEU_ENDPOINT_WS/ws
 VITE_WS_TOKEN=
+VITE_USE_MOCKS=true
 ```
 
 Notas:
