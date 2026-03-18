@@ -18,6 +18,7 @@ O painel exibe:
 - GitHub Project (estilo Trello): veja `PROJECT_SETUP.md`
 - Padrao de branch e commit: veja `CONTRIBUTING.md`
 - Templates de issue e PR: pasta `.github/`
+- Contrato realtime v1: veja `REALTIME_CONTRACT_V1.md`
 
 ## Rodando local
 
