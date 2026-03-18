@@ -1,30 +1,43 @@
-# Deploy Base - Hostinger VPS (Ubuntu)
+# Deploy do Front Web na Hostinger (VPS + Nginx)
 
-Objetivo: subir o painel web de administracao/relatorios em paralelo ao projeto que ja existe na VPS, sem conflito.
+Objetivo: publicar o painel web deste repositório em `admin.letras.cloud`, sem conflitar com o que já está em produção.
 
-## 1. Arquitetura alvo
+## 1. Decisão de arquitetura
 
-- Frontend web (este repositorio): app Vite estatico servido por Nginx.
-- Dados/regras: backend/Supabase ja existente.
-- Integracao realtime: `VITE_WS_URL` aponta para seu endpoint WebSocket.
+- Frontend web: app Vite estático servido por Nginx.
+- Backend/API/WS: continua no serviço já existente.
+- Domínio recomendado:
+  - `admin.letras.cloud` -> painel web (este projeto)
+  - `letras.cloud` e `www` -> continuam no fluxo atual
 
-Recomendacao de rota:
+## 2. DNS na Hostinger (hPanel)
 
-- `admin.seudominio.com` -> painel web (este projeto)
-- API/WS continua no servico atual (dominio atual, subdominio `api`, ou rota dedicada)
+No DNS Zone de `letras.cloud`, crie:
 
-## 2. Pre-requisitos
+- Tipo: `A`
+- Nome: `admin`
+- Conteúdo: `2.57.91.91`
+- TTL: `300` (ou padrão)
 
-- VPS Ubuntu 24.04 com acesso root.
-- DNS do subdominio apontando para a VPS (`A` -> `76.13.160.193`).
-- Repositorio Git acessivel pela VPS (HTTPS publico ou SSH com deploy key).
+Observação: o IP acima assume que a mesma VPS atual (`@ -> 2.57.91.91`) vai hospedar o painel admin.
 
-## 3. Setup base na VPS (uma vez)
-
-No servidor:
+Verifique propagação:
 
 ```bash
-ssh root@76.13.160.193
+nslookup admin.letras.cloud
+```
+
+## 3. Setup inicial da VPS (uma vez)
+
+Conecte na VPS:
+
+```bash
+ssh root@2.57.91.91
+```
+
+Clone o projeto e rode setup:
+
+```bash
 cd /root
 git clone https://github.com/4isaque4/Projeto-Letras-Web.git projeto-letras-web
 cd projeto-letras-web
@@ -32,21 +45,21 @@ chmod +x scripts/vps/*.sh
 
 ./scripts/vps/setup-letras-web.sh \
   --app-name letras-admin \
-  --domain admin.seudominio.com \
+  --domain admin.letras.cloud \
   --repo-url https://github.com/4isaque4/Projeto-Letras-Web.git \
   --branch main
 ```
 
-Isso cria:
+Isso prepara:
 
-- `/etc/letras-admin.env` (config do deploy)
-- `/srv/letras-admin/repo` (codigo)
-- `/srv/letras-admin/dist` (build servido pelo Nginx)
-- site Nginx em `/etc/nginx/sites-available/letras-admin.conf`
+- `/etc/letras-admin.env` (config de deploy)
+- `/srv/letras-admin/repo` (código)
+- `/srv/letras-admin/dist` (build publicado)
+- `/etc/nginx/sites-available/letras-admin.conf` (site Nginx)
 
-## 4. Ajustar variaveis do build
+## 4. Configurar variáveis de produção
 
-Edite o arquivo:
+Edite:
 
 ```bash
 nano /etc/letras-admin.env
@@ -57,48 +70,57 @@ Ajuste principalmente:
 ```env
 REPO_URL=https://github.com/4isaque4/Projeto-Letras-Web.git
 BRANCH=main
-VITE_WS_URL=wss://api.seudominio.com/ws
+VITE_WS_URL=wss://SEU_ENDPOINT_WS/ws
 VITE_WS_TOKEN=
 ```
 
-Observacao: variaveis `VITE_*` vao para o bundle frontend. Nao coloque segredo real em `VITE_WS_TOKEN`.
+Notas:
 
-## 5. Deploy da aplicacao
+- `VITE_*` vai para o frontend (bundle público). Não colocar segredo real.
+- Se o WS já está no domínio principal, pode ser algo como `wss://letras.cloud/ws`.
+
+## 5. Deploy da aplicação
 
 ```bash
 cd /root/projeto-letras-web
 ./scripts/vps/deploy-letras-web.sh --app-name letras-admin
 ```
 
-## 6. HTTPS (quando DNS ja propagou)
+## 6. Ativar HTTPS (Let's Encrypt)
+
+Quando o DNS de `admin.letras.cloud` já estiver propagado:
 
 ```bash
 cd /root/projeto-letras-web
-./scripts/vps/enable-https.sh --domain admin.seudominio.com --email voce@seudominio.com
+./scripts/vps/enable-https.sh --domain admin.letras.cloud --email seu-email@dominio.com
 ```
 
-## 7. Atualizacoes futuras
+## 7. Testes finais
+
+Checklist:
+
+- `http://admin.letras.cloud` abre o app
+- `https://admin.letras.cloud` abre com cadeado
+- Rotas internas do frontend funcionam com refresh
+- Realtime conecta ao `VITE_WS_URL` sem erro de CORS/SSL
+
+## 8. Atualizações futuras
 
 ```bash
+ssh root@2.57.91.91
 cd /root/projeto-letras-web
 git pull
 ./scripts/vps/deploy-letras-web.sh --app-name letras-admin
 ```
 
-## 8. Repositorio privado (opcional)
-
-Se o repo for privado, use deploy key na VPS:
+## 9. Rollback rápido (se der problema)
 
 ```bash
-ssh-keygen -t ed25519 -C "letras-admin-deploy" -f /root/.ssh/letras-admin-deploy
-cat /root/.ssh/letras-admin-deploy.pub
+ssh root@2.57.91.91
+cd /srv/letras-admin/repo
+git log --oneline -n 5
+git checkout <commit-anterior>
+npm ci && npm run build
+rsync -a --delete dist/ /srv/letras-admin/dist/
+systemctl reload nginx
 ```
-
-Adicione a chave publica em `GitHub > Repo > Settings > Deploy keys` (read-only), depois ajuste:
-
-```env
-REPO_URL=git@github.com:SEU_OWNER/SEU_REPO.git
-GIT_SSH_COMMAND=ssh -i /root/.ssh/letras-admin-deploy -o IdentitiesOnly=yes
-```
-
-no arquivo `/etc/letras-admin.env`.
