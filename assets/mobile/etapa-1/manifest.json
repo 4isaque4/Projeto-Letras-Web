@@ -1,0 +1,230 @@
+{
+  "generatedAt": "2026-03-25T19:05:16.388Z",
+  "totalScreens": 32,
+  "screens": [
+    {
+      "slug": "alfabetizacao-individual-ou-em-grupo-1",
+      "title": "Alfabetização Individual ou em grupo   1",
+      "svgPath": "Alfabetização Individual ou em grupo - 1.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "alfabetizacao-individual-ou-em-grupo-2",
+      "title": "Alfabetização Individual ou em grupo   2",
+      "svgPath": "Alfabetização Individual ou em grupo - 2.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "cadastrar-alfabetizando-1",
+      "title": "Cadastrar Alfabetizando   1",
+      "svgPath": "Cadastrar Alfabetizando - 1.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "cadastrar-alfabetizando-2",
+      "title": "Cadastrar Alfabetizando   2",
+      "svgPath": "Cadastrar Alfabetizando - 2.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "cadastro-de-perfil-1",
+      "title": "Cadastro de Perfil   1",
+      "svgPath": "Cadastro de Perfil - 1.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "cadastro-de-perfil-2",
+      "title": "Cadastro de Perfil   2",
+      "svgPath": "Cadastro de Perfil - 2.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "cadastro-de-perfil-3",
+      "title": "Cadastro de Perfil   3",
+      "svgPath": "Cadastro de Perfil - 3.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "confirmacao-de-tema",
+      "title": "Confirmação de tema",
+      "svgPath": "Confirmação de tema.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "confirmar-alfabetizando",
+      "title": "Confirmar Alfabetizando",
+      "svgPath": "Confirmar Alfabetizando.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "entrada-alfabetizador",
+      "title": "Entrada   Alfabetizador",
+      "svgPath": "Entrada - Alfabetizador.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "etapa-1-conclusao",
+      "title": "Etapa 1   Conclusão",
+      "svgPath": "Etapa 1 - Conclusão.svg",
+      "stageTag": "etapa-1",
+      "moduleCode": null
+    },
+    {
+      "slug": "etapa-1-orientacoes",
+      "title": "Etapa 1   Orientações",
+      "svgPath": "Etapa 1 - Orientações.svg",
+      "stageTag": "etapa-1",
+      "moduleCode": null
+    },
+    {
+      "slug": "etapa-1-tela-de-abertura",
+      "title": "Etapa 1   Tela de Abertura",
+      "svgPath": "Etapa 1 - Tela de Abertura.svg",
+      "stageTag": "etapa-1",
+      "moduleCode": null
+    },
+    {
+      "slug": "etapa-1-tela-de-aula-modelo-audio",
+      "title": "Etapa 1   Tela de Aula (Modelo áudio)",
+      "svgPath": "Etapa 1 - Tela de Aula (Modelo áudio).svg",
+      "stageTag": "etapa-1",
+      "moduleCode": null
+    },
+    {
+      "slug": "etapa-1-tela-de-aula-modelo-imagem",
+      "title": "Etapa 1   Tela de Aula (Modelo imagem)",
+      "svgPath": "Etapa 1 - Tela de Aula (Modelo imagem).svg",
+      "stageTag": "etapa-1",
+      "moduleCode": null
+    },
+    {
+      "slug": "etapa-1-tela-de-aula-modelo-letra",
+      "title": "Etapa 1   Tela de Aula (Modelo letra)",
+      "svgPath": "Etapa 1 - Tela de Aula (Modelo letra).svg",
+      "stageTag": "etapa-1",
+      "moduleCode": null
+    },
+    {
+      "slug": "etapa-1-tela-de-aula-modelo-so-texto",
+      "title": "Etapa 1   Tela de Aula (Modelo só texto)",
+      "svgPath": "Etapa 1 - Tela de Aula (Modelo só texto).svg",
+      "stageTag": "etapa-1",
+      "moduleCode": null
+    },
+    {
+      "slug": "etapa-1-tela-de-aula-modelo-video",
+      "title": "Etapa 1   Tela de Aula (Modelo vídeo)",
+      "svgPath": "Etapa 1 - Tela de Aula (Modelo vídeo).svg",
+      "stageTag": "etapa-1",
+      "moduleCode": null
+    },
+    {
+      "slug": "etapa-1-transicao-para-etapa-2",
+      "title": "Etapa 1   Transição para Etapa 2",
+      "svgPath": "Etapa 1 - Transição para Etapa 2.svg",
+      "stageTag": "etapa-1",
+      "moduleCode": null
+    },
+    {
+      "slug": "etapa-1-de-alfabetizacao",
+      "title": "ETAPA 1 DE ALFABETIZAÇÃO",
+      "svgPath": "ETAPA 1 DE ALFABETIZAÇÃO.svg",
+      "stageTag": "etapa-1",
+      "moduleCode": null
+    },
+    {
+      "slug": "home-assistiu-tutoriais-lista-aberta",
+      "title": "Home   Assistiu tutoriais (lista aberta)",
+      "svgPath": "Home - Assistiu tutoriais (lista aberta).svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "home-assistiu-tutoriais",
+      "title": "Home   Assistiu tutoriais",
+      "svgPath": "Home - Assistiu tutoriais.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "home-nao-assistiu-tutoriais",
+      "title": "Home   Não assistiu tutoriais",
+      "svgPath": "Home - Não assistiu tutoriais.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "lista-de-alfabetizados",
+      "title": "Lista de Alfabetizados",
+      "svgPath": "Lista de Alfabetizados.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "notificacoes",
+      "title": "Notificações",
+      "svgPath": "Notificações.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "perfil",
+      "title": "Perfil",
+      "svgPath": "Perfil.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "pontuacao-calculo",
+      "title": "Pontuação   Cálculo",
+      "svgPath": "Pontuação - Cálculo.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "pontuacao",
+      "title": "Pontuação",
+      "svgPath": "Pontuação.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "seleciona-tema",
+      "title": "Seleciona tema",
+      "svgPath": "Seleciona tema.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "tutoriais",
+      "title": "Tutoriais",
+      "svgPath": "Tutoriais.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "tutorial-de-apoio",
+      "title": "Tutorial de Apoio",
+      "svgPath": "Tutorial de Apoio.svg",
+      "stageTag": null,
+      "moduleCode": null
+    },
+    {
+      "slug": "varias",
+      "title": "VÁRIAS",
+      "svgPath": "VÁRIAS.svg",
+      "stageTag": null,
+      "moduleCode": null
+    }
+  ]
+}
