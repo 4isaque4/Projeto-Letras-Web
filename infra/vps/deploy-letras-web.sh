@@ -55,6 +55,7 @@ set +a
 : "${DIST_DIR:?Missing DIST_DIR in ${ENV_FILE}}"
 : "${REPO_URL:?Missing REPO_URL in ${ENV_FILE}}"
 : "${BRANCH:=main}"
+WEB_DIR="${REPO_DIR}/apps/web"
 
 for cmd in git node npm rsync nginx; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -75,10 +76,19 @@ else
 fi
 
 echo "[2/5] Writing build-time env (.env.production)..."
-cat >"${REPO_DIR}/.env.production" <<EOF
+if [[ ! -d "$WEB_DIR" ]]; then
+  echo "Web directory not found: ${WEB_DIR}" >&2
+  exit 1
+fi
+
+cat >"${WEB_DIR}/.env.production" <<EOF
 VITE_WS_URL=${VITE_WS_URL:-}
 VITE_WS_TOKEN=${VITE_WS_TOKEN:-}
 VITE_USE_MOCKS=${VITE_USE_MOCKS:-true}
+VITE_USE_SUPABASE_AUTH=${VITE_USE_SUPABASE_AUTH:-false}
+VITE_SUPABASE_URL=${VITE_SUPABASE_URL:-}
+VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY:-}
+VITE_API_BASE_URL=${VITE_API_BASE_URL:-}
 VITE_WS_RECONNECT_BASE_MS=${VITE_WS_RECONNECT_BASE_MS:-1000}
 VITE_WS_RECONNECT_MAX_MS=${VITE_WS_RECONNECT_MAX_MS:-15000}
 VITE_WS_HEARTBEAT_MS=${VITE_WS_HEARTBEAT_MS:-25000}
@@ -87,14 +97,14 @@ EOF
 echo "[3/5] Building frontend..."
 pushd "$REPO_DIR" >/dev/null
 npm ci
-npm run build
+npm run build --workspace @letras/web
 popd >/dev/null
 
 echo "[4/5] Publishing dist to nginx root..."
 NEXT_DIST="${APP_DIR}/dist_next"
 rm -rf "$NEXT_DIST"
 install -d -m 755 "$NEXT_DIST"
-rsync -a --delete "${REPO_DIR}/dist/" "${NEXT_DIST}/"
+rsync -a --delete "${WEB_DIR}/dist/" "${NEXT_DIST}/"
 rm -rf "$DIST_DIR"
 mv "$NEXT_DIST" "$DIST_DIR"
 chown -R www-data:www-data "$DIST_DIR"

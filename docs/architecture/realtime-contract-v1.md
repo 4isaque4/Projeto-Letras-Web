@@ -1,8 +1,8 @@
 # Realtime Contract v1 (Web <-> Backend)
 
-Objetivo: definir contrato unico de eventos para o painel web e backend, mesmo com ambiente mock.
+Objetivo: definir contrato unico de eventos para o painel web e backend em ambiente real.
 
-## Envelope padrão
+## Envelope padrao
 
 Todos os eventos usam o mesmo envelope:
 
@@ -19,13 +19,11 @@ Todos os eventos usam o mesmo envelope:
 ## WebSocket URL
 
 - Desenvolvimento local: `ws://localhost:8080/ws`
-- Produção: `wss://api.letras.cloud/ws`
+- Producao: `wss://api.letras.cloud/ws`
 
 ## Eventos servidor -> web
 
 ### `presence.snapshot`
-
-Payload:
 
 ```json
 {
@@ -45,8 +43,6 @@ Payload:
 
 ### `presence.user_joined`
 
-Payload:
-
 ```json
 {
   "user": {
@@ -63,8 +59,6 @@ Payload:
 
 ### `presence.user_left`
 
-Payload:
-
 ```json
 {
   "userId": "u-1001",
@@ -73,8 +67,6 @@ Payload:
 ```
 
 ### `session.metrics_updated`
-
-Payload:
 
 ```json
 {
@@ -88,8 +80,6 @@ Payload:
 
 ### `alert.created`
 
-Payload:
-
 ```json
 {
   "id": "alert-1",
@@ -101,8 +91,6 @@ Payload:
 
 ### `pong`
 
-Payload:
-
 ```json
 {
   "at": "2026-03-18T20:00:00.000Z"
@@ -113,8 +101,6 @@ Payload:
 
 ### `subscribe.dashboard`
 
-Payload:
-
 ```json
 {
   "tenantId": "default"
@@ -123,8 +109,6 @@ Payload:
 
 ### `unsubscribe.dashboard`
 
-Payload:
-
 ```json
 {
   "tenantId": "default"
@@ -132,8 +116,6 @@ Payload:
 ```
 
 ### `ping`
-
-Payload:
 
 ```json
 {
@@ -144,14 +126,14 @@ Payload:
 ## Regras de compatibilidade
 
 - `version` deve permanecer `1.0` para este contrato.
-- novos campos podem ser adicionados sem remover campos existentes.
-- remoções/renomeações exigem `version` nova.
-- frontend deve ignorar eventos desconhecidos sem quebrar.
+- Novos campos podem ser adicionados sem remover campos existentes.
+- Remocoes/renomeacoes exigem nova `version`.
+- O frontend deve ignorar eventos desconhecidos sem quebrar.
 
-## Modo mock
+## Observabilidade local
 
-Enquanto backend/mobile não estiverem ativos:
+Se o websocket ainda nao estiver ativo, o painel continua funcionando com:
 
-- `VITE_USE_MOCKS=true`
-- frontend usa simulador local para `snapshot`, `join`, `left` e `metrics`.
-- mesma estrutura de payload do contrato real.
+- Status de conexao exibido no topo.
+- Reconexao automatica com backoff.
+- Fallback visual sem bloquear cadastro e acompanhamento.

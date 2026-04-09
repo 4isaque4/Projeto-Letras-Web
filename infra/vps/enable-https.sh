@@ -10,7 +10,7 @@ Usage:
   enable-https.sh --domain <domain> --email <email>
 
 Example:
-  sudo ./scripts/vps/enable-https.sh --domain admin.seudominio.com --email voce@seudominio.com
+  sudo ./infra/vps/enable-https.sh --domain admin.seudominio.com --email voce@seudominio.com
 EOF
 }
 

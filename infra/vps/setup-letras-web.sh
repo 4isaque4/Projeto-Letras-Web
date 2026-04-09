@@ -21,7 +21,7 @@ Options:
   --help                 Show this help
 
 Example:
-  sudo ./scripts/vps/setup-letras-web.sh \
+  sudo ./infra/vps/setup-letras-web.sh \
     --app-name letras-admin \
     --domain admin.seudominio.com \
     --repo-url https://github.com/4isaque4/Projeto-Letras-Web.git \
@@ -114,6 +114,10 @@ BRANCH=${BRANCH}
 VITE_WS_URL=wss://${DOMAIN}/ws
 VITE_WS_TOKEN=
 VITE_USE_MOCKS=true
+VITE_USE_SUPABASE_AUTH=false
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_API_BASE_URL=
 VITE_WS_RECONNECT_BASE_MS=1000
 VITE_WS_RECONNECT_MAX_MS=15000
 VITE_WS_HEARTBEAT_MS=25000
@@ -163,6 +167,6 @@ echo "Base setup finished for ${APP_NAME}."
 echo "Next steps:"
 echo "1) Review ${ENV_FILE} and set REPO_URL + VITE_WS_URL."
 echo "2) Run deploy script:"
-echo "   ./scripts/vps/deploy-letras-web.sh --app-name ${APP_NAME}"
+echo "   ./infra/vps/deploy-letras-web.sh --app-name ${APP_NAME}"
 echo "3) Enable HTTPS after DNS is pointing to this server:"
-echo "   ./scripts/vps/enable-https.sh --domain ${DOMAIN} --email voce@seudominio.com"
+echo "   ./infra/vps/enable-https.sh --domain ${DOMAIN} --email voce@seudominio.com"
