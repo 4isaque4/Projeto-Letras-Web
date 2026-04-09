@@ -17,14 +17,13 @@ Este diretorio concentra os artefatos da base de dados e integracao do painel we
    - executar `20260401_mobile_backend_compat.sql` direto no SQL Editor.
 5. Valide se as tabelas foram criadas em `Table Editor`.
 
-## Buckets recomendados
+## Bucket de upload (obrigatorio)
 
-Crie os buckets abaixo no `Storage`:
+Para o upload real do CMS e do mobile funcionar, crie no `Storage` o bucket:
 
-- `cms-videos` (MP4)
-- `cms-images` (PNG/JPG)
-- `cms-audios` (MP3)
-- `mobile-blueprints` (SVG de tela)
+- `letras-assets` (publico, padrao da API)
+
+Se quiser usar outro nome, ajuste `SUPABASE_STORAGE_BUCKET` no `apps/api/.env`.
 
 ## Variaveis de ambiente no web
 

@@ -8,16 +8,50 @@ import { painelRouter } from "./routes/painel.js";
 const app = express();
 const allowAnyOrigin = env.corsOrigins.includes("*");
 
+
+function isPrivateNetworkHost(hostname) {
+  if (!hostname) {
+    return false;
+  }
+
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    /^10\./.test(hostname) ||
+    /^192\.168\./.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+  );
+}
+
+function isDevLocalOrigin(origin) {
+  try {
+    const parsed = new URL(origin);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false;
+    }
+
+    return isPrivateNetworkHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 app.disable("x-powered-by");
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowAnyOrigin || env.corsOrigins.includes(origin)) {
+      const isAllowedByList = typeof origin === "string" && env.corsOrigins.includes(origin);
+      const isAllowedDevLocal =
+        env.nodeEnv !== "production" && typeof origin === "string" && isDevLocalOrigin(origin);
+
+      if (!origin || allowAnyOrigin || isAllowedByList || isAllowedDevLocal) {
         callback(null, true);
         return;
       }
 
-      callback(new Error(`CORS blocked for origin: ${origin}`));
+      // Keep the API running even when an origin is blocked.
+      callback(null, false);
     },
   }),
 );

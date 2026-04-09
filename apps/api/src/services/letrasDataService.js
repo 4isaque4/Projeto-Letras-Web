@@ -1,5 +1,9 @@
 import { isSupabaseConfigured, supabaseAdmin } from "../lib/supabase.js";
-import { randomBytes, scryptSync } from "node:crypto";
+import { randomBytes, randomUUID, scryptSync } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { env } from "../config/env.js";
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -10,6 +14,35 @@ class HttpError extends Error {
 
 const MOBILE_PASSWORD_KEY_LENGTH = 64;
 const OPTIONAL_SOURCE_ERROR_CODES = new Set(["PGRST205", "42P01"]);
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ACTIVITY_TYPES = new Set(["video", "quiz", "audio", "letra"]);
+const ASSET_KINDS = new Set(["png", "mp4", "mp3", "jpg"]);
+const ASSET_STATUSES = new Set(["rascunho", "publicado", "arquivado"]);
+const ASSET_KIND_BY_EXTENSION = new Map([
+  ["png", "png"],
+  ["jpg", "jpg"],
+  ["jpeg", "jpg"],
+  ["mp4", "mp4"],
+  ["mp3", "mp3"],
+]);
+const MIME_BY_ASSET_KIND = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  mp4: "video/mp4",
+  mp3: "audio/mpeg",
+};
+
+const currentFilePath = fileURLToPath(import.meta.url);
+const currentDirPath = dirname(currentFilePath);
+const monorepoRootPath = resolve(currentDirPath, "..", "..", "..");
+const DEFAULT_BLUEPRINTS_MANIFEST_PATH = resolve(
+  monorepoRootPath,
+  "assets",
+  "mobile",
+  "etapa-1",
+  "manifest.json",
+);
 
 function requireSupabase() {
   if (!isSupabaseConfigured || !supabaseAdmin) {
@@ -101,6 +134,30 @@ function toSet(values) {
   return new Set((values ?? []).map((value) => String(value)));
 }
 
+function isUuid(value) {
+  return UUID_PATTERN.test(String(value ?? "").trim());
+}
+
+function splitIdsByUuid(ids) {
+  const uuidIds = [];
+  const nonUuidIds = [];
+
+  for (const rawId of ids ?? []) {
+    const id = String(rawId ?? "").trim();
+    if (!id) {
+      continue;
+    }
+
+    if (isUuid(id)) {
+      uuidIds.push(id);
+    } else {
+      nonUuidIds.push(id);
+    }
+  }
+
+  return { uuidIds, nonUuidIds };
+}
+
 function slugify(value) {
   return String(value ?? "")
     .normalize("NFD")
@@ -133,6 +190,51 @@ function mapMobileActivityType(type) {
     default:
       return "letra";
   }
+}
+
+function mapPanelActivityTypeToMobile(type) {
+  switch (String(type ?? "").toLowerCase()) {
+    case "audio":
+      return "SPEAKING";
+    case "quiz":
+      return "MATCHING";
+    case "video":
+    case "letra":
+    default:
+      return "READING";
+  }
+}
+
+function canonicalTutorIdFromMobileEducator(item) {
+  const supabaseAuthUserId = normalizeText(item?.supabaseAuthUserId);
+  if (supabaseAuthUserId) {
+    return supabaseAuthUserId;
+  }
+
+  return normalizeText(item?.id);
+}
+
+function buildMobileTutorIdentityMap(educators) {
+  const identityMap = new Map();
+
+  for (const educator of educators ?? []) {
+    const rawId = normalizeText(educator?.id);
+    const canonicalId = canonicalTutorIdFromMobileEducator(educator);
+
+    if (!rawId && !canonicalId) {
+      continue;
+    }
+
+    if (rawId) {
+      identityMap.set(rawId, canonicalId || rawId);
+    }
+
+    if (canonicalId) {
+      identityMap.set(canonicalId, canonicalId);
+    }
+  }
+
+  return identityMap;
 }
 
 function hashMobilePassword(password) {
@@ -203,6 +305,244 @@ export function daysSince(value) {
 
   const diffMs = Date.now() - parsed.getTime();
   return Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
+}
+
+function normalizeNullableText(value) {
+  const normalized = normalizeText(value);
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeInteger(value, fallback = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.floor(parsed);
+}
+
+function normalizeBoolean(value, fallback = false) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1" || normalized === "yes") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "0" || normalized === "no") {
+      return false;
+    }
+  }
+
+  return fallback;
+}
+
+function normalizeSlug(value, fallback) {
+  const normalized = slugify(value);
+  if (normalized.length > 0) {
+    return normalized;
+  }
+  return slugify(fallback) || `item-${Date.now()}`;
+}
+
+function normalizeAssetKindInput(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized === "jpeg") {
+    return "jpg";
+  }
+
+  return ASSET_KINDS.has(normalized) ? normalized : null;
+}
+
+function normalizeAssetStatusInput(value, fallback = "rascunho") {
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  return ASSET_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function detectAssetKindFromUpload({ mimeType, fileName }) {
+  const normalizedMime = normalizeText(mimeType).toLowerCase();
+  if (normalizedMime.startsWith("image/png")) {
+    return "png";
+  }
+  if (normalizedMime.startsWith("image/jpeg")) {
+    return "jpg";
+  }
+  if (normalizedMime.startsWith("video/mp4")) {
+    return "mp4";
+  }
+  if (normalizedMime.startsWith("audio/mpeg") || normalizedMime.startsWith("audio/mp3")) {
+    return "mp3";
+  }
+
+  const extension = normalizeText(fileName).split(".").pop()?.toLowerCase() ?? "";
+  return ASSET_KIND_BY_EXTENSION.get(extension) ?? null;
+}
+
+function detectUploadFileExtension(fileName, mimeType, kind) {
+  const fromName = normalizeText(fileName).split(".").pop()?.toLowerCase() ?? "";
+  if (ASSET_KIND_BY_EXTENSION.has(fromName)) {
+    return fromName === "jpeg" ? "jpg" : fromName;
+  }
+
+  const fromMime = detectAssetKindFromUpload({ mimeType, fileName: "" });
+  if (fromMime) {
+    return fromMime;
+  }
+
+  return kind;
+}
+
+function sanitizeStorageFolder(value) {
+  const normalized = normalizeText(value).replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (!normalized) {
+    return "";
+  }
+
+  const safeParts = normalized
+    .split("/")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && /^[a-zA-Z0-9_-]{1,64}$/.test(part));
+
+  return safeParts.join("/");
+}
+
+function buildStorageObjectPath({ extension, folder }) {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const safeFolder = sanitizeStorageFolder(folder) || "conteudo";
+  return `${safeFolder}/${year}/${month}/${randomUUID()}.${extension}`;
+}
+
+function titleFromFileName(fileName) {
+  const safeName = normalizeText(fileName);
+  if (!safeName) {
+    return "Arquivo de conteudo";
+  }
+
+  const baseName = safeName.replace(/\.[^/.]+$/, "").trim();
+  return baseName || "Arquivo de conteudo";
+}
+
+function buildStoragePublicUrl(objectPath) {
+  const forcedBaseUrl = normalizeText(env.supabaseStoragePublicBaseUrl).replace(/\/+$/, "");
+  if (forcedBaseUrl) {
+    return `${forcedBaseUrl}/${objectPath}`;
+  }
+
+  const normalizedSupabaseUrl = normalizeText(env.supabaseUrl).replace(/\/+$/, "");
+  const normalizedBucket = normalizeText(env.supabaseStorageBucket) || "letras-assets";
+  return `${normalizedSupabaseUrl}/storage/v1/object/public/${normalizedBucket}/${objectPath}`;
+}
+
+async function uploadBufferToStorage({ buffer, mimeType, objectPath }) {
+  const client = requireSupabase();
+  const bucket = normalizeText(env.supabaseStorageBucket) || "letras-assets";
+
+  async function tryUpload() {
+    return client.storage.from(bucket).upload(objectPath, buffer, {
+      contentType: mimeType,
+      upsert: false,
+    });
+  }
+
+  let { error } = await tryUpload();
+
+  if (error) {
+    const lowerMessage = String(error.message ?? "").toLowerCase();
+    if (lowerMessage.includes("bucket") && lowerMessage.includes("not found")) {
+      const { error: createError } = await client.storage.createBucket(bucket, {
+        public: true,
+      });
+      if (createError) {
+        throw new HttpError(
+          400,
+          `Bucket '${bucket}' nao encontrado e nao foi possivel criar automaticamente: ${createError.message}`,
+        );
+      }
+
+      const retry = await tryUpload();
+      error = retry.error;
+      if (error) {
+        throw new HttpError(500, `Falha no upload para o Storage: ${error.message}`);
+      }
+    } else {
+      throw new HttpError(500, `Falha no upload para o Storage: ${error.message}`);
+    }
+  }
+
+  return {
+    bucket,
+    objectPath,
+    publicUrl: buildStoragePublicUrl(objectPath),
+  };
+}
+
+function normalizeUploadMetadata(metadata, defaultMetadata) {
+  if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+    return { ...defaultMetadata, ...metadata };
+  }
+  return defaultMetadata;
+}
+
+function mapAssetToUploadPayload(assetRow, fallback) {
+  if (!assetRow) {
+    return {
+      id: `upload-${randomUUID()}`,
+      key: null,
+      kind: fallback.kind,
+      title: fallback.title,
+      sourceUrl: fallback.sourceUrl,
+      mimeType: fallback.mimeType,
+      originalFileName: fallback.originalFileName,
+      bytes: fallback.bytes,
+      createdByEducatorId: fallback.createdByEducatorId,
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  return {
+    id: String(assetRow.id),
+    key: String(assetRow.id),
+    kind: String(assetRow.kind),
+    title: fallback.title,
+    sourceUrl: String(assetRow.storage_path),
+    mimeType: String(assetRow.mime_type),
+    originalFileName: fallback.originalFileName,
+    bytes: fallback.bytes,
+    createdByEducatorId: fallback.createdByEducatorId,
+    createdAt: assetRow.created_at ?? new Date().toISOString(),
+  };
+}
+
+async function registerSyncEvent({
+  sourcePlatform = "web",
+  eventType,
+  entityType,
+  entityId,
+  payload,
+}) {
+  const client = requireSupabase();
+  const syncPayload = {
+    source_platform: sourcePlatform,
+    event_type: normalizeText(eventType) || "event",
+    entity_type: normalizeText(entityType) || "entity",
+    entity_id: normalizeText(entityId) || "unknown",
+    payload: payload && typeof payload === "object" ? payload : {},
+  };
+
+  const { error } = await client.from("sync_events").insert(syncPayload);
+  if (error && !isOptionalSourceMissing(error)) {
+    throw new HttpError(500, `Falha ao registrar evento de sincronizacao: ${error.message}`);
+  }
 }
 
 async function getMobileEducators({ ids } = {}) {
@@ -309,8 +649,10 @@ async function getMobileActivities({ ids } = {}) {
 }
 
 function mapMobileEducatorToProfile(item) {
+  const canonicalId = canonicalTutorIdFromMobileEducator(item) || String(item.id);
+
   return {
-    id: item.id,
+    id: canonicalId,
     full_name: item.name,
     role: "tutor",
     phone: item.phoneDigits ?? "",
@@ -318,6 +660,7 @@ function mapMobileEducatorToProfile(item) {
     metadata: {
       source: "mobile_api",
       email: item.email ?? "",
+      mobileEducatorId: item.id,
       supabaseAuthUserId: item.supabaseAuthUserId ?? null,
     },
     created_at: item.createdAt,
@@ -342,15 +685,19 @@ function mapMobileLearnerToProfile(item) {
   };
 }
 
-function mapMobileLearnerToLink(item) {
+function mapMobileLearnerToLink(item, tutorIdentityMap) {
+  const rawTutorId = normalizeText(item.educatorId);
+  const canonicalTutorId =
+    (rawTutorId && tutorIdentityMap?.get(rawTutorId)) || rawTutorId || "";
+
   return {
-    id: `mobile-link-${item.educatorId}-${item.id}`,
-    tutor_id: item.educatorId,
+    id: `mobile-link-${canonicalTutorId}-${item.id}`,
+    tutor_id: canonicalTutorId,
     student_id: item.id,
     status: "confirmado",
-    requested_by: item.educatorId,
+    requested_by: canonicalTutorId,
     requested_at: item.createdAt,
-    decided_by: item.educatorId,
+    decided_by: canonicalTutorId,
     decided_at: item.updatedAt ?? item.createdAt,
     reason: "Vinculo derivado do app mobile.",
     created_at: item.createdAt,
@@ -435,24 +782,31 @@ export async function getProfiles({ role, ids } = {}) {
     return [];
   }
 
+  const { uuidIds } = splitIdsByUuid(ids);
   const client = requireSupabase();
-  let query = client
-    .from("profiles")
-    .select("id, full_name, role, phone, cpf, metadata, created_at, updated_at");
-
-  if (role) {
-    query = query.eq("role", role);
-  }
-
-  if (ids) {
-    query = query.in("id", ids);
-  }
+  const shouldQueryPanelProfiles = !ids || uuidIds.length > 0;
 
   const shouldLoadMobileEducators = !role || role === "tutor";
   const shouldLoadMobileLearners = !role || role === "alfabetizando";
 
   const [profiles, mobileEducators, mobileLearners] = await Promise.all([
-    runQuery(query, "Falha ao listar perfis"),
+    shouldQueryPanelProfiles
+      ? (() => {
+          let query = client
+            .from("profiles")
+            .select("id, full_name, role, phone, cpf, metadata, created_at, updated_at");
+
+          if (role) {
+            query = query.eq("role", role);
+          }
+
+          if (ids) {
+            query = query.in("id", uuidIds);
+          }
+
+          return runQuery(query, "Falha ao listar perfis");
+        })()
+      : Promise.resolve([]),
     shouldLoadMobileEducators ? getMobileEducators({ ids }) : Promise.resolve([]),
     shouldLoadMobileLearners ? getMobileLearners({ ids }) : Promise.resolve([]),
   ]);
@@ -484,37 +838,89 @@ export async function getTutorStudentLinks({ tutorIds, studentIds, statuses } = 
     return [];
   }
 
+  const { uuidIds: uuidTutorIds } = splitIdsByUuid(tutorIds);
+  const { uuidIds: uuidStudentIds } = splitIdsByUuid(studentIds);
+  const shouldQueryPanelLinks =
+    (!tutorIds || uuidTutorIds.length > 0) && (!studentIds || uuidStudentIds.length > 0);
+
   const client = requireSupabase();
-  let query = client
-    .from("tutor_student_links")
-    .select(
-      "id, tutor_id, student_id, status, requested_by, requested_at, decided_by, decided_at, reason, created_at, updated_at",
-    );
-
-  if (tutorIds) {
-    query = query.in("tutor_id", tutorIds);
-  }
-
-  if (studentIds) {
-    query = query.in("student_id", studentIds);
-  }
-
-  if (statuses) {
-    query = query.in("status", statuses);
-  }
-
   const canIncludeMobileLinks = !statuses || statuses.includes("confirmado");
   if (!canIncludeMobileLinks) {
+    if (!shouldQueryPanelLinks) {
+      return [];
+    }
+
+    let query = client
+      .from("tutor_student_links")
+      .select(
+        "id, tutor_id, student_id, status, requested_by, requested_at, decided_by, decided_at, reason, created_at, updated_at",
+      );
+
+    if (tutorIds) {
+      query = query.in("tutor_id", uuidTutorIds);
+    }
+
+    if (studentIds) {
+      query = query.in("student_id", uuidStudentIds);
+    }
+
+    if (statuses) {
+      query = query.in("status", statuses);
+    }
+
     return runQuery(query, "Falha ao listar vinculos");
   }
 
+  const mobileEducators = await getMobileEducators();
+  const tutorIdentityMap = buildMobileTutorIdentityMap(mobileEducators);
+  const normalizedTutorIds = tutorIds?.map((value) => normalizeText(value)).filter(Boolean) ?? null;
+
+  const mobileEducatorIds =
+    normalizedTutorIds && normalizedTutorIds.length > 0
+      ? mobileEducators
+          .filter((item) => {
+            const rawId = normalizeText(item.id);
+            const canonicalId = canonicalTutorIdFromMobileEducator(item);
+
+            return normalizedTutorIds.includes(rawId) || normalizedTutorIds.includes(canonicalId);
+          })
+          .map((item) => item.id)
+      : tutorIds;
+
   const [links, mobileLearners] = await Promise.all([
-    runQuery(query, "Falha ao listar vinculos"),
-    getMobileLearners({ ids: studentIds, educatorIds: tutorIds }),
+    shouldQueryPanelLinks
+      ? (() => {
+          let query = client
+            .from("tutor_student_links")
+            .select(
+              "id, tutor_id, student_id, status, requested_by, requested_at, decided_by, decided_at, reason, created_at, updated_at",
+            );
+
+          if (tutorIds) {
+            query = query.in("tutor_id", uuidTutorIds);
+          }
+
+          if (studentIds) {
+            query = query.in("student_id", uuidStudentIds);
+          }
+
+          if (statuses) {
+            query = query.in("status", statuses);
+          }
+
+          return runQuery(query, "Falha ao listar vinculos");
+        })()
+      : Promise.resolve([]),
+    getMobileLearners({ ids: studentIds, educatorIds: mobileEducatorIds }),
   ]);
 
   const filteredMobileLearners = mobileLearners.filter((item) => normalizeText(item.educatorId));
-  const mobileLinks = filteredMobileLearners.map(mapMobileLearnerToLink);
+  let mobileLinks = filteredMobileLearners.map((item) => mapMobileLearnerToLink(item, tutorIdentityMap));
+
+  if (normalizedTutorIds && normalizedTutorIds.length > 0) {
+    const allowedTutorIds = new Set(normalizedTutorIds);
+    mobileLinks = mobileLinks.filter((item) => allowedTutorIds.has(normalizeText(item.tutor_id)));
+  }
 
   return dedupeByKey(links, mobileLinks, (item) => `${item.tutor_id}:${item.student_id}`);
 }
@@ -524,19 +930,25 @@ export async function getActivityProgress({ studentIds } = {}) {
     return [];
   }
 
+  const { uuidIds } = splitIdsByUuid(studentIds);
+  const shouldQueryPanelProgress = !studentIds || uuidIds.length > 0;
   const client = requireSupabase();
-  let query = client
-    .from("activity_progress")
-    .select(
-      "id, student_id, activity_id, status, attempts, score, source_platform, last_interacted_at, completed_at, metadata, created_at, updated_at",
-    );
-
-  if (studentIds) {
-    query = query.in("student_id", studentIds);
-  }
-
   const [progressRows, mobileCompletions] = await Promise.all([
-    runQuery(query, "Falha ao listar progresso"),
+    shouldQueryPanelProgress
+      ? (() => {
+          let query = client
+            .from("activity_progress")
+            .select(
+              "id, student_id, activity_id, status, attempts, score, source_platform, last_interacted_at, completed_at, metadata, created_at, updated_at",
+            );
+
+          if (studentIds) {
+            query = query.in("student_id", uuidIds);
+          }
+
+          return runQuery(query, "Falha ao listar progresso");
+        })()
+      : Promise.resolve([]),
     getMobileCompletions({ learnerProfileIds: studentIds }),
   ]);
 
@@ -549,17 +961,23 @@ export async function getLearningActivities({ ids } = {}) {
     return [];
   }
 
+  const { uuidIds } = splitIdsByUuid(ids);
+  const shouldQueryPanelActivities = !ids || uuidIds.length > 0;
   const client = requireSupabase();
-  let query = client
-    .from("learning_activities")
-    .select("id, module_id, type, title, instructions, sort_order, is_published, created_at, updated_at");
-
-  if (ids) {
-    query = query.in("id", ids);
-  }
-
   const [activities, mobileActivities] = await Promise.all([
-    runQuery(query, "Falha ao listar atividades"),
+    shouldQueryPanelActivities
+      ? (() => {
+          let query = client
+            .from("learning_activities")
+            .select("id, module_id, type, title, instructions, sort_order, is_published, created_at, updated_at");
+
+          if (ids) {
+            query = query.in("id", uuidIds);
+          }
+
+          return runQuery(query, "Falha ao listar atividades");
+        })()
+      : Promise.resolve([]),
     getMobileActivities({ ids }),
   ]);
 
@@ -571,17 +989,23 @@ export async function getLearningModules({ ids } = {}) {
     return [];
   }
 
+  const { uuidIds } = splitIdsByUuid(ids);
+  const shouldQueryPanelModules = !ids || uuidIds.length > 0;
   const client = requireSupabase();
-  let query = client
-    .from("learning_modules")
-    .select("id, theme_id, stage_number, title, description, sort_order, is_active, created_at, updated_at");
-
-  if (ids) {
-    query = query.in("id", ids);
-  }
-
   const [modules, mobileUnits] = await Promise.all([
-    runQuery(query, "Falha ao listar modulos"),
+    shouldQueryPanelModules
+      ? (() => {
+          let query = client
+            .from("learning_modules")
+            .select("id, theme_id, stage_number, title, description, sort_order, is_active, created_at, updated_at");
+
+          if (ids) {
+            query = query.in("id", uuidIds);
+          }
+
+          return runQuery(query, "Falha ao listar modulos");
+        })()
+      : Promise.resolve([]),
     getMobileLearningUnits({ ids }),
   ]);
 
@@ -628,6 +1052,747 @@ export async function getSyncEvents({ limit = 100 } = {}) {
   );
 }
 
+export async function getMobileScreenBlueprints() {
+  const client = requireSupabase();
+  return runQuery(
+    client
+      .from("mobile_screen_blueprints")
+      .select("id, slug, title, svg_path, stage_tag, module_code, is_active, created_at, updated_at")
+      .order("created_at", { ascending: false }),
+    "Falha ao listar blueprints mobile",
+  );
+}
+
+async function ensureThemeExists(themeId) {
+  if (!isUuid(themeId)) {
+    throw new HttpError(
+      400,
+      "Tema invalido para cadastro no CMS. Selecione um tema criado no painel web.",
+    );
+  }
+
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("learning_themes")
+    .select("id")
+    .eq("id", themeId)
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, `Falha ao validar tema: ${error.message}`);
+  }
+
+  if (!data?.id) {
+    throw new HttpError(400, "Tema informado nao existe.");
+  }
+}
+
+async function ensureModuleExists(moduleId) {
+  if (!isUuid(moduleId)) {
+    throw new HttpError(
+      400,
+      "Modulo invalido para cadastro no CMS. Selecione um modulo criado no painel web.",
+    );
+  }
+
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("learning_modules")
+    .select("id")
+    .eq("id", moduleId)
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, `Falha ao validar modulo: ${error.message}`);
+  }
+
+  if (!data?.id) {
+    throw new HttpError(400, "Modulo informado nao existe.");
+  }
+}
+
+async function ensureActivityExists(activityId) {
+  if (!isUuid(activityId)) {
+    throw new HttpError(
+      400,
+      "Atividade invalida para vincular arquivo. Selecione uma atividade criada no CMS web.",
+    );
+  }
+
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("learning_activities")
+    .select("id")
+    .eq("id", activityId)
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, `Falha ao validar atividade: ${error.message}`);
+  }
+
+  if (!data?.id) {
+    throw new HttpError(400, "Atividade informada nao existe.");
+  }
+}
+
+async function getPanelThemeById(themeId) {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("learning_themes")
+    .select("id, title, description, created_at, updated_at")
+    .eq("id", String(themeId))
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, `Falha ao carregar tema para sync mobile: ${error.message}`);
+  }
+
+  return data ?? null;
+}
+
+async function getPanelModuleById(moduleId) {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("learning_modules")
+    .select("id, theme_id, stage_number, title, description, sort_order, created_at, updated_at")
+    .eq("id", String(moduleId))
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, `Falha ao carregar modulo para sync mobile: ${error.message}`);
+  }
+
+  return data ?? null;
+}
+
+async function getPanelActivityById(activityId) {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("learning_activities")
+    .select("id, module_id, type, title, instructions, sort_order, created_at, updated_at")
+    .eq("id", String(activityId))
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, `Falha ao carregar atividade para sync mobile: ${error.message}`);
+  }
+
+  return data ?? null;
+}
+
+async function upsertMobileThemeFromPanel(themeRow) {
+  if (!themeRow?.id) {
+    return;
+  }
+
+  const client = requireSupabase();
+  const payload = {
+    id: String(themeRow.id),
+    name: normalizeText(themeRow.title) || "Tema",
+    description: normalizeNullableText(themeRow.description),
+    createdAt: themeRow.created_at ?? new Date().toISOString(),
+    updatedAt: themeRow.updated_at ?? new Date().toISOString(),
+  };
+
+  const { error } = await client.from("Theme").upsert(payload, { onConflict: "id" });
+  if (error && !isOptionalSourceMissing(error)) {
+    throw new HttpError(500, `Falha ao sincronizar tema no schema mobile: ${error.message}`);
+  }
+}
+
+async function upsertMobileLearningUnitFromPanel(moduleRow) {
+  if (!moduleRow?.id) {
+    return;
+  }
+
+  const theme = await getPanelThemeById(moduleRow.theme_id);
+  if (theme) {
+    await upsertMobileThemeFromPanel(theme);
+  }
+
+  const client = requireSupabase();
+  const fallbackOrder = Math.max(normalizeInteger(moduleRow.stage_number, 1) - 1, 0);
+  const payload = {
+    id: String(moduleRow.id),
+    themeId: String(moduleRow.theme_id),
+    title: normalizeText(moduleRow.title) || "Modulo",
+    description: normalizeNullableText(moduleRow.description),
+    order: Math.max(normalizeInteger(moduleRow.sort_order, fallbackOrder), 0),
+    createdAt: moduleRow.created_at ?? new Date().toISOString(),
+    updatedAt: moduleRow.updated_at ?? new Date().toISOString(),
+  };
+
+  const { error } = await client.from("LearningUnit").upsert(payload, { onConflict: "id" });
+  if (error && !isOptionalSourceMissing(error)) {
+    throw new HttpError(500, `Falha ao sincronizar modulo no schema mobile: ${error.message}`);
+  }
+}
+
+async function upsertMobileActivityFromPanel(activityRow) {
+  if (!activityRow?.id) {
+    return;
+  }
+
+  const module = await getPanelModuleById(activityRow.module_id);
+  if (module) {
+    await upsertMobileLearningUnitFromPanel(module);
+  }
+
+  const client = requireSupabase();
+  const baseContent = {};
+  const instructions = normalizeNullableText(activityRow.instructions);
+  if (instructions) {
+    baseContent.instructions = instructions;
+  }
+
+  const payload = {
+    id: String(activityRow.id),
+    learningUnitId: String(activityRow.module_id),
+    prompt: normalizeText(activityRow.title) || "Atividade",
+    content: Object.keys(baseContent).length > 0 ? baseContent : null,
+    order: Math.max(normalizeInteger(activityRow.sort_order, 0), 0),
+    type: mapPanelActivityTypeToMobile(activityRow.type),
+    createdAt: activityRow.created_at ?? new Date().toISOString(),
+    updatedAt: activityRow.updated_at ?? new Date().toISOString(),
+  };
+
+  const { error } = await client.from("Activity").upsert(payload, { onConflict: "id" });
+  if (error && !isOptionalSourceMissing(error)) {
+    throw new HttpError(500, `Falha ao sincronizar atividade no schema mobile: ${error.message}`);
+  }
+}
+
+async function appendAssetToMobileActivity(assetRow) {
+  if (!assetRow?.activity_id) {
+    return;
+  }
+
+  const activity = await getPanelActivityById(assetRow.activity_id);
+  if (activity) {
+    await upsertMobileActivityFromPanel(activity);
+  }
+
+  const client = requireSupabase();
+  const { data: mobileActivity, error: readError } = await client
+    .from("Activity")
+    .select("id, content")
+    .eq("id", String(assetRow.activity_id))
+    .maybeSingle();
+
+  if (readError) {
+    if (isOptionalSourceMissing(readError)) {
+      return;
+    }
+    throw new HttpError(500, `Falha ao carregar activity mobile para asset: ${readError.message}`);
+  }
+
+  if (!mobileActivity?.id) {
+    return;
+  }
+
+  const currentContent =
+    mobileActivity.content &&
+    typeof mobileActivity.content === "object" &&
+    !Array.isArray(mobileActivity.content)
+      ? { ...mobileActivity.content }
+      : {};
+
+  const currentAssets = Array.isArray(currentContent.assets)
+    ? currentContent.assets.filter(
+        (item) => item && typeof item === "object" && !Array.isArray(item),
+      )
+    : [];
+
+  const nextAsset = {
+    id: String(assetRow.id),
+    kind: String(assetRow.kind),
+    storagePath: String(assetRow.storage_path),
+    mimeType: String(assetRow.mime_type),
+    status: String(assetRow.status),
+    metadata:
+      assetRow.metadata && typeof assetRow.metadata === "object" && !Array.isArray(assetRow.metadata)
+        ? assetRow.metadata
+        : {},
+    createdAt: assetRow.created_at ?? new Date().toISOString(),
+  };
+
+  const nextAssets = currentAssets.filter((item) => String(item.id ?? "") !== String(nextAsset.id));
+  nextAssets.push(nextAsset);
+
+  const nextContent = {
+    ...currentContent,
+    assets: nextAssets,
+  };
+
+  const { error: updateError } = await client
+    .from("Activity")
+    .update({ content: nextContent, updatedAt: new Date().toISOString() })
+    .eq("id", String(assetRow.activity_id));
+
+  if (updateError && !isOptionalSourceMissing(updateError)) {
+    throw new HttpError(500, `Falha ao anexar asset na activity mobile: ${updateError.message}`);
+  }
+}
+
+export async function createLearningTheme({
+  title,
+  description,
+  slug,
+  sortOrder,
+  isActive,
+}) {
+  const client = requireSupabase();
+  const normalizedTitle = normalizeText(title);
+  if (!normalizedTitle) {
+    throw new HttpError(400, "Titulo do tema e obrigatorio.");
+  }
+
+  const payload = {
+    slug: normalizeSlug(slug, normalizedTitle),
+    title: normalizedTitle,
+    description: normalizeNullableText(description),
+    sort_order: normalizeInteger(sortOrder, 0),
+    is_active: normalizeBoolean(isActive, true),
+  };
+
+  const { data, error } = await client
+    .from("learning_themes")
+    .insert(payload)
+    .select("id, slug, title, description, sort_order, is_active, created_at, updated_at")
+    .single();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao criar tema: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("sync createLearningTheme to mobile schema", () =>
+    upsertMobileThemeFromPanel(data),
+  );
+
+  await runBestEffortMobileSync("sync_event createLearningTheme", () =>
+    registerSyncEvent({
+      eventType: "content.theme.created",
+      entityType: "learning_theme",
+      entityId: data.id,
+      payload: data,
+    }),
+  );
+
+  return data;
+}
+
+export async function createLearningModule({
+  themeId,
+  title,
+  description,
+  stageNumber,
+  sortOrder,
+  isActive,
+}) {
+  const client = requireSupabase();
+  const normalizedThemeId = normalizeText(themeId);
+  const normalizedTitle = normalizeText(title);
+  if (!normalizedThemeId) {
+    throw new HttpError(400, "themeId e obrigatorio.");
+  }
+  if (!normalizedTitle) {
+    throw new HttpError(400, "Titulo do modulo e obrigatorio.");
+  }
+
+  await ensureThemeExists(normalizedThemeId);
+
+  const payload = {
+    theme_id: normalizedThemeId,
+    stage_number: Math.max(1, normalizeInteger(stageNumber, 1)),
+    title: normalizedTitle,
+    description: normalizeNullableText(description),
+    sort_order: normalizeInteger(sortOrder, 0),
+    is_active: normalizeBoolean(isActive, true),
+  };
+
+  const { data, error } = await client
+    .from("learning_modules")
+    .insert(payload)
+    .select("id, theme_id, stage_number, title, description, sort_order, is_active, created_at, updated_at")
+    .single();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao criar modulo: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("sync createLearningModule to mobile schema", () =>
+    upsertMobileLearningUnitFromPanel(data),
+  );
+
+  await runBestEffortMobileSync("sync_event createLearningModule", () =>
+    registerSyncEvent({
+      eventType: "content.module.created",
+      entityType: "learning_module",
+      entityId: data.id,
+      payload: data,
+    }),
+  );
+
+  return data;
+}
+
+export async function createLearningActivity({
+  moduleId,
+  type,
+  title,
+  instructions,
+  sortOrder,
+  isPublished,
+}) {
+  const client = requireSupabase();
+  const normalizedModuleId = normalizeText(moduleId);
+  const normalizedTitle = normalizeText(title);
+  const normalizedType = normalizeText(type).toLowerCase();
+
+  if (!normalizedModuleId) {
+    throw new HttpError(400, "moduleId e obrigatorio.");
+  }
+  if (!normalizedTitle) {
+    throw new HttpError(400, "Titulo da atividade e obrigatorio.");
+  }
+  if (!ACTIVITY_TYPES.has(normalizedType)) {
+    throw new HttpError(400, "Tipo de atividade invalido. Use: video, quiz, audio ou letra.");
+  }
+
+  await ensureModuleExists(normalizedModuleId);
+
+  const payload = {
+    module_id: normalizedModuleId,
+    type: normalizedType,
+    title: normalizedTitle,
+    instructions: normalizeNullableText(instructions),
+    sort_order: normalizeInteger(sortOrder, 0),
+    is_published: normalizeBoolean(isPublished, false),
+  };
+
+  const { data, error } = await client
+    .from("learning_activities")
+    .insert(payload)
+    .select("id, module_id, type, title, instructions, sort_order, is_published, created_at, updated_at")
+    .single();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao criar atividade: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("sync createLearningActivity to mobile schema", () =>
+    upsertMobileActivityFromPanel(data),
+  );
+
+  await runBestEffortMobileSync("sync_event createLearningActivity", () =>
+    registerSyncEvent({
+      eventType: "content.activity.created",
+      entityType: "learning_activity",
+      entityId: data.id,
+      payload: data,
+    }),
+  );
+
+  return data;
+}
+
+export async function createContentAsset({
+  activityId,
+  kind,
+  storagePath,
+  mimeType,
+  status,
+  metadata,
+}) {
+  const client = requireSupabase();
+  const normalizedActivityId = normalizeText(activityId);
+  const normalizedKind = normalizeAssetKindInput(kind);
+  const normalizedPath = normalizeText(storagePath);
+  const normalizedMimeType = normalizeText(mimeType);
+  const normalizedStatus = normalizeAssetStatusInput(status, "rascunho");
+
+  if (!normalizedActivityId) {
+    throw new HttpError(400, "activityId e obrigatorio.");
+  }
+  if (!normalizedKind) {
+    throw new HttpError(400, "Tipo de asset invalido. Use: png, mp4, mp3 ou jpg.");
+  }
+  if (!normalizedPath) {
+    throw new HttpError(400, "Caminho/URL do asset e obrigatorio.");
+  }
+  if (!normalizedMimeType) {
+    throw new HttpError(400, "mimeType e obrigatorio.");
+  }
+  await ensureActivityExists(normalizedActivityId);
+
+  const safeMetadata =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {};
+
+  const payload = {
+    activity_id: normalizedActivityId,
+    kind: normalizedKind,
+    storage_path: normalizedPath,
+    mime_type: normalizedMimeType,
+    status: normalizedStatus,
+    metadata: safeMetadata,
+  };
+
+  const { data, error } = await client
+    .from("content_assets")
+    .insert(payload)
+    .select("id, activity_id, kind, storage_path, mime_type, status, metadata, created_at, updated_at")
+    .single();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao criar asset: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("sync createContentAsset to mobile schema", () =>
+    appendAssetToMobileActivity(data),
+  );
+
+  await runBestEffortMobileSync("sync_event createContentAsset", () =>
+    registerSyncEvent({
+      eventType: "content.asset.created",
+      entityType: "content_asset",
+      entityId: data.id,
+      payload: data,
+    }),
+  );
+
+  return data;
+}
+
+export async function uploadContentAssetFile({
+  fileBuffer,
+  originalName,
+  mimeType,
+  bytes,
+  activityId,
+  kind,
+  status,
+  metadata,
+  title,
+  createdByEducatorId,
+  folder,
+}) {
+  if (!fileBuffer || bytes <= 0) {
+    throw new HttpError(400, "Arquivo nao enviado. Use o campo 'file'.");
+  }
+
+  const normalizedActivityId = normalizeText(activityId);
+  const detectedKind =
+    normalizeAssetKindInput(kind) ||
+    detectAssetKindFromUpload({
+      mimeType,
+      fileName: originalName,
+    });
+
+  if (!detectedKind) {
+    throw new HttpError(
+      400,
+      "Tipo de arquivo nao suportado. Envie PNG, JPG, MP4 ou MP3.",
+    );
+  }
+
+  const resolvedMimeType =
+    normalizeText(mimeType).toLowerCase() ||
+    MIME_BY_ASSET_KIND[detectedKind] ||
+    "application/octet-stream";
+  const extension = detectUploadFileExtension(originalName, resolvedMimeType, detectedKind);
+  const resolvedTitle = normalizeText(title) || titleFromFileName(originalName);
+  const objectPath = buildStorageObjectPath({
+    extension,
+    folder: folder || (normalizedActivityId ? "conteudo" : "perfil"),
+  });
+
+  const storage = await uploadBufferToStorage({
+    buffer: fileBuffer,
+    mimeType: resolvedMimeType,
+    objectPath,
+  });
+
+  const defaultMetadata = {
+    objectPath: storage.objectPath,
+    bucket: storage.bucket,
+    originalFileName: normalizeText(originalName) || null,
+    title: resolvedTitle,
+    bytes,
+    uploadedAt: new Date().toISOString(),
+  };
+  const mergedMetadata = normalizeUploadMetadata(metadata, defaultMetadata);
+
+  let assetRow = null;
+  if (normalizedActivityId) {
+    const normalizedStatus = normalizeAssetStatusInput(status, "rascunho");
+    assetRow = await createContentAsset({
+      activityId: normalizedActivityId,
+      kind: detectedKind,
+      storagePath: storage.publicUrl,
+      mimeType: resolvedMimeType,
+      status: normalizedStatus,
+      metadata: mergedMetadata,
+    });
+  } else {
+    await runBestEffortMobileSync("sync_event uploadContentAssetFile", () =>
+      registerSyncEvent({
+        eventType: "content.asset.uploaded",
+        entityType: "storage_object",
+        entityId: storage.objectPath,
+        payload: {
+          kind: detectedKind,
+          sourceUrl: storage.publicUrl,
+          mimeType: resolvedMimeType,
+          bytes,
+        },
+      }),
+    );
+  }
+
+  return {
+    asset: mapAssetToUploadPayload(assetRow, {
+      kind: detectedKind,
+      title: resolvedTitle,
+      sourceUrl: storage.publicUrl,
+      mimeType: resolvedMimeType,
+      originalFileName: normalizeText(originalName) || null,
+      bytes,
+      createdByEducatorId: normalizeNullableText(createdByEducatorId),
+    }),
+    storage,
+    vinculado: Boolean(assetRow),
+  };
+}
+
+export async function createMobileScreenBlueprint({
+  slug,
+  title,
+  svgPath,
+  stageTag,
+  moduleCode,
+  isActive,
+}) {
+  const client = requireSupabase();
+  const normalizedTitle = normalizeText(title);
+  const normalizedSvgPath = normalizeText(svgPath);
+  const normalizedSlug = normalizeSlug(slug, normalizedTitle || normalizedSvgPath || "tela");
+
+  if (!normalizedTitle) {
+    throw new HttpError(400, "Titulo da tela e obrigatorio.");
+  }
+  if (!normalizedSvgPath) {
+    throw new HttpError(400, "svgPath e obrigatorio.");
+  }
+
+  const payload = {
+    slug: normalizedSlug,
+    title: normalizedTitle,
+    svg_path: normalizedSvgPath,
+    stage_tag: normalizeNullableText(stageTag),
+    module_code: normalizeNullableText(moduleCode),
+    is_active: normalizeBoolean(isActive, true),
+  };
+
+  const { data, error } = await client
+    .from("mobile_screen_blueprints")
+    .upsert(payload, { onConflict: "slug" })
+    .select("id, slug, title, svg_path, stage_tag, module_code, is_active, created_at, updated_at")
+    .single();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao criar blueprint mobile: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("sync_event createMobileScreenBlueprint", () =>
+    registerSyncEvent({
+      eventType: "content.blueprint.created",
+      entityType: "mobile_screen_blueprint",
+      entityId: data.id,
+      payload: data,
+    }),
+  );
+
+  return data;
+}
+
+export async function importMobileBlueprintsFromManifest({ manifestPath } = {}) {
+  const client = requireSupabase();
+  const resolvedManifestPath = normalizeText(manifestPath)
+    ? resolve(monorepoRootPath, normalizeText(manifestPath))
+    : DEFAULT_BLUEPRINTS_MANIFEST_PATH;
+
+  let parsedManifest;
+  try {
+    const raw = await readFile(resolvedManifestPath, "utf8");
+    parsedManifest = JSON.parse(raw);
+  } catch (error) {
+    throw new HttpError(400, `Falha ao ler manifest de telas: ${error instanceof Error ? error.message : error}`);
+  }
+
+  const screens = Array.isArray(parsedManifest?.screens) ? parsedManifest.screens : [];
+  if (screens.length === 0) {
+    return {
+      imported: 0,
+      items: [],
+      manifestPath: resolvedManifestPath,
+    };
+  }
+
+  const rows = screens
+    .map((screen, index) => {
+      const title = normalizeText(screen?.title);
+      const svgPath = normalizeText(screen?.svgPath);
+      if (!title || !svgPath) {
+        return null;
+      }
+
+      return {
+        slug: normalizeSlug(screen?.slug, `${title}-${index + 1}`),
+        title,
+        svg_path: svgPath,
+        stage_tag: normalizeNullableText(screen?.stageTag),
+        module_code: normalizeNullableText(screen?.moduleCode),
+        is_active: true,
+      };
+    })
+    .filter(Boolean);
+
+  if (rows.length === 0) {
+    return {
+      imported: 0,
+      items: [],
+      manifestPath: resolvedManifestPath,
+    };
+  }
+
+  const { data, error } = await client
+    .from("mobile_screen_blueprints")
+    .upsert(rows, { onConflict: "slug" })
+    .select("id, slug, title, svg_path, stage_tag, module_code, is_active, created_at, updated_at");
+
+  if (error) {
+    throw new HttpError(400, `Falha ao importar blueprints do manifest: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("sync_event importMobileBlueprintsFromManifest", () =>
+    registerSyncEvent({
+      eventType: "content.blueprint.imported",
+      entityType: "mobile_screen_blueprint",
+      entityId: `batch-${Date.now()}`,
+      payload: {
+        manifestPath: resolvedManifestPath,
+        imported: data?.length ?? 0,
+      },
+    }),
+  );
+
+  return {
+    imported: data?.length ?? 0,
+    items: data ?? [],
+    manifestPath: resolvedManifestPath,
+  };
+}
+
 function normalizeDigits(value, maxLength) {
   const digits = String(value ?? "").replace(/\D/g, "");
   return digits.length > 0 ? digits.slice(0, maxLength) : null;
@@ -655,25 +1820,42 @@ async function upsertMobileEducatorRecord({ id, fullName, email, cpf, phone, pas
     return;
   }
 
-  const canFallbackToEmailUpdate =
-    basePayload.email &&
-    String(error.code ?? "") === "23505" &&
-    String(error.message ?? "").toLowerCase().includes("educator_email_key");
+  const normalizedErrorMessage = String(error.message ?? "").toLowerCase();
+  const isUniqueViolation = String(error.code ?? "") === "23505";
 
-  if (!canFallbackToEmailUpdate) {
+  const canFallbackToSupabaseAuthUpdate =
+    isUniqueViolation &&
+    Boolean(basePayload.supabaseAuthUserId) &&
+    normalizedErrorMessage.includes("educator_supabaseauthuserid_key");
+  const canFallbackToEmailUpdate =
+    isUniqueViolation &&
+    Boolean(basePayload.email) &&
+    normalizedErrorMessage.includes("educator_email_key");
+  const canFallbackToCpfUpdate =
+    isUniqueViolation && Boolean(basePayload.cpf) && normalizedErrorMessage.includes("educator_cpf_key");
+
+  if (!canFallbackToSupabaseAuthUpdate && !canFallbackToEmailUpdate && !canFallbackToCpfUpdate) {
     throw new HttpError(500, `Falha ao sincronizar educador no schema mobile: ${error.message}`);
   }
 
-  const { error: updateError } = await client
-    .from("Educator")
-    .update({
-      name: basePayload.name,
-      cpf: basePayload.cpf,
-      phoneDigits: basePayload.phoneDigits,
-      supabaseAuthUserId: basePayload.supabaseAuthUserId,
-      ...(basePayload.passwordHash ? { passwordHash: basePayload.passwordHash } : {}),
-    })
-    .eq("email", basePayload.email);
+  let updateQuery = client.from("Educator").update({
+    name: basePayload.name,
+    email: basePayload.email,
+    cpf: basePayload.cpf,
+    phoneDigits: basePayload.phoneDigits,
+    supabaseAuthUserId: basePayload.supabaseAuthUserId,
+    ...(basePayload.passwordHash ? { passwordHash: basePayload.passwordHash } : {}),
+  });
+
+  if (canFallbackToSupabaseAuthUpdate) {
+    updateQuery = updateQuery.eq("supabaseAuthUserId", basePayload.supabaseAuthUserId);
+  } else if (canFallbackToCpfUpdate) {
+    updateQuery = updateQuery.eq("cpf", basePayload.cpf);
+  } else {
+    updateQuery = updateQuery.eq("email", basePayload.email);
+  }
+
+  const { error: updateError } = await updateQuery;
 
   if (updateError && !isOptionalSourceMissing(updateError)) {
     throw new HttpError(
@@ -769,7 +1951,31 @@ async function syncPanelLinkToMobile({ tutorId, studentId, status }) {
   }
 
   const client = requireSupabase();
-  const nextEducatorId = status === "confirmado" ? String(tutorId) : null;
+  let nextEducatorId = null;
+
+  if (status === "confirmado") {
+    const normalizedTutorId = normalizeText(tutorId);
+    const educatorById = await runOptionalQuery(
+      client.from("Educator").select("id").eq("id", normalizedTutorId).limit(1),
+      "Falha ao resolver educador mobile por id",
+    );
+
+    if (educatorById.length > 0) {
+      nextEducatorId = String(educatorById[0].id);
+    } else {
+      const educatorByAuthUser = await runOptionalQuery(
+        client
+          .from("Educator")
+          .select("id")
+          .eq("supabaseAuthUserId", normalizedTutorId)
+          .limit(1),
+        "Falha ao resolver educador mobile por supabaseAuthUserId",
+      );
+
+      nextEducatorId =
+        educatorByAuthUser.length > 0 ? String(educatorByAuthUser[0].id) : normalizedTutorId;
+    }
+  }
 
   const { error } = await client
     .from("LearnerProfile")
