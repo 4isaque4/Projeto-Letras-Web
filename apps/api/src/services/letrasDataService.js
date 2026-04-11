@@ -346,6 +346,30 @@ function normalizeSlug(value, fallback) {
   return slugify(fallback) || `item-${Date.now()}`;
 }
 
+async function resolveUniqueThemeSlug(client, preferredSlug) {
+  const baseSlug = normalizeSlug(preferredSlug, "tema");
+
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const suffix = attempt === 0 ? "" : `-${attempt + 1}`;
+    const candidate = `${baseSlug}${suffix}`.slice(0, 80);
+    const { data, error } = await client
+      .from("learning_themes")
+      .select("id")
+      .eq("slug", candidate)
+      .maybeSingle();
+
+    if (error) {
+      throw new HttpError(500, `Falha ao validar nome interno do tema: ${error.message}`);
+    }
+
+    if (!data) {
+      return candidate;
+    }
+  }
+
+  return `${baseSlug}-${Date.now()}`.slice(0, 80);
+}
+
 function normalizeAssetKindInput(value) {
   const normalized = normalizeText(value).toLowerCase();
   if (!normalized) {
@@ -1347,8 +1371,11 @@ export async function createLearningTheme({
     throw new HttpError(400, "Titulo do tema e obrigatorio.");
   }
 
+  const requestedSlug = normalizeSlug(slug, normalizedTitle);
+  const uniqueSlug = await resolveUniqueThemeSlug(client, requestedSlug);
+
   const payload = {
-    slug: normalizeSlug(slug, normalizedTitle),
+    slug: uniqueSlug,
     title: normalizedTitle,
     description: normalizeNullableText(description),
     sort_order: normalizeInteger(sortOrder, 0),
@@ -1362,6 +1389,16 @@ export async function createLearningTheme({
     .single();
 
   if (error) {
+    const normalizedMessage = String(error.message ?? "").toLowerCase();
+    if (
+      String(error.code ?? "") === "23505" ||
+      normalizedMessage.includes("learning_themes_slug_key")
+    ) {
+      throw new HttpError(
+        400,
+        "Ja existe um tema muito parecido com este nome. Tente alterar o titulo do tema.",
+      );
+    }
     throw new HttpError(400, `Falha ao criar tema: ${error.message}`);
   }
 

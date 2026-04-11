@@ -139,6 +139,23 @@ function isUuid(value: string) {
   return UUID_REGEX.test(value.trim());
 }
 
+function toFriendlyErrorMessage(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes("learning_themes_slug_key") ||
+    normalized.includes("ja existe um tema muito parecido")
+  ) {
+    return "Ja existe um tema com esse nome. Troque o titulo do tema e tente novamente.";
+  }
+
+  if (normalized.includes("duplicate key value") && normalized.includes("learning_themes")) {
+    return "Esse tema ja foi cadastrado. Use outro nome para o tema.";
+  }
+
+  return message;
+}
+
 export default function Conteudo() {
   const [tab, setTab] = useState<TabKey>("estrutura");
   const [data, setData] = useState<ConteudoData>(EMPTY_DATA);
@@ -147,7 +164,7 @@ export default function Conteudo() {
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
-  const [themeForm, setThemeForm] = useState({ title: "", slug: "", description: "", sortOrder: "0" });
+  const [themeForm, setThemeForm] = useState({ title: "", description: "", sortOrder: "0" });
   const [moduleForm, setModuleForm] = useState({
     themeId: "",
     title: "",
@@ -254,9 +271,10 @@ export default function Conteudo() {
       await loadData();
       setFeedback({ type: "ok", text: successMessage });
     } catch (submitError) {
+      const rawMessage = submitError instanceof Error ? submitError.message : "Erro ao salvar.";
       setFeedback({
         type: "error",
-        text: submitError instanceof Error ? submitError.message : "Erro ao salvar.",
+        text: toFriendlyErrorMessage(rawMessage),
       });
     } finally {
       setBusy("");
@@ -269,14 +287,13 @@ export default function Conteudo() {
       "/painel/conteudo/temas",
       {
         title: themeForm.title,
-        slug: themeForm.slug || undefined,
         description: themeForm.description || undefined,
         sortOrder: toInt(themeForm.sortOrder, 0),
         isActive: true,
       },
       "Tema criado com sucesso.",
     );
-    setThemeForm({ title: "", slug: "", description: "", sortOrder: "0" });
+    setThemeForm({ title: "", description: "", sortOrder: "0" });
   }
 
   async function onCreateModule(event: FormEvent<HTMLFormElement>) {
@@ -502,8 +519,7 @@ export default function Conteudo() {
                 <p className="text-xs text-gray-600">Tema e o bloco principal da trilha (ex.: Vogais, Consoantes).</p>
                 <label className="text-xs font-semibold text-gray-700 block">Titulo do tema</label>
                 <input value={themeForm.title} onChange={(event) => setThemeForm((p) => ({ ...p, title: event.target.value }))} className="w-full border border-gray-300 px-3 py-2 text-sm" placeholder="Ex.: Vogais" required />
-                <label className="text-xs font-semibold text-gray-700 block">Slug (opcional)</label>
-                <input value={themeForm.slug} onChange={(event) => setThemeForm((p) => ({ ...p, slug: event.target.value }))} className="w-full border border-gray-300 px-3 py-2 text-sm" placeholder="Ex.: vogais" />
+                <p className="text-xs text-gray-500">Nome interno gerado automaticamente.</p>
                 <label className="text-xs font-semibold text-gray-700 block">Descricao</label>
                 <textarea value={themeForm.description} onChange={(event) => setThemeForm((p) => ({ ...p, description: event.target.value }))} className="w-full border border-gray-300 px-3 py-2 text-sm min-h-[90px]" placeholder="Objetivo pedagogico deste tema." />
                 <label className="text-xs font-semibold text-gray-700 block">Ordem de exibicao</label>
