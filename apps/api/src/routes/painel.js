@@ -19,6 +19,7 @@ import {
   getSyncEvents,
   getTutorStudentLinks,
   importMobileBlueprintsFromManifest,
+  updateMobileScreenBlueprint,
   toHttpError,
   uploadContentAssetFile,
 } from "../services/letrasDataService.js";
@@ -494,6 +495,25 @@ painelRouter.post("/conteudo/blueprints", async (req, res) => {
     });
 
     res.status(201).json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.patch("/conteudo/blueprints/:id", async (req, res) => {
+  try {
+    const data = await updateMobileScreenBlueprint({
+      blueprintId: req.params.id,
+      slug: req.body?.slug,
+      title: req.body?.title,
+      svgPath: req.body?.svgPath,
+      stageTag: req.body?.stageTag,
+      moduleCode: req.body?.moduleCode,
+      isActive: req.body?.isActive,
+    });
+
+    res.json(data);
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });

@@ -12,6 +12,9 @@ import Vinculos from "./pages/admin/Vinculos";
 import Grupos from "./pages/admin/Grupos";
 import Fila from "./pages/admin/Fila";
 import Conteudo from "./pages/admin/Conteudo";
+import ConteudoBibliotecaPage from "./pages/admin/conteudo/ConteudoBibliotecaPage";
+import ConteudoImportarTelasPage from "./pages/admin/conteudo/ConteudoImportarTelasPage";
+import ConteudoNovaAulaPage from "./pages/admin/conteudo/ConteudoNovaAulaPage";
 import Ranking from "./pages/admin/Ranking";
 import Relatorios from "./pages/admin/Relatorios";
 import Configuracoes from "./pages/admin/Configuracoes";
@@ -39,6 +42,9 @@ export const router = createBrowserRouter([
       { path: "admin/grupos", Component: Grupos },
       { path: "admin/fila", Component: Fila },
       { path: "admin/conteudo", Component: Conteudo },
+      { path: "admin/conteudo/biblioteca", Component: ConteudoBibliotecaPage },
+      { path: "admin/conteudo/importar-telas", Component: ConteudoImportarTelasPage },
+      { path: "admin/conteudo/nova-aula", Component: ConteudoNovaAulaPage },
       { path: "admin/ranking", Component: Ranking },
       { path: "admin/relatorios", Component: Relatorios },
       { path: "admin/configuracoes", Component: Configuracoes },

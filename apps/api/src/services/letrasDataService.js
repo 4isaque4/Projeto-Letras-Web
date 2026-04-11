@@ -1752,6 +1752,85 @@ export async function createMobileScreenBlueprint({
   return data;
 }
 
+export async function updateMobileScreenBlueprint({
+  blueprintId,
+  slug,
+  title,
+  svgPath,
+  stageTag,
+  moduleCode,
+  isActive,
+}) {
+  const client = requireSupabase();
+  const normalizedBlueprintId = normalizeText(blueprintId);
+  if (!isUuid(normalizedBlueprintId)) {
+    throw new HttpError(400, "blueprintId invalido.");
+  }
+
+  const payload = {};
+  if (title !== undefined) {
+    const normalizedTitle = normalizeText(title);
+    if (!normalizedTitle) {
+      throw new HttpError(400, "Titulo da tela nao pode ficar vazio.");
+    }
+    payload.title = normalizedTitle;
+  }
+
+  if (slug !== undefined) {
+    payload.slug = normalizeSlug(slug, payload.title || "tela");
+  }
+
+  if (svgPath !== undefined) {
+    const normalizedSvgPath = normalizeText(svgPath);
+    if (!normalizedSvgPath) {
+      throw new HttpError(400, "svgPath nao pode ficar vazio.");
+    }
+    payload.svg_path = normalizedSvgPath;
+  }
+
+  if (stageTag !== undefined) {
+    payload.stage_tag = normalizeNullableText(stageTag);
+  }
+
+  if (moduleCode !== undefined) {
+    payload.module_code = normalizeNullableText(moduleCode);
+  }
+
+  if (isActive !== undefined) {
+    payload.is_active = normalizeBoolean(isActive, true);
+  }
+
+  if (Object.keys(payload).length === 0) {
+    throw new HttpError(400, "Nenhum campo valido para atualizar.");
+  }
+
+  const { data, error } = await client
+    .from("mobile_screen_blueprints")
+    .update(payload)
+    .eq("id", normalizedBlueprintId)
+    .select("id, slug, title, svg_path, stage_tag, module_code, is_active, created_at, updated_at")
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao atualizar blueprint mobile: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new HttpError(404, "Blueprint mobile nao encontrado.");
+  }
+
+  await runBestEffortMobileSync("sync_event updateMobileScreenBlueprint", () =>
+    registerSyncEvent({
+      eventType: "content.blueprint.updated",
+      entityType: "mobile_screen_blueprint",
+      entityId: data.id,
+      payload: data,
+    }),
+  );
+
+  return data;
+}
+
 export async function importMobileBlueprintsFromManifest({ manifestPath } = {}) {
   const client = requireSupabase();
   const resolvedManifestPath = normalizeText(manifestPath)
