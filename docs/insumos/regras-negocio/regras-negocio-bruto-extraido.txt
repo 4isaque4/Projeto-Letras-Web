@@ -1,0 +1,470 @@
+
+T.IA
+(MVP)
+REGRAS DE NEG&Oacute;CIO
+Padr&otilde;es/Conven&ccedil;&otilde;es
+Prot&oacute;tipo Figma
+Tela no Prot&oacute;tipo Figma:
+Campo de dado:
+(Nome da tabela/conjunto de dados)
+Regra de Neg&oacute;cio:
+(N&uacute;mero da regra de neg&oacute;cio)
+Outras conven&ccedil;&otilde;es:
+D&uacute;vidas/Revis&atilde;o
+FUNCIONALIDADE N&Atilde;O IMPLEMENTADA
+Tecla / Bot&atilde;o / &Iacute;cone
+&lt;&lt; outra jornada &gt;&gt;
+&nbsp;
+Funcionalidade: 
+(x)
+Regras de Neg&oacute;cio - JORNADA ALFABETIZADOR
+Regra Geral
+Toda vez que eu colocar N significa um n&uacute;mero. Toda vez que eu indicar X significa um dado alfanum&eacute;rico.
+RN001 - 
+Ao entrar, a tela com o logotipo deve sinalizar a vers&atilde;o Alfabetizador.
+RN002 - [Cadastro de Perfil - 1] -
+&nbsp;A entrada &eacute; autom&aacute;tica no Cadastro de Perfil apenas na primeira vez. Depois de feito o cadastro, o usu&aacute;rio ser&aacute; direcionado para:
+P&aacute;gina &ldquo;Home - N&atilde;o assistiu tutoriais&rdquo;, caso seja o primeiro acesso ou n&atilde;o tenha assistido a todos os tutoriais obrigat&oacute;rios.
+P&aacute;gina &ldquo;Home - Assistiu tutoriais&rdquo;, caso j&aacute; tenha assistido a todos os tutoriais obrigat&oacute;rios.
+RN003 - [Cadastro de Perfil - 1] -
+&nbsp;Ambos os dados - CPF ou Passaporte e n&uacute;mero de celular - s&atilde;o obrigat&oacute;rios. Caso algum dado esteja incompleto ou faltando, informar que h&aacute; erro. Todos os dados s&atilde;o obrigat&oacute;rios. Mensagem: Existem campos obrigat&oacute;rios que n&atilde;o foram preenchidos ou est&atilde;o incompletos.
+RN004 - [Cadastro de Perfil - 1] -
+&nbsp;Celular ter&aacute; processo de checagem, via SMS.
+RN005 - [Cadastro de Perfil - 2] -
+&nbsp;Todos os dados s&atilde;o obrigat&oacute;rios: Nome completo, data nascimento, cidade, UF, e foto. &nbsp;A foto pode ser inserida por upload ou tira foto com o celular.
+RN006 - [Cadastro de Perfil - 2] -
+&nbsp;Ao clicar no box UF, abrir&aacute; caixa em ordem alfab&eacute;tica com as siglas de todas as unidades, no formato 2 letras.
+RN006 - [Cadastro de Perfil - 3] -
+&nbsp;
+Nenhum dado &eacute; obrigat&oacute;rio (Escolaridade, &Aacute;rea de Forma&ccedil;&atilde;o, Redes sociais)
+RN007 - [Perfil] -
+&nbsp;&Uacute;nico dado que n&atilde;o &eacute; edit&aacute;vel &eacute; o CPF ou Passaporte. Todos os demais podem ser alterados.
+RN008 - [Perfil] -
+&nbsp;Come&ccedil;a a mostrar o menu inferior, que deve ser fixo na tela (n&atilde;o consegui simular isso).
+RN009 - [Home - N&atilde;o assistiu tutoriais] -
+&nbsp;Em caso de primeiro acesso, o alfabetizador deve ser direcionado para a p&aacute;gina &ldquo;Home - N&atilde;o assistiu tutoriais&rdquo;
+RN010 - [Home - N&atilde;o assistiu tutoriais] -
+&nbsp;No texto, diz o seguinte: &ldquo;S&atilde;o apenas N v&iacute;deos&rdquo;. N&atilde;o sabemos quantos v&iacute;deos s&atilde;o. Por isso, essa parte precisa ser edit&aacute;vel.
+RN011 - [Home - N&atilde;o assistiu tutoriais] -
+&nbsp;O primeiro v&iacute;deo do tutorial j&aacute; fica dispon&iacute;vel nesta tela. Assim que ele concluir o v&iacute;deo, deve ser direcionado para a p&aacute;gina &ldquo;Tutoriais&rdquo; com o primeiro v&iacute;deo j&aacute; indicado que foi assistido.
+RN012 - [Tutoriais] -
+&nbsp;S&oacute; liberar para alfabetiza&ccedil;&atilde;o depois que todos os v&iacute;deos tutoriais tiverem sido assistidos.
+RN013 - [Tutoriais] -
+&nbsp;Quando um v&iacute;deo for conclu&iacute;do, alterar o texto:
+De: N&atilde;o assistido. Assista para poder alfabetizar.
+Para: Assistido em NN/NN/NNNN
+A cor do texto do v&iacute;deo a ser assistido &eacute; preto. A cor do texto do v&iacute;deo j&aacute; assistido &eacute; 50% do preto.
+RN014 - [Tutoriais] -
+&nbsp;Sempre permitir que um v&iacute;deo seja reassistido.
+RN015 - [Tutoriais] -
+&nbsp;Quando um v&iacute;deo for adicionado, enviar um notifica&ccedil;&atilde;o ao usu&aacute;rio mas n&atilde;o impedir o mesmo de continuar o processo de alfabetiza&ccedil;&atilde;o. Caso ele n&atilde;o assista em at&eacute; 7 dias, travar o acesso para novos alfabetizandos. Mas s&oacute; para novos.
+RN016 - [Tutoriais] -
+&nbsp;Ao terminar o &uacute;ltimo v&iacute;deo, direcionar automaticamente para a p&aacute;gina &ldquo;Home - Assistiu tutoriais&rdquo;
+RN017 - [Home - Assistiu tutoriais] -
+&nbsp;Caso n&atilde;o haja nenhum pedido de apoio, abaixo de &ldquo;Pedidos de apoio e bloqueios preventivos de tela:&rdquo; deve trazer a frase: &ldquo;N&atilde;o h&aacute; pedido de apoio aberto no momento&rdquo;.
+Caso haja um pedido aberto, essa frase sair&aacute; e dar&aacute; lugar aos dados do apoio pedido ou bloqueio realizado.
+Simulei dois textos, uma para pedido de apoio e outro para bloqueio de tela.
+RN018 - [Home - Assistiu tutoriais] -
+&nbsp;H&aacute; dados vari&aacute;veis na &aacute;rea de &ldquo;Pedidos de apoio e bloqueios preventivos de tela:&rdquo;. Deve trazer o nome do alfabetizando e a data da solicita&ccedil;&atilde;o.
+RN019 - [Home - Assistiu tutoriais] -
+&nbsp;Em caso de nenhuma alfabetiza&ccedil;&atilde;o em andamento, a &aacute;rea correspondente deve trazer a frase: &ldquo;N&atilde;o h&aacute; alfabetiza&ccedil;&atilde;o em andamento&rdquo;. Caso haja ao menos uma alfabetiza&ccedil;&atilde;o em andamento, essa frase sair&aacute; e dar&aacute; lugar aos dados conforme simulado no Figma.
+RN020 - [Home - Assistiu tutoriais] -
+&nbsp;Ao clicar sobre o nome de algu&eacute;m ou grupo de alfabetiza&ccedil;&atilde;o em andamento, deve ser direcionado para a &uacute;ltima p&aacute;gina conclu&iacute;da, independentemente de estar na Etapa 1 ou 2. N&atilde;o se aplica &agrave; Etapa 3.
+RN021 - [Home - Assistiu tutoriais] -
+&nbsp;Cada novo alfabetizador cadastrado deve ser inserido automaticamente nessa lista.
+RN022 - [Home - Assistiu tutoriais] -
+&nbsp;Quando for grupo e n&atilde;o alfabetizando, ao clicar no &iacute;cone de lista na frente do nome de cada grupo, deve abrir o nome de todos os alfabetizandos do referido grupo. A lista aberta est&aacute; simulada na p&aacute;gina denominada &ldquo;Home - Assistiu tutoriais (lista aberta)&rdquo;,
+RN023 - [Home - Assistiu tutoriais] -
+&nbsp;Ao clicar na lupa, abrir&aacute; caixa para busca de nome do alfabetizando o grupo nas listas dessa se&ccedil;&atilde;o.
+RN024 - [Home - Assistiu tutoriais] -
+&nbsp;Resultado apresentar&aacute; de 10 em 10 nomes, caso haja. Coloquei o s&iacute;mbolo + para demonstra&ccedil;&atilde;o, mas o mesmo s&oacute; aparecer&aacute; quando tiver 1 nome a mais que uma dezena.
+Exemplo: Tem 11 nomes, aparecem 10 e aparece o mais para revelar os pr&oacute;ximos 10 nomes.
+Seguindo com o exemplo: se tiver 25 nomes: aparecer&atilde;o 10 e o s&iacute;mbolo de +. Ao clicar no +, aparecer&atilde;o mais 10 nomes (do 11 ao 20) e novamente o s&iacute;mbolo +. Ao cliar no +, ,aparecer&atilde;o os 5 nomes restantes e n&atilde;o mais aparecer&aacute; o s&iacute;mbolo +.
+RN025 - [Cadastrar Alfabetizando - 1] -
+&nbsp;Ambos os dados - CPF ou Passaporte e n&uacute;mero de celular - s&atilde;o obrigat&oacute;rios. Caso algum dado esteja incompleto ou faltando, informar que h&aacute; erro. Todos os dados s&atilde;o obrigat&oacute;rios. Mensagem: Existem campos obrigat&oacute;rios que n&atilde;o foram preenchidos ou est&atilde;o incompletos.
+RN026 - [Cadastrar Alfabetizando - 1] -
+&nbsp;Celular ter&aacute; processo de checagem, via SMS.
+RN027 - [Cadastrar Alfabetizando - 2] -
+&nbsp;Todos os dados s&atilde;o obrigat&oacute;rios: Nome completo, data nascimento, cidade, UF, e foto. A foto pode ser inserida por upload ou tira foto com o celular.
+RN028 - [Cadastrar Alfabetizando - 2] -
+&nbsp;Ao clicar no box UF, abrir&aacute; caixa em ordem alfab&eacute;tica com as siglas de todas as unidades, no formato 2 letras.
+RN030 - [Confirmar Alfabetizando] -
+&nbsp;Caso a pessoa tenha chegado nesta tela a partir da tela &ldquo;Cadastrar Alfabetizando&rdquo;, ao clicar em &ldquo;Voltar&rdquo;, deve retornar para a tela &ldquo;Cadastrar Alfabetizando&rdquo;.
+Por&eacute;m,
+Caso a pessoa tenha chegado nesta tela clicando em &ldquo;Cadastrar Alfabetizando&rdquo;, ao clicar em &ldquo;Voltar&rdquo;, deve retornar para a tela &ldquo;Cadastrar Alfabetizando&rdquo;.
+RN031 - [Alfabetiza&ccedil;&atilde;o Individual ou em grupo - 1] -
+&nbsp;Caso v&aacute; criar novo grupo, deve preencher o nome do novo grupo e clicar na seta para que o mesmo seja criado.
+RN032 - [Alfabetiza&ccedil;&atilde;o Individual ou em grupo - 1] -
+&nbsp;S&oacute; deve aparecer grupos que n&atilde;o est&atilde;o lotado. N&uacute;mero m&aacute;ximo de integrantes por grupo: 20
+RN033 - [Alfabetiza&ccedil;&atilde;o Individual ou em grupo - 2] -
+&nbsp;H&aacute; dados vari&aacute;veis: nome do alfabetizando, grupo no qual ele ser&aacute; inserido, data de cria&ccedil;&atilde;o do grupo, em que etapa da alfabetiza&ccedil;&atilde;o o grupo est&aacute;, quantos integrantes possui o grupo. Incluir at&eacute; 8 nomes de integrantes antes do bot&atilde;o de CONFIRMAR ou VOLTAR.
+RN034 - [Alfabetiza&ccedil;&atilde;o Individual ou em grupo - 2] -
+&nbsp;N&atilde;o permitir que o integrante seja inserido no grupo caso o mesmo j&aacute; esteja em outra Etapa da Alfabetiza&ccedil;&atilde;o.
+RN035 - [Seleciona tema] -
+&nbsp;Apresentar todos os temas disponibilizados pela plataforma em lista. A sele&ccedil;&atilde;o ser&aacute; por meio do clique sobre a descri&ccedil;&atilde;o do tema.
+RN036 - [Seleciona tema] -
+&nbsp;Os temas ser&atilde;o criados pelos administradores de conte&uacute;do.
+ETAPA 1
+RN037 - [Etapa 1 - Orienta&ccedil;&otilde;es] -
+&nbsp;O v&iacute;deo tutorial desta tela tamb&eacute;m estar&aacute; na tela &ldquo;Tutoriais&rdquo;.
+RN038 - [Etapa 1 - Tela de Abertura] -
+&nbsp;Primeira frase &eacute; vari&aacute;vel.
+Caso seja um alfabetizando, o texto &eacute;: &ldquo;Nome da pessoa a ser alfabetizada:&rdquo;. A seguir, vem o nome cadastrado da pessoa.
+Caso seja um grupo de alfabetizandos, o texto &eacute;: &ldquo;Nome do grupo de alfabetizandos:&rdquo;. A seguir, vem o nome cadastrado para este grupo.
+RN039 - [Etapa 1 - Tela de Abertura] -
+&nbsp;Os &ldquo;Conte&uacute;dos a serem abordados&rdquo; s&atilde;o dados vari&aacute;veis, inseridos pelo conteudista.
+RN040 - [Etapa 1 - Tela de Aula] -
+&nbsp;No cabe&ccedil;alho tem dado vari&aacute;vel em todas as telas de aula, independentemente do modelo: haver&aacute; o nome do alfabetizando ou do grupo em processo de alfabetiza&ccedil;&atilde;o. Texto: &ldquo;Alfabetizando&rdquo; seguido do nome da pessoa ou do grupo.
+Outra vari&aacute;vel no cabe&ccedil;alho &eacute; o n&uacute;mero da aula. Indica qual &eacute; a tela, qual o total de telas e em qual etapa eles est&atilde;o.
+Exemplo: Tela 5 de 30 da Etapa 1 de Alfabetiza&ccedil;&atilde;o
+RN041 - [Etapa 1 - Tela de Aula] -
+&nbsp;H&aacute; dois tipos de conte&uacute;dos nas telas de aula, independentemente do modelo:
+conte&uacute;do de orienta&ccedil;&atilde;o ao alfabetizando: neste caso, ter&aacute; um box de fundo em cinza (10 de preto).
+conte&uacute;do para ser apresentado ao alfabetizando: neste caso, o fundo &eacute; branco com fio preto.
+RN042 - [Etapa 1 - Tela de Aula] -
+&nbsp;Em todas as telas de aulas, independentemente do modelo, dever&aacute; haver uma mensagem logo acima do menu de rodap&eacute; com link para o tutorial de apoio dessa aula.
+O v&iacute;deo ser&aacute; um trecho de algum v&iacute;deo do tutorial ou independente dele, trazendo um lembrete de como atuar neste tipo de tela de aula. Ou seja, ele pode n&atilde;o estar nos v&iacute;deos tutoriais e apenas nessas telas de aula. Mas podem ser repetidos em v&aacute;rias telas de aula.
+&Eacute; facultado ao alfabetizando clicar ou n&atilde;o no v&iacute;deo para assisti-lo. Se clicar, deve abrir o v&iacute;deo sobre a tela. Cada tela pode ter um v&iacute;deo diferente e esse conte&uacute;do ser&aacute; indicado pelo administrador do sistema.
+O v&iacute;deo deve aparecer sobre a tela e, quando conclu&iacute;do automaticamente ou por clique do usu&aacute;rio, sair da tela e voltar a mostrar a tela em quest&atilde;o.
+RN043 - [Etapa 1 - Tela de Aula (Modelo imagem)] -
+&nbsp;Quando tiver imagem, deve aparecer &iacute;cone para aumentar a imagem, para que ocupe a tela toda. Quando estiver sobre toda a tela, deve retornar ao formato normal com um clique sobre a imagem.
+RN044 - [Etapa 1 - Tela de Aula (Modelo v&iacute;deo)] -
+&nbsp;Quando tiver v&iacute;deo, deve permitir colocar em tela cheia.
+RN045 - [Etapa 1 - Tela de Aula (Modelo &aacute;udio)] -
+&nbsp;O &aacute;udio, uma vez iniciado, deve permitir pausar, voltar, avan&ccedil;ar, repetir.
+RN046 - [Etapa 1 - Tela de Aula] -
+&nbsp;Todas as op&ccedil;&otilde;es de tela devem permitir a combina&ccedil;&atilde;o dos formatos: texto, imagens, &aacute;udios e v&iacute;deo. A administra&ccedil;&atilde;o ser&aacute; feita pelo conteudista.
+RN047 - [Etapa 1 - Conclus&atilde;o] -
+&nbsp;Tem dados vari&aacute;veis, quando diz: &ldquo;Voc&ecirc; concluiu a Etapa 1 de alfabetiza&ccedil;&atilde;o de XXXXXXXX XXXXXXXX.&rdquo; Colocar o nome do alfabetizando ou do grupo.
+RN048 - [Etapa 1 - Conclus&atilde;o] -
+&nbsp;Tem dados vari&aacute;veis, indicando a pontua&ccedil;&atilde;o da pessoa. Incluir tamb&eacute;m o n&iacute;vel da pessoa (a pontua&ccedil;&atilde;o e o n&iacute;vel variam conforme explicado na RN085.
+RN049 - [Etapa 1 - Conclus&atilde;o] -
+&nbsp;O &iacute;cone de Certificado, ao lado da Letra do Alfabeto referente &agrave; sua posi&ccedil;&atilde;o, deve abrir um PDF com o nome dele e suas conquistas para que ele possa imprimir, salvar, compartilhar ou qualquer coisa que desejar. Portanto, o documento possui dados variados.
+RN050 - [Etapa 1 - Conclus&atilde;o] -
+&nbsp;incluir clique em cada rede social da pessoa. Importante: se o usu&aacute;rio j&aacute; tiver indicado a rede social dele, abrir automaticamente na &aacute;rea de publica&ccedil;&atilde;o, com texto padr&atilde;o (a ser indicado). Se n&atilde;o tiver indicado o endere&ccedil;o do perfil dele, dar a op&ccedil;&atilde;o de abrir a rede social para publica&ccedil;&atilde;o da mensagem.
+ETAPA 2
+RN051 - [Etapa 2 - Orienta&ccedil;&otilde;es] -
+&nbsp;O v&iacute;deo tutorial desta tela tamb&eacute;m estar&aacute; na tela &ldquo;Tutoriais&rdquo;.
+RN052 - [Etapa 2 - Tela de Abertura] -
+&nbsp;Primeira frase &eacute; vari&aacute;vel.
+Caso seja um alfabetizando, o texto &eacute;: &ldquo;Nome da pessoa a ser alfabetizada:&rdquo;. A seguir, vem o nome cadastrado da pessoa.
+Caso seja um grupo de alfabetizandos, o texto &eacute;: &ldquo;Nome do grupo de alfabetizandos:&rdquo;. A seguir, vem o nome cadastrado para este grupo.
+RN053 - [Etapa 2 - Tela de Abertura] -
+&nbsp;Os &ldquo;Conte&uacute;dos a serem abordados&rdquo; s&atilde;o dados vari&aacute;veis, inseridos pelo conteudista.
+RN054 - [Etapa 2 - Tela de Aula] -
+&nbsp;No cabe&ccedil;alho tem dado vari&aacute;vel em todas as telas de aula, independentemente do modelo: haver&aacute; o nome do alfabetizando ou do grupo em processo de alfabetiza&ccedil;&atilde;o. Texto: &ldquo;Alfabetizando&rdquo; seguido do nome da pessoa ou do grupo.
+Outra vari&aacute;vel no cabe&ccedil;alho &eacute; o n&uacute;mero da aula. Indica qual &eacute; a tela, qual o total de telas e em qual etapa eles est&atilde;o.
+Exemplo: Tela 5 de 30 da Etapa 1 de Alfabetiza&ccedil;&atilde;o
+RN055 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando] -
+&nbsp;Em todas as telas do tipo &ldquo;Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando&rdquo;, para o alfabetizador ir&aacute; aparecer a tela que o referido alfabetizando, indicado na RN052, est&aacute; vendo neste momento. Ou seja, &eacute; uma reprodu&ccedil;&atilde;o da tela do alfabetizando para facilitar ao alfabetizador acompanhar e auxiliar o alfabetizando.
+A tela que aparece ao alfabetizando dever&aacute; estar dentro de um &aacute;rea suspensa visualmente, contendo uma sombra para destac&aacute;-la.
+RN056 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando] -
+&nbsp;Em todas as telas do tipo &ldquo;Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando&rdquo;, logo abaixo da reprodu&ccedil;&atilde;o da tela do alfabetizando, vir&aacute; orienta&ccedil;&atilde;o ao alfabetizador.
+RN057 - [Etapa 2 - Tela de Aula] -
+&nbsp;Em todas as telas de aulas, independentemente do modelo, dever&aacute; haver uma mensagem logo acima do menu de rodap&eacute; com link para o tutorial de apoio dessa aula.
+O v&iacute;deo ser&aacute; um trecho de algum v&iacute;deo do tutorial ou independente dele, trazendo um lembrete de como atuar neste tipo de tela de aula. Ou seja, ele pode n&atilde;o estar nos v&iacute;deos tutoriais e apenas nessas telas de aula. Mas podem ser repetidos em v&aacute;rias telas de aula.
+&Eacute; facultado ao alfabetizando clicar ou n&atilde;o no v&iacute;deo para assisti-lo. Se clicar, deve abrir o v&iacute;deo sobre a tela. Cada tela pode ter um v&iacute;deo diferente e esse conte&uacute;do ser&aacute; indicado pelo administrador do sistema.
+O v&iacute;deo deve aparecer sobre a tela e, quando conclu&iacute;do automaticamente ou por clique do usu&aacute;rio, sair da tela e voltar a mostrar a tela em quest&atilde;o.
+RN058 - [Etapa 2 - Tela de Aula] -
+&nbsp;Quando o alfabetizando clicar na op&ccedil;&atilde;o &ldquo;Preciso de Ajuda&rdquo;, o Alfabetizador ser&aacute; notificado tanto no aplicativo quanto por Whatsapp.
+RN059 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (7)] -
+&nbsp;Quando o alfabetizando enviar foto da atividade feita, aparecer&aacute; o &iacute;cone da m&aacute;quina fotogr&aacute;fica em preto na &aacute;rea do alfabetizador. Ele poder&aacute; clicar no &iacute;cone e ver a foto enviada pelo alfabetizando.
+RN060 - [Etapa 2 - Conclus&atilde;o] -
+&nbsp;Tem dados vari&aacute;veis, quando diz: &ldquo;Voc&ecirc; concluiu a Etapa 2 de alfabetiza&ccedil;&atilde;o de XXXXXXXX XXXXXXXX.&rdquo; Colocar o nome do alfabetizando ou do grupo.
+RN061 - [Etapa 1 - Conclus&atilde;o] -
+&nbsp;Tem dados vari&aacute;veis, indicando a pontua&ccedil;&atilde;o da pessoa. Incluir tamb&eacute;m o n&iacute;vel da pessoa (a pontua&ccedil;&atilde;o e o n&iacute;vel variam conforme explicado na RN085.
+RN062 - [Etapa 1 - Conclus&atilde;o] -
+&nbsp;O &iacute;cone de Certificado, ao lado da Letra do Alfabeto referente &agrave; sua posi&ccedil;&atilde;o, deve abrir um PDF com o nome dele e suas conquistas para que ele possa imprimir, salvar, compartilhar ou qualquer coisa que desejar. Portanto, o documento possui dados variados.
+RN063 - [Etapa 1 - Conclus&atilde;o] -
+&nbsp;incluir clique em cada rede social da pessoa. Importante: se o usu&aacute;rio j&aacute; tiver indicado a rede social dele, abrir automaticamente na &aacute;rea de publica&ccedil;&atilde;o, com texto padr&atilde;o (a ser indicado). Se n&atilde;o tiver indicado o endere&ccedil;o do perfil dele, dar a op&ccedil;&atilde;o de abrir a rede social para publica&ccedil;&atilde;o da mensagem.
+ETAPA 3
+RN064 - [Etapa 3 - Orienta&ccedil;&otilde;es] -
+&nbsp;O v&iacute;deo tutorial desta tela tamb&eacute;m estar&aacute; na tela &ldquo;Tutoriais&rdquo;.
+RN065 - [Etapa 3 - Tela de Abertura] -
+&nbsp;Primeira frase &eacute; vari&aacute;vel.
+Caso seja um alfabetizando, o texto &eacute;: &ldquo;Nome da pessoa a ser alfabetizada:&rdquo;. A seguir, vem o nome cadastrado da pessoa.
+Caso seja um grupo de alfabetizandos, o texto &eacute;: &ldquo;Nome do grupo de alfabetizandos:&rdquo;. A seguir, vem o nome cadastrado para este grupo.
+RN066 - [Etapa 3 - Tela de Abertura] -
+&nbsp;Os &ldquo;Conte&uacute;dos a serem abordados&rdquo; s&atilde;o dados vari&aacute;veis, inseridos pelo conteudista.
+RN067 - [Etapa 3 - Demonstra&ccedil;&atilde;o de Tela com Pedido de Apoio] -
+&nbsp;Caso o alfabetizador clique na SETA de voltar na cor branca com borda preta, ele voltar&aacute; para a p&aacute;gina de origem, que o levou at&eacute; a referida p&aacute;gina de &rdquo;Etapa 3 - Demonstra&ccedil;&atilde;o de Tela com Pedido de Apoio&rdquo;.
+RN068 - [Etapa 3 - Demonstra&ccedil;&atilde;o de Tela com Pedido de Apoio] -
+&nbsp;Quando o alfabetizando clicar na op&ccedil;&atilde;o &ldquo;Preciso de Ajuda&rdquo;, o Alfabetizador receber&aacute; notifica&ccedil;&atilde;o tanto no aplicativo quanto por Whatsapp.
+RN069 - [Etapa 3 - Demonstra&ccedil;&atilde;o de Tela com Pedido de Apoio] -
+&nbsp;Em todas as telas da &ldquo;Etapa 3 - Demonstra&ccedil;&atilde;o de Tela com Pedido de Apoio&rdquo;, haver&aacute; uma mensagem logo acima do menu de rodap&eacute; com link para o tutorial de apoio dessa aula.
+O v&iacute;deo ser&aacute; um trecho de algum v&iacute;deo do tutorial ou independente dele, trazendo um lembrete de como atuar neste tipo de tela de aula. Ou seja, ele pode n&atilde;o estar nos v&iacute;deos tutoriais e apenas nessas telas de aula. Mas podem ser repetidos em v&aacute;rias telas de aula.
+&Eacute; facultado ao alfabetizando clicar ou n&atilde;o no v&iacute;deo para assisti-lo. Se clicar, deve abrir o v&iacute;deo sobre a tela. Cada tela pode ter um v&iacute;deo diferente e esse conte&uacute;do ser&aacute; indicado pelo administrador do sistema.
+O v&iacute;deo deve aparecer sobre a tela e, quando conclu&iacute;do automaticamente ou por clique do usu&aacute;rio, sair da tela e voltar a mostrar a tela em quest&atilde;o.
+RN070 - [Etapa 3 - Demonstra&ccedil;&atilde;o de Tela com Pedido de Apoio] -
+&nbsp;Quando o alfabetizando enviar foto da atividade feita, aparecer&aacute; o &iacute;cone da m&aacute;quina fotogr&aacute;fica em preto na &aacute;rea direcionada ao alfabetizador. Ele poder&aacute; clicar no &iacute;cone e ver a foto enviada.
+RN071 - [Etapa 3 - Acompanhamento] -
+&nbsp;Primeiro, aparecer&atilde;o todos os pedidos de apoio, caso haja.
+Caso n&atilde;o haja pedido de apoio, a &aacute;rea trar&aacute; a seguinte mensagem: &ldquo;N&atilde;o h&aacute; pedido de suporte no momento.&rdquo; IMPORTANTE: esta se&ccedil;&atilde;o dentro da tela &eacute; igual &agrave; mesma se&ccedil;&atilde;o da p&aacute;gina: [Home - Assistiu tutoriais], tratada na RN017.
+RN072 - [Etapa 3 - Acompanhamento] -
+&nbsp;Na se&ccedil;&atilde;o &ldquo;STATUS DOS ALFABETIZANDOS NA ETAPA 3&rdquo;, aparecer&atilde;o todos os alfabetizando da Etapa 3. Primeiro, aparecer&aacute; aqueles que ainda est&atilde;o em processo de alfabetizando.
+Regramento da ordem de apari&ccedil;&atilde;o:
+N&atilde;o ter conclu&iacute;do a Etapa 3;
+Estar mais avan&ccedil;ado no processo de conclus&atilde;o da Etapa 3;
+Maior tempo de inatividade.
+RN073 - [Etapa 3 - Acompanhamento] -
+&nbsp;Na se&ccedil;&atilde;o &ldquo;STATUS DOS ALFABETIZANDOS NA ETAPA 3&rdquo;, deve aparecer de 10 em 10, com o s&iacute;mbolo de + permitindo revelar mais 10 nomes.
+RN074 - [Etapa 3 - Acompanhamento] -
+&nbsp;Na se&ccedil;&atilde;o &ldquo;STATUS DOS ALFABETIZANDOS NA ETAPA 3&rdquo;, haver&aacute;, abaixo do nome de cada alfabetizando, &nbsp;uma barra que represente, em sua totalidade, 100% das atividades realizadas. Em verde, aparecer&aacute; visualmente o percentual referente &agrave; realiza&ccedil;&atilde;o da atividade. Em cinza, o que falta.
+RN075 - [Etapa 3 - Acompanhamento] -
+&nbsp;Na se&ccedil;&atilde;o &ldquo;STATUS DOS ALFABETIZANDOS NA ETAPA 3&rdquo;, h&aacute; dados vari&aacute;veis. S&atilde;o eles:
+Nome do alfabetizando
+Tela em que o referido alfabetizando se encontra e o n&uacute;mero total de telas.
+Tempo contado em dias referente ao per&iacute;odo de inatividade
+Barra citada na RN074.
+RN076 - [Etapa 3 - Comparativo de Atividade] -
+&nbsp;Sempre mostrar&aacute; o que foi pedido, da forma como foi pedido. Se for em &aacute;udio, permitir&aacute; ao alfabetizador ouvir o &aacute;udio; se for v&iacute;deo, permitir&aacute; ao alfabetizador ver o v&iacute;deo, etc.
+Em seguida, mostrar&aacute; a atividade realizada e a foto enviada pelo alfabetizando, quando houver.
+RN077 - [Etapa 3 - Comparativo de Atividade] -
+&nbsp;Primeiramente, quem dar&aacute; o retorno &eacute; uma IA que ir&aacute; comparar a imagem solicitada e o exerc&iacute;cio enviado.
+RN078 - [Etapa 3 - Comparativo de Atividade] -
+&nbsp;O resultado dado ao alfabetizando ser&aacute; em &aacute;udio, para evitar risco de interpreta&ccedil;&atilde;o. O mesmo &aacute;udio aparecer&aacute; para o alfabetizador.
+RN079 - [Etapa 3 - Comparativo de Atividade] -
+&nbsp;O alfabetizando poder&aacute; tentar fazer o exerc&iacute;cio por 3 vezes at&eacute; travar o sistema. Caso o exerc&iacute;cio tenha sido feito mais de uma vez, para o alfabetizador aparecer&aacute; apenas a &uacute;ltima tarefa enviada.
+RN080 - [Etapa 3 - Comparativo de Atividade] -
+&nbsp;Alfabetizador pode clicar no &iacute;cone do telefone ou do Whatsapp para ligar ou enviar mensagem para o alfabetizando.
+RN081 - [Etapa 3 - Comparativo de Atividade] -
+&nbsp;Ao clicar em APROVAR TAREFA, o alfabetizando receber&aacute; uma notifica&ccedil;&atilde;o no celular e ir&aacute; desbloquear a atividade para ele continuar os estudos.
+RN082 - [Etapa 3 - Comparativo de Atividade] -
+&nbsp;Ao clicar em VOLTAR, o alfabetizador ser&aacute; direcionado para correspondente p&aacute;gina da &ldquo;Etapa 3 - Demonstra&ccedil;&atilde;o de Tela com Pedido de Apoio&rdquo;
+RN083 - [Etapa 3 - Comparativo de Atividade] -
+&nbsp;Em todas as telas da &ldquo;Etapa 3 - Comparativo de Atividade&rdquo;, haver&aacute; uma mensagem logo acima do menu de rodap&eacute; com link para o tutorial de apoio dessa aula.
+O v&iacute;deo ser&aacute; um trecho de algum v&iacute;deo do tutorial ou independente dele, trazendo um lembrete de como atuar neste tipo de tela de aula. Ou seja, ele pode n&atilde;o estar nos v&iacute;deos tutoriais e apenas nessas telas de aula. Mas podem ser repetidos em v&aacute;rias telas de aula.
+&Eacute; facultado ao alfabetizando clicar ou n&atilde;o no v&iacute;deo para assisti-lo. Se clicar, deve abrir o v&iacute;deo sobre a tela. Cada tela pode ter um v&iacute;deo diferente e esse conte&uacute;do ser&aacute; indicado pelo administrador do sistema.
+O v&iacute;deo deve aparecer sobre a tela e, quando conclu&iacute;do automaticamente ou por clique do usu&aacute;rio, sair da tela e voltar a mostrar a tela em quest&atilde;o.
+RN084 - [Confirmar Alfabetizando] -
+&nbsp;Quando ocorrer o cadastramento do alfabetizando no celular do mesmo, automaticamente ser&aacute; vinculado ao Alfabetizador que o cadastrou.
+GERAL
+RN085 - [Pontua&ccedil;&atilde;o] -
+&nbsp;Regras de pontua&ccedil;&atilde;o:
+10 pontos para cada alfabetizando vinculado ao alfabetizador que concluir a Etapa 1.
++ 15 pontos para cada alfabetizando vinculado ao alfabetizador que concluir a Etapa 2.
++ 25 pontos para cada alfabetizando vinculado ao alfabetizador que concluir a Etapa 3.
+Portanto, cada alfabetizando que concluir o processo de alfabetiza&ccedil;&atilde;o dar&aacute; 50 pontos para o alfabetizador.
+Pontos adicionais:
++ 3 pontos para cada avan&ccedil;o de alfabetizando em at&eacute; 1 hora ap&oacute;s o pedido de apoio ou bloqueio preventivo de tela; ou
++ 2 pontos para cada avan&ccedil;o de alfabetizando em at&eacute; 24 horas ap&oacute;s o pedido de apoio ou bloqueio preventivo de tel; ou
++ 1 ponto para cada avan&ccedil;o de alfabetizando em at&eacute; 3 dias ap&oacute;s o pedido de apoio ou bloqueio preventivo de tela.
+Perder&aacute; 3 pontos quando o alfabetizando n&atilde;o avan&ccedil;ar da tela de d&uacute;vida em at&eacute; 5 dias.
+Perder&aacute; mais 3 pontos a cada 5 dias sem avan&ccedil;o, at&eacute; o limite de 30 pontos.
+RN086 - [Pontua&ccedil;&atilde;o] -
+&nbsp;incluir clique em cada rede social da pessoa. Importante: se o usu&aacute;rio j&aacute; tiver indicado a rede social dele, abrir automaticamente na &aacute;rea de publica&ccedil;&atilde;o, com texto padr&atilde;o (a ser indicado). Se n&atilde;o tiver indicado o endere&ccedil;o do perfil dele, dar a op&ccedil;&atilde;o de abrir a rede social para publica&ccedil;&atilde;o da mensagem.
+RN087 - [Tutorial de Apoio] -
+&nbsp;Essa tela ir&aacute; deslizar da direita para a esquerda quando algu&eacute;m clicar no tutorial de apoio.
+RN088 - [Tutorial de Apoio] -
+&nbsp;Quando clicar na seta de VOLTAR, deve deslizar da esquerda para a direita e sair da tela, devolvendo o alfabetizador para a p&aacute;gina de origem.
+RN089 - [Lista de Alfabetizados] -
+&nbsp;Apresenta a lista com todos os alfabetizados, come&ccedil;ando dos &uacute;ltimos a concluir o processo.
+RN090 - [Lista de Alfabetizados] -
+&nbsp;Resultado apresentar&aacute; de 10 em 10 nomes, caso haja. Coloquei o s&iacute;mbolo + para demonstra&ccedil;&atilde;o, mas o mesmo s&oacute; aparecer&aacute; quando tiver 1 nome a mais que uma dezena.
+Exemplo: Tem 11 nomes, aparecem 10 e aparece o mais para revelar os pr&oacute;ximos 10 nomes.
+Seguindo com o exemplo: se tiver 25 nomes: aparecer&atilde;o 10 e o s&iacute;mbolo de +. Ao clicar no +, aparecer&atilde;o mais 10 nomes (do 11 ao 20) e novamente o s&iacute;mbolo +. Ao cliar no +, ,aparecer&atilde;o os 5 nomes restantes e n&atilde;o mais aparecer&aacute; o s&iacute;mbolo +.
+RN091 - [Lista de Alfabetizados] -
+&nbsp;Tem dados vari&aacute;veis.
+Colocar nome do Alfabetizando.
+Colocar grupo de alfabetiza&ccedil;&atilde;o do qual participou, se for o caso.
+Colocar a data da conclus&atilde;o da alfabetiza&ccedil;&atilde;o.
+Colocar o tempo de alfabetiza&ccedil;&atilde;o.
+RN092 - [Lista de Alfabetizados] -
+&nbsp;Quando o alfabetizado tiver escrito uma mensagem para o Alfabetizador, colocar o &iacute;cone de mensagem ao lado (s&oacute; aparecer&aacute; quando tiver). Ao clicar, deve abrir um PDF com a imagem da mensagem.
+RN093 - [Notifica&ccedil;&atilde;o] -
+&nbsp;As notifica&ccedil;&otilde;es ocorrer&atilde;o nas seguintes ocasi&otilde;es:
+Ajuda Autom&aacute;tica: &nbsp;ocorrer&aacute; depois que o alfabetizando for reprovado por 3 vezes em um exerc&iacute;cio avaliado pela IA. A tela do mesmo ir&aacute; bloquear a o alfabetizador receber&aacute; notifica&ccedil;&atilde;o. Junto com o alerta, aparece nome do alfabetizando, data e hora da ocorr&ecirc;ncia.
+Pedido de Ajuda: o Alfabetizando solicita apoio quando tem d&uacute;vida. Junto com o alerta, aparece nome do alfabetizando, data e hora da solicita&ccedil;&atilde;o.
+Alerta de prazo: informe que o prazo para apoio ao alfabetizando est&aacute; se esgotando e ele perder&aacute; ponto. Informa a data e hora do final do prazo. Junto com o alerta, aparece nome do alfabetizando. Alerta aparece faltando 3 dias e outro faltando 24 horas.
+Pontua&ccedil;&atilde;o ganha ou perdida: toda pontua&ccedil;&atilde;o que o Alfabetizador ganhar ou perder ser&aacute; notificada. Junto com o alerta, aparece pontua&ccedil;&atilde;o e nome do alfabetizando que completou a tarefa pontuada, como bem como data e hora da conclus&atilde;o.
+Reconhecimento: A cada nova letra que o Alfabetiza&ccedil;&atilde;o completar no processo, receber&aacute; a notifica&ccedil;&atilde;o.
+RN094 - [Notifica&ccedil;&atilde;o] -
+&nbsp;Quando a notifica&ccedil;&atilde;o for nova, deve ficar em negrito. Quanto a pessoa clicar sobre ela e acessar o link (ou n&atilde;o, caso n&atilde;o tenha link), a tipografia perder&aacute; o tom negrito e voltar&aacute; a ser regular.
+RN095 - [Notifica&ccedil;&atilde;o] -
+&nbsp;O &iacute;cone na parte superior da tela, presente em quase todas as telas, informar&aacute; quantas notifica&ccedil;&otilde;es n&atilde;o lidas o Alfabetizador possui. N&uacute;mero m&aacute;ximo: 99
+RN096 - [Pontua&ccedil;&atilde;o] -
+&nbsp;A medida em que ganha pontua&ccedil;&atilde;o, forma-se as letras da frase. Cada 200 pontos forma uma nova letra da frase: PESSOA QUE TRANSFORMA PESSOA!
+O alfabetizador j&aacute; come&ccedil;a com a primeira letra P em negrito (como incentivo, portanto, n&atilde;o precisar&aacute; contabilizar os primeiros 100 pontos).
+Total de pontos para formar a frase completa, incluindo a exclama&ccedil;&atilde;o: 5.000 pontos.
+A frase aparecer&aacute;, inicialmente, na cor cinza 15%. A cada 200 pontos, uma letra ganha a cor preta 100% na ordem da forma&ccedil;&atilde;o da palavra.
+RN097 - [Confirma&ccedil;&atilde;o de V&iacute;nculo] -
+&nbsp;H&aacute; dados vari&aacute;veis a serem apresentados: Nome completo, Celular, Data de Nascimento, CPF ou Passaporte, Cidade e UF.
+RN098 - [Confirma&ccedil;&atilde;o de V&iacute;nculo - N&atilde;o Vinculado] -
+&nbsp;Op&ccedil;&otilde;es na caixa:
+N&atilde;o conhe&ccedil;o essa pessoa
+Desistiu da alfabetiza&ccedil;&atilde;o
+N&atilde;o irei mais alfabetizar
+Outro motivo
+RN099 - [Confirma&ccedil;&atilde;o de V&iacute;nculo - N&atilde;o Vinculado] -
+&nbsp;Ao clicar em ENVIAR, o alfabetizando ir&aacute; receber notifica&ccedil;&atilde;o. A administra&ccedil;&atilde;o tamb&eacute;m deve receber notifica&ccedil;&atilde;o informando o motivo da n&atilde;o vincula&ccedil;&atilde;o.
+RN100 - [Confirma&ccedil;&atilde;o de V&iacute;nculo - Vinculado] -
+&nbsp;Celular do alfabetizando ser&aacute; vinculado ao do alfabetizador.
+Regras de Neg&oacute;cio - JORNADA ALFABETIZANDO
+RN101 - [Vincula&ccedil;&atilde;o do Alfabetizando - 1] -
+&nbsp;Pode ser inserido o CPF ou Passaporte ou o telefone celular do alfabetizando. O sistema deve verificar qual alfabetizador o cadastrou e enviar notifica&ccedil;&atilde;o para o mesmo.
+Somente ir&aacute; avan&ccedil;ar, indo para a tela &ldquo;Vincula&ccedil;&atilde;o do Alfabetizando - 3&rdquo; depois da confirma&ccedil;&atilde;o no celular do alfabetizador (ver tela &ldquo;Confirma&ccedil;&atilde;o de v&iacute;nculo&rdquo;).
+RN102 - [Vincula&ccedil;&atilde;o do Alfabetizando - 1] -
+&nbsp;Mesmo que tenha sido inserido o CPF, o sistema saber&aacute; qual &eacute; o n&uacute;mero do telefone celular. Ent&atilde;o, deve automaticamente preencher o n&uacute;mero.
+RN103 - [Vincula&ccedil;&atilde;o do Alfabetizando - 1] -
+&nbsp;H&aacute; dados vari&aacute;veis na tela: Celular do alfabetizador.
+RN104 - [REGRA PARA O CASO DE MUDAN&Ccedil;A DE ALFABETIZADOR] - 
+caso tenha mudado o alfabetizador, o novo alfabetizador ir&aacute; cadastrar normalmente o alfabetizando. O sistema ir&aacute; interagir e pontuar apenas com o celular do alfabetizador aprovado, mesmo que haja 2 alfabetizadores vinculados. No entanto, ao cadastrar um novo alfabetizador, o(s) antigo(s) alfabetizador(es) ir&atilde;o receber notifica&ccedil;&atilde;o com a seguinte informa&ccedil;&atilde;o:
+&ldquo;O alfabetizador [nome do alfabetizador], CPF [ou passaporte] de n&uacute;mero [n&uacute;mero do registro], foi vinculado a outro alfabetizador. Caso realmente n&atilde;o tenha mudado, pedimos que descadastre o alfabetizando do seu sistema. Caso seja voc&ecirc; &nbsp;a dar continuidade ao processo de alfabetiza&ccedil;&atilde;o, entre em contato com o alfabetizando para regularizar a situa&ccedil;&atilde;o.&rdquo;
+RN105 - [Vincula&ccedil;&atilde;o do Alfabetizando - 3] -
+&nbsp;H&aacute; dados vari&aacute;veis na tela: nome do alfabetizando e do alfabetizador.
+RN106 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (N)] -
+&nbsp;Em todas as telas da &ldquo;Demonstra&ccedil;&atilde;o de tela de orienta&ccedil;&atilde;o do alfabetizando&rdquo;, sempre haver&aacute;, primeiro uma seta em verde mais claro, indicando que est&aacute; desligada para avan&ccedil;ar. Depois que o alfabetizando cumprir com a atividade de teste, o &iacute;cone ficar&aacute; clic&aacute;vel e permitir&aacute; avan&ccedil;ar.
+RN107 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (N)] -
+&nbsp;Nas telas de &ldquo;Demonstra&ccedil;&atilde;o de Orienta&ccedil;&atilde;o do Alfabetizando&rdquo;, quando houver m&uacute;ltiplas a&ccedil;&otilde;es sequenciais, os bot&otilde;es devem seguir a l&oacute;gica de libera&ccedil;&atilde;o progressiva:
+- Sequencialidade obrigat&oacute;ria: O alfabetizando deve realizar as a&ccedil;&otilde;es em ordem. Um bot&atilde;o s&oacute; ser&aacute; habilitado para clique ap&oacute;s a conclus&atilde;o da a&ccedil;&atilde;o anterior.
+- Feedback Visual de Status:
+&nbsp; &nbsp; &nbsp;- Inativo (Bloqueado): Cor verde-claro. O bot&atilde;o permanece desabilitado para intera&ccedil;&atilde;o.
+&nbsp; &nbsp; &nbsp;- Ativo (Liberado): Cor verde padr&atilde;o. O bot&atilde;o torna-se clic&aacute;vel, indicando que &eacute; a a&ccedil;&atilde;o atual a ser realizada.
+Exemplo: Conforme demonstrado na tela &quot;Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (6)&quot;, o Bot&atilde;o B s&oacute; mudar&aacute; do verde-claro para o verde padr&atilde;o ap&oacute;s o Bot&atilde;o A ser acionado e sua respectiva tarefa conclu&iacute;da.
+RN108 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (4)] -
+&nbsp;O bot&atilde;o &ldquo;Preciso de Ajuda&rdquo; trar&aacute; a foto do alfabetizador.
+RN109 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (4)] -
+&nbsp;Quando o alfabetizando clicar no bot&atilde;o &ldquo;Preciso de Ajuda&rdquo;, ocorrer&atilde;o os seguintes:
+- No celular do alfabetizando:
+A tela do alfabetizando ser&aacute; bloqueada.
+O bot&atilde;o ir&aacute; mudar e aparecer&aacute; o bot&atilde;o vermelho demonstrado na tela &ldquo;Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (5)&rdquo;.
+- Para o alfabetizador:
+O alfabetizador ser&aacute; notificado em seu aplicativo, na &aacute;rea de notifica&ccedil;&atilde;o, conforme tela &ldquo;Ajuda ao Alfabetizando (1)&rdquo;.
+O alfabetizador ser&aacute; notificado via Whatsapp ou mensagem de texto (ver custos para implementar essa funcinalidade).
+Somente o Alfabetizador poder&aacute; desbloquear a tela do alfabetizando.
+RN110 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (5)] -
+&nbsp;Se clicar sobre o &iacute;cone vermelho, ouvir&aacute; o &aacute;udio:
+&ldquo;Sua tela foi bloqueada porque&hellip;
+&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &hellip;voc&ecirc; pediu ajuda para o seu alfabetizador. Em breve, ele entrar&aacute; em contato por telefone com voc&ecirc;.&rdquo;
+&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ou
+&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &hellip;houve tr&ecirc;s tentativa de exerc&iacute;cio e o sistema n&atilde;o aprovou nenhuma. O alfabetizador ir&aacute; entrar em contato com voc&ecirc; por telefone em breve.&rdquo;
+RN111 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (6)] - 
+Ap&oacute;s a simula&ccedil;&atilde;o de desbloqueio realizada pelo alfabetizador, o sistema direcionar&aacute; o usu&aacute;rio para a interface de demonstra&ccedil;&atilde;o de exerc&iacute;cios. O funcionamento seguir&aacute; as diretrizes abaixo:
+Instru&ccedil;&atilde;o por &Aacute;udio: Ao iniciar a etapa, um &aacute;udio explicativo informar&aacute; ao alfabetizando sobre a din&acirc;mica das atividades e o sistema de corre&ccedil;&atilde;o.
+Feedback de Erro: Caso o usu&aacute;rio realize uma a&ccedil;&atilde;o incorreta na atividade interativa, um &quot;X&quot; vermelho ser&aacute; exibido na tela para sinalizar o erro.
+Soar&aacute; um bip caracter&iacute;stico de erro.
+Nova tentativa: O alfabetizando ter&aacute; a liberdade de refazer a atividade imediatamente ap&oacute;s o erro, sem bloqueio neste caso.
+RN112 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (8)] - 
+Seguem as diretrizes para o caso de acerto.
+Instru&ccedil;&atilde;o por &Aacute;udio: Ao iniciar a etapa, um &aacute;udio explicativo informar&aacute; ao alfabetizando sobre a din&acirc;mica das atividades e o sistema de corre&ccedil;&atilde;o.
+Feedback de Erro: Caso o usu&aacute;rio realize uma a&ccedil;&atilde;o correta na atividade interativa, um &quot;V&quot; na cor verde ser&aacute; exibido na tela para sinalizar o acerto.
+Soar&aacute; um bip caracter&iacute;stico de acerto.
+RN113
+&nbsp;- [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (11)] -
+&nbsp;Ao clicar sobre o &iacute;cone da c&acirc;mera, abrir&aacute; a c&acirc;mera fotogr&aacute;fica do celular. Assim que o alfabetizando fotografar o exerc&iacute;cio, o sistema vai para uma an&aacute;lise autom&aacute;tica.
+RN114 - [Etapas 2 e 3 - Foto do exerc&iacute;cio] -
+&nbsp;Apresenta a imagem tirada. Se clicar no &iacute;cone de tirar nova foto, repete a a&ccedil;&atilde;o de RN011. Se clicar em ENVIAR FOTO, o sistema encaminha primeiro para an&aacute;lise de uma IA. O retorno pode ser:
+Reprova&ccedil;&atilde;o: ver RN115.
+Aprova&ccedil;&atilde;o: Ver RN116.
+RN115 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (12)] -
+&nbsp;Seguem as diretrizes para o caso da atividade de escrita em papel com comprova&ccedil;&atilde;o fotogr&aacute;fica n&atilde;o ser aprovada automaticamente.
+O alfabetizando receber&aacute; uma mensagem em &aacute;udio dizendo que a atividade n&atilde;o foi aprovada. Haver&aacute; uma indica&ccedil;&atilde;o do que a IA percebeu de erro no referido &aacute;udio e pedir&aacute; para ele tentar novamente.
+Haver&aacute; um &iacute;cone vermelho na letra X indicando que houve um erro.
+Soar&aacute; um bip caracter&iacute;stico de erro.
+A c&acirc;mera voltar&aacute; a ficar dispon&iacute;vel para nova fotografia de exerc&iacute;cio. 
+O alfabetizando poder&aacute; errar 2 vezes no sistema automatizado e ter&aacute; nova chance. Ap&oacute;s a terceira chance, dever&aacute; ser bloqueado e o alfabetizador ser&aacute; notificado.
+RN116 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (13)] -
+&nbsp;Seguem as diretrizes para o caso da atividade de escrita em papel com comprova&ccedil;&atilde;o fotogr&aacute;fica for aprovada automaticamente.
+O alfabetizando receber&aacute; uma mensagem em &aacute;udio dizendo que a atividade foi aprovada.
+Haver&aacute; um &iacute;cone verde na letra V indicando o acerto.
+Soar&aacute; um bip caracter&iacute;stico de acerto.
+A depender do tipo de exer&iacute;cio, poder&aacute;:
+4.1) A seta que permite avan&ccedil;ar no exerc&iacute;cio ficar&aacute; dispon&iacute;vel para clique.
+4.2) O sistema automaticamente enviar&aacute; o alfabetizando para a tela seguinte.
+RN117 - [Etapa 2 - Demonstra&ccedil;&atilde;o da tela de orienta&ccedil;&atilde;o do alfabetizando (15)] -
+&nbsp;Especificamente nesta tela, &aacute;udio e imagem dever&atilde;o ser concatenados.
+De in&iacute;cio, todos os quadros estar&atilde;o em suas devidas cores, porem com alta opacidade.
+Quando o &aacute;udio citar sobre o quadro com a borda cinza, o referido quadro se move se destacando e fica no seu formato original. Os demais quadros se mant&eacute;m com opacidade.
+Quando o &aacute;udio citar sobre o quadro com a borda amarela, o referido quadro se move se destacando e fica no seu formato original. Os demais quadros abaixo se mant&eacute;m com opacidade.
+Quando o &aacute;udio citar sobre o quadro com a borda vermelha e o s&iacute;mbolo de erro, o referido quadro se move se destacando e fica no seu formato original.
+Quando o &aacute;udio citar sobre o quadro com a borda verde e o s&iacute;mbolo de certo, o referido quadro se move se destacando e fica no seu formato original.
+Tudo acompanhado de &aacute;udio.
+Depois de encerrado, a seta de avan&ccedil;ar &eacute; ligada. 
+RN118 - [Conclus&atilde;o da Capacita&ccedil;&atilde;o (1)] -
+&nbsp;&Aacute;udio vai dar os parab&eacute;ns pela conclus&atilde;o da parte de capacita&ccedil;&atilde;o da Etapa 2. N&atilde;o &eacute; o final da Etapa 2, mas a parte que demonstra os &iacute;cones e cores.
+RN119 - [Etapas 2 e 3 - Tela bloqueada] -
+&nbsp;Dois fatores podem gerar o bloqueio da tela do alfabetizando:
+Errar o exerc&iacute;cio pela terceira vez na mesma tela; ou
+Clicar no bot&atilde;o de Pedido de Ajuda.
+Seguem os procedimentos para qualquer uma das duas ocorr&ecirc;ncias:
+- No celular do alfabetizando:
+A tela do alfabetizando ser&aacute; bloqueada.
+O bot&atilde;o ir&aacute; mudar e aparecer&aacute; o bot&atilde;o vermelho, conforme indicado na tela.
+- Para o alfabetizador:
+O alfabetizador ser&aacute; notificado em seu aplicativo, na &aacute;rea de notifica&ccedil;&atilde;o, conforme tela &ldquo;Ajuda ao Alfabetizando (1)&rdquo;.
+O alfabetizador ser&aacute; notificado via Whatsapp ou mensagem de texto (ver custos para implementar essa funcinalidade).
+Somente o Alfabetizador poder&aacute; desbloquear a tela do alfabetizando.
+RN120 - [Etapas 2 e 3 - Tela bloqueada] -
+&nbsp;Se clicar sobre o &iacute;cone vermelho, ouvir&aacute; o &aacute;udio:
+&ldquo;Sua tela foi bloqueada porque&hellip;
+&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &hellip;voc&ecirc; pediu ajuda para o seu alfabetizador. Em breve, ele entrar&aacute; em contato por telefone com voc&ecirc;.&rdquo;
+&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; ou
+&nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &hellip;houve tr&ecirc;s tentativa de exerc&iacute;cio e o sistema n&atilde;o aprovou nenhuma. O alfabetizador ir&aacute; entrar em contato com voc&ecirc; por telefone em breve.&rdquo;
+RN121 - [Etapas 2 e 3 - Modelo de Ensino ao Alfabetizando (1)] -
+&nbsp;O alfabetizando deve identificar e clicar no quadrado que cont&eacute;m a letra correspondente ao &aacute;udio instrucional reproduzido pela tela.
+Fluxo de Intera&ccedil;&atilde;o
+Acerto: Caso o usu&aacute;rio clique na letra correta, o sistema registra o progresso e permite o avan&ccedil;o automaticamente.
+\
+Erro: Caso o usu&aacute;rio clique em uma letra incorreta:
+O sistema redireciona o usu&aacute;rio para a tela &ldquo;Etapas 2 e 3 - Modelo de Ensino ao Alfabetizando (6)&rdquo;.
+Ap&oacute;s alguns segundos de exibi&ccedil;&atilde;o dessa tela de refor&ccedil;o, o sistema retorna automaticamente para a tela do exerc&iacute;cio original.
+Persist&ecirc;ncia de Dados
+Ao retornar &agrave; tela de origem ap&oacute;s um erro, o sistema deve preservar o estado anterior. Isso significa que todos os itens respondidos corretamente antes do erro (ex: as palavras MAR e SAL) devem permanecer marcados como conclu&iacute;dos.
+Enfim, o usu&aacute;rio retoma o exerc&iacute;cio exatamente de onde parou, sem perda de progresso.
+RN122 - [Etapas 2 e 3 - Modelo de Ensino ao Alfabetizando (4)] -
+&nbsp;Neste modelo de exerc&iacute;cio, as atividades s&atilde;o liberadas de forma progressiva e sequencial: a instru&ccedil;&atilde;o em &aacute;udio e a interatividade da palavra seguinte permanecem bloqueadas at&eacute; que o alfabetizando selecione corretamente a letra do desenho anterior, garantindo que o avan&ccedil;o ocorra apenas mediante o acerto de cada etapa.
+RN123 - [Etapas 2 e 3 - Modelo de Exerc&iacute;cio de Marcar Caixas (N)] -
+&nbsp;
+1) &nbsp;Configura&ccedil;&atilde;o do Exerc&iacute;cio:
+O exerc&iacute;cio deve apresentar um conjunto de imagens para sele&ccedil;&atilde;o, seguindo os par&acirc;metros:
+Quantidade de op&ccedil;&otilde;es: Entre 2 e 10 caixas por atividade.
+Quantidade de acertos: O n&uacute;mero de respostas corretas ser&aacute; sempre inferior ao total de caixas exibidas (ex: selecionar 2 animais em um grupo de 3).
+Instru&ccedil;&atilde;o ser&aacute; em &aacute;udio e ir&aacute; informar claramente o crit&eacute;rio de sele&ccedil;&atilde;o e o n&uacute;mero exato de itens a serem marcados.
+2) Interatividade e Feedback Visual
+O sistema deve permitir uma sele&ccedil;&atilde;o flex&iacute;vel e clara para o alfabetizando:
+Sele&ccedil;&atilde;o: Ao clicar em uma caixa, sua cor deve mudar de cinza para amarelo queimado, indicando que o item foi selecionado.
+Dessele&ccedil;&atilde;o: O usu&aacute;rio tem liberdade total para clicar em uma caixa j&aacute; selecionada para desmarc&aacute;-la e escolher outra, permitindo a corre&ccedil;&atilde;o de erros antes da confirma&ccedil;&atilde;o final.
+3) Condi&ccedil;&atilde;o para Avan&ccedil;o
+O bot&atilde;o/seta de &quot;Avan&ccedil;ar&quot; possui um comportamento dependente da a&ccedil;&atilde;o do usu&aacute;rio:
+Estado Bloqueado: O bot&atilde;o permanece desabilitado enquanto o n&uacute;mero de caixas selecionadas for diferente do n&uacute;mero solicitado no &aacute;udio.
+Estado Liberado: O bot&atilde;o ser&aacute; ativado quando o usu&aacute;rio atingir exatamente a quantidade de sele&ccedil;&otilde;es indicada na atividade.
+4) Valida&ccedil;&atilde;o do Resultado
+A corre&ccedil;&atilde;o do exerc&iacute;cio e a exibi&ccedil;&atilde;o do resultado (acerto ou erro) n&atilde;o ocorrem de forma imediata ao clique nas imagens. O sistema s&oacute; deve processar e mostrar o feedback ap&oacute;s o usu&aacute;rio clicar voluntariamente na seta de &quot;Avan&ccedil;ar&quot;.
+PAREI AQUI
+RN000 - [Tela] -
+&nbsp;Texto
+RN000 - [Tela] -
+&nbsp;Texto
+RN000 - [Conclus&atilde;o da Etapa 2] -
+&nbsp;Assim que o alfabetizando chegar nesta tela, o alfabetizador ser&aacute; notificado da conclus&atilde;o da Etapa (mesmo estando junto dele nesta etapa do processo) e ganhar&aacute; os pontos correspondentes.
+RN000 - [Conclus&atilde;o da Etapa 3] -
+&nbsp;Assim que o alfabetizando chegar nesta tela, o alfabetizador ser&aacute; notificado da conclus&atilde;o do processo de alfabetiza&ccedil;&atilde;o do referido alfabetizando e ganhar&aacute; os pontos correspondentes.
+RN002
+&nbsp;- [Conclus&atilde;o da Etapa 3] -
+&nbsp;Se o alfabetizando clicar no &iacute;cone &ldquo;FOTOGRAFAR CARTA QUE EU ESCREVI PARA MEU ALFABETIZADOR&rdquo;, abrir&aacute; a c&acirc;mera para ele fotografar e enviar.
+RN000 - [Foto da carta de agradecimento] -
+&nbsp;Apresenta a imagem tirada. Se clicar no &iacute;cone de tirar nova foto, repete a a&ccedil;&atilde;o de 
+RN002
+. Se clicar em ENVIAR FOTO, o sistema encaminha para o alfabetizador.
+RN000 - [Tela] -
+&nbsp;Texto
+RN000 - [Tela] -
+&nbsp;Texto
+RN000 - [Tela] -
+&nbsp;Texto
+RN000 - [Tela] -
+&nbsp;Texto
+Regras de Neg&oacute;cio - JORNADA CONTEUDISTA
+RRN000 - [Onde] - 
+Texto
+RN000 - [Onde] - 
+Texto
+Regras de Neg&oacute;cio - JORNADA ADMINISTRADOR
+RN000 - [Onde] - 
+Texto
+RN000 - [Onde] - 
+Texto
+RN000 - [Onde] - 
+Texto
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+PONTOS A SEREM AVALIADOS

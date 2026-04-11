@@ -13,6 +13,11 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Temporary workspace artifacts
+.tmp_*/
+.run-logs/
+infra/supabase/.temp/
+
 # Editor / OS files
 .DS_Store
 Thumbs.db

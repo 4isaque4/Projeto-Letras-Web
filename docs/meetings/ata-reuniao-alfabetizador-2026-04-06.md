@@ -1,7 +1,7 @@
 ﻿# Ata - Reuniao Alfabetizador
 
 **Data da reuniao:** 06/04/2026  
-**Fonte:** gravacao/transcricao (`Reunião Alfabetizador - 2026_04_06 20_56 GMT-03_00 - Recording-pt-BR.docx`)
+**Fonte:** gravacao/transcricao (`docs/insumos/reunioes/2026-04-06/Reunião Alfabetizador - 2026_04_06 20_56 GMT-03_00 - Recording-pt-BR.docx`)
 
 ## Objetivo
 Alinhar o fluxo do alfabetizador no app/web, com foco em navegacao por etapa, vinculo de alfabetizando e padronizacao das telas da POC.

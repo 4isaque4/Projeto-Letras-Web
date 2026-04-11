@@ -1,0 +1,20 @@
+/* Letras Educador - Paleta de cores e estilos customizados */
+
+:root {
+  /* Paleta de cores Letras Educador */
+  --le-bg-main: #EDEDED;
+  --le-surface: #E4E4E4;
+  --le-surface-soft: #F3F3F3;
+  --le-text-primary: #111111;
+  --le-text-secondary: #333333;
+  --le-text-support: #7A7A7A;
+  --le-text-subtle: #8F8F8F;
+  --le-primary: #101010;
+  --le-primary-text: #F5F5F5;
+  --le-white: #FFFFFF;
+  --le-success: #0B6B3A;
+  --le-error: #9E1B1B;
+  --le-border: #D6D6D6;
+  --le-blue-support: #20385F;
+  --le-feedback: #1F2937;
+}
