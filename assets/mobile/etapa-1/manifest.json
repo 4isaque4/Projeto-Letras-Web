@@ -1,230 +1,321 @@
 {
-  "generatedAt": "2026-03-25T19:05:16.388Z",
-  "totalScreens": 32,
+  "generatedAt": "2026-04-10T21:04:44.513Z",
+  "totalScreens": 45,
   "screens": [
+    {
+      "slug": "ajuda-ao-alfabetizando-1",
+      "title": "Ajuda ao Alfabetizando (1)",
+      "svgPath": "Ajuda ao Alfabetizando (1).svg",
+      "stageTag": "etapa-1-apoio",
+      "moduleCode": "apoio-alfabetizando"
+    },
+    {
+      "slug": "ajuda-ao-alfabetizando-2",
+      "title": "Ajuda ao Alfabetizando (2)",
+      "svgPath": "Ajuda ao Alfabetizando (2).svg",
+      "stageTag": "etapa-1-apoio",
+      "moduleCode": "apoio-alfabetizando"
+    },
     {
       "slug": "alfabetizacao-individual-ou-em-grupo-1",
       "title": "Alfabetização Individual ou em grupo   1",
       "svgPath": "Alfabetização Individual ou em grupo - 1.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-modo-ensino"
     },
     {
       "slug": "alfabetizacao-individual-ou-em-grupo-2",
       "title": "Alfabetização Individual ou em grupo   2",
       "svgPath": "Alfabetização Individual ou em grupo - 2.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-modo-ensino"
     },
     {
       "slug": "cadastrar-alfabetizando-1",
       "title": "Cadastrar Alfabetizando   1",
       "svgPath": "Cadastrar Alfabetizando - 1.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-alfabetizando"
     },
     {
       "slug": "cadastrar-alfabetizando-2",
       "title": "Cadastrar Alfabetizando   2",
       "svgPath": "Cadastrar Alfabetizando - 2.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-alfabetizando"
     },
     {
       "slug": "cadastro-de-perfil-1",
       "title": "Cadastro de Perfil   1",
       "svgPath": "Cadastro de Perfil - 1.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-perfil"
     },
     {
       "slug": "cadastro-de-perfil-2",
       "title": "Cadastro de Perfil   2",
       "svgPath": "Cadastro de Perfil - 2.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-perfil"
     },
     {
       "slug": "cadastro-de-perfil-3",
       "title": "Cadastro de Perfil   3",
       "svgPath": "Cadastro de Perfil - 3.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-perfil"
+    },
+    {
+      "slug": "carta-enviada",
+      "title": "Carta enviada",
+      "svgPath": "Carta enviada.svg",
+      "stageTag": "etapa-1-encerramento",
+      "moduleCode": "encerramento-carta"
+    },
+    {
+      "slug": "conclusao-da-capacitacao-1",
+      "title": "Conclusão da Capacitação (1)",
+      "svgPath": "Conclusão da Capacitação (1).svg",
+      "stageTag": "etapa-1-encerramento",
+      "moduleCode": "encerramento-capacitacao"
+    },
+    {
+      "slug": "conclusao-da-capacitacao-2",
+      "title": "Conclusão da Capacitação (2)",
+      "svgPath": "Conclusão da Capacitação (2).svg",
+      "stageTag": "etapa-1-encerramento",
+      "moduleCode": "encerramento-capacitacao"
     },
     {
       "slug": "confirmacao-de-tema",
       "title": "Confirmação de tema",
       "svgPath": "Confirmação de tema.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-tema"
+    },
+    {
+      "slug": "confirmacao-de-vinculo-nao-vinculado",
+      "title": "Confirmação de Vínculo   Não Vinculado",
+      "svgPath": "Confirmação de Vínculo - Não Vinculado.svg",
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-vinculo"
+    },
+    {
+      "slug": "confirmacao-de-vinculo-vinculado",
+      "title": "Confirmação de Vínculo   Vinculado",
+      "svgPath": "Confirmação de Vínculo - Vinculado.svg",
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-vinculo"
+    },
+    {
+      "slug": "confirmacao-de-vinculo",
+      "title": "Confirmação de Vínculo",
+      "svgPath": "Confirmação de Vínculo.svg",
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-vinculo"
     },
     {
       "slug": "confirmar-alfabetizando",
       "title": "Confirmar Alfabetizando",
       "svgPath": "Confirmar Alfabetizando.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-alfabetizando"
     },
     {
       "slug": "entrada-alfabetizador",
       "title": "Entrada   Alfabetizador",
       "svgPath": "Entrada - Alfabetizador.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-entrada"
+    },
+    {
+      "slug": "entrada-alfabetizando",
+      "title": "Entrada   Alfabetizando",
+      "svgPath": "Entrada - Alfabetizando.svg",
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-entrada"
     },
     {
       "slug": "etapa-1-conclusao",
       "title": "Etapa 1   Conclusão",
       "svgPath": "Etapa 1 - Conclusão.svg",
-      "stageTag": "etapa-1",
-      "moduleCode": null
+      "stageTag": "etapa-1-aulas",
+      "moduleCode": "e1-conclusao"
     },
     {
       "slug": "etapa-1-orientacoes",
       "title": "Etapa 1   Orientações",
       "svgPath": "Etapa 1 - Orientações.svg",
-      "stageTag": "etapa-1",
-      "moduleCode": null
+      "stageTag": "etapa-1-aulas",
+      "moduleCode": "e1-orientacoes"
     },
     {
       "slug": "etapa-1-tela-de-abertura",
       "title": "Etapa 1   Tela de Abertura",
       "svgPath": "Etapa 1 - Tela de Abertura.svg",
-      "stageTag": "etapa-1",
-      "moduleCode": null
+      "stageTag": "etapa-1-aulas",
+      "moduleCode": "e1-abertura"
     },
     {
       "slug": "etapa-1-tela-de-aula-modelo-audio",
       "title": "Etapa 1   Tela de Aula (Modelo áudio)",
       "svgPath": "Etapa 1 - Tela de Aula (Modelo áudio).svg",
-      "stageTag": "etapa-1",
-      "moduleCode": null
+      "stageTag": "etapa-1-aulas",
+      "moduleCode": "e1-modelos-aula"
     },
     {
       "slug": "etapa-1-tela-de-aula-modelo-imagem",
       "title": "Etapa 1   Tela de Aula (Modelo imagem)",
       "svgPath": "Etapa 1 - Tela de Aula (Modelo imagem).svg",
-      "stageTag": "etapa-1",
-      "moduleCode": null
+      "stageTag": "etapa-1-aulas",
+      "moduleCode": "e1-modelos-aula"
     },
     {
       "slug": "etapa-1-tela-de-aula-modelo-letra",
       "title": "Etapa 1   Tela de Aula (Modelo letra)",
       "svgPath": "Etapa 1 - Tela de Aula (Modelo letra).svg",
-      "stageTag": "etapa-1",
-      "moduleCode": null
+      "stageTag": "etapa-1-aulas",
+      "moduleCode": "e1-modelos-aula"
     },
     {
       "slug": "etapa-1-tela-de-aula-modelo-so-texto",
       "title": "Etapa 1   Tela de Aula (Modelo só texto)",
       "svgPath": "Etapa 1 - Tela de Aula (Modelo só texto).svg",
-      "stageTag": "etapa-1",
-      "moduleCode": null
+      "stageTag": "etapa-1-aulas",
+      "moduleCode": "e1-modelos-aula"
     },
     {
       "slug": "etapa-1-tela-de-aula-modelo-video",
       "title": "Etapa 1   Tela de Aula (Modelo vídeo)",
       "svgPath": "Etapa 1 - Tela de Aula (Modelo vídeo).svg",
-      "stageTag": "etapa-1",
-      "moduleCode": null
+      "stageTag": "etapa-1-aulas",
+      "moduleCode": "e1-modelos-aula"
     },
     {
       "slug": "etapa-1-transicao-para-etapa-2",
       "title": "Etapa 1   Transição para Etapa 2",
       "svgPath": "Etapa 1 - Transição para Etapa 2.svg",
-      "stageTag": "etapa-1",
-      "moduleCode": null
+      "stageTag": "etapa-1-aulas",
+      "moduleCode": "e1-transicao"
     },
     {
       "slug": "etapa-1-de-alfabetizacao",
       "title": "ETAPA 1 DE ALFABETIZAÇÃO",
       "svgPath": "ETAPA 1 DE ALFABETIZAÇÃO.svg",
-      "stageTag": "etapa-1",
-      "moduleCode": null
+      "stageTag": "etapa-1-aulas",
+      "moduleCode": "e1-abertura"
+    },
+    {
+      "slug": "foto-da-carta-de-agradecimento",
+      "title": "Foto da carta de agradecimento",
+      "svgPath": "Foto da carta de agradecimento.svg",
+      "stageTag": "etapa-1-encerramento",
+      "moduleCode": "encerramento-carta"
     },
     {
       "slug": "home-assistiu-tutoriais-lista-aberta",
       "title": "Home   Assistiu tutoriais (lista aberta)",
       "svgPath": "Home - Assistiu tutoriais (lista aberta).svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-acompanhamento",
+      "moduleCode": "acompanhamento-home"
     },
     {
       "slug": "home-assistiu-tutoriais",
       "title": "Home   Assistiu tutoriais",
       "svgPath": "Home - Assistiu tutoriais.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-acompanhamento",
+      "moduleCode": "acompanhamento-home"
     },
     {
       "slug": "home-nao-assistiu-tutoriais",
       "title": "Home   Não assistiu tutoriais",
       "svgPath": "Home - Não assistiu tutoriais.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-acompanhamento",
+      "moduleCode": "acompanhamento-home"
     },
     {
       "slug": "lista-de-alfabetizados",
       "title": "Lista de Alfabetizados",
       "svgPath": "Lista de Alfabetizados.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-alfabetizando"
     },
     {
       "slug": "notificacoes",
       "title": "Notificações",
       "svgPath": "Notificações.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-acompanhamento",
+      "moduleCode": "acompanhamento-notificacoes"
     },
     {
       "slug": "perfil",
       "title": "Perfil",
       "svgPath": "Perfil.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-acompanhamento",
+      "moduleCode": "acompanhamento-perfil"
     },
     {
       "slug": "pontuacao-calculo",
       "title": "Pontuação   Cálculo",
       "svgPath": "Pontuação - Cálculo.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-acompanhamento",
+      "moduleCode": "acompanhamento-pontuacao"
     },
     {
       "slug": "pontuacao",
       "title": "Pontuação",
       "svgPath": "Pontuação.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-acompanhamento",
+      "moduleCode": "acompanhamento-pontuacao"
     },
     {
       "slug": "seleciona-tema",
       "title": "Seleciona tema",
       "svgPath": "Seleciona tema.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-tema"
     },
     {
       "slug": "tutoriais",
       "title": "Tutoriais",
       "svgPath": "Tutoriais.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-apoio",
+      "moduleCode": "apoio-tutoriais"
     },
     {
       "slug": "tutorial-de-apoio",
       "title": "Tutorial de Apoio",
       "svgPath": "Tutorial de Apoio.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-apoio",
+      "moduleCode": "apoio-tutoriais"
     },
     {
       "slug": "varias",
       "title": "VÁRIAS",
       "svgPath": "VÁRIAS.svg",
-      "stageTag": null,
-      "moduleCode": null
+      "stageTag": "etapa-1-acompanhamento",
+      "moduleCode": "acompanhamento-geral"
+    },
+    {
+      "slug": "vinculacao-do-alfabetizando-1",
+      "title": "Vinculação do Alfabetizando   1",
+      "svgPath": "Vinculação do Alfabetizando - 1.svg",
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-vinculo"
+    },
+    {
+      "slug": "vinculacao-do-alfabetizando-2",
+      "title": "Vinculação do Alfabetizando   2",
+      "svgPath": "Vinculação do Alfabetizando - 2.svg",
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-vinculo"
+    },
+    {
+      "slug": "vinculacao-do-alfabetizando-3",
+      "title": "Vinculação do Alfabetizando   3",
+      "svgPath": "Vinculação do Alfabetizando - 3.svg",
+      "stageTag": "etapa-1-onboarding",
+      "moduleCode": "onboarding-vinculo"
     }
   ]
 }
