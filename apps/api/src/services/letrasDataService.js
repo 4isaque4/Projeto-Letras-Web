@@ -1,7 +1,7 @@
 import { isSupabaseConfigured, supabaseAdmin } from "../lib/supabase.js";
 import { randomBytes, randomUUID, scryptSync } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { readFile, readdir } from "node:fs/promises";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { env } from "../config/env.js";
 
@@ -19,6 +19,18 @@ const UUID_PATTERN =
 const ACTIVITY_TYPES = new Set(["video", "quiz", "audio", "letra"]);
 const ASSET_KINDS = new Set(["png", "mp4", "mp3", "jpg"]);
 const ASSET_STATUSES = new Set(["rascunho", "publicado", "arquivado"]);
+const ACTIVITY_PROGRESS_STATUSES = new Set([
+  "nao_iniciado",
+  "em_andamento",
+  "travado",
+  "concluido",
+]);
+const SYSTEM_SETTINGS_EVENT_TYPE = "system.settings.updated";
+const SYSTEM_SETTINGS_ENTITY_TYPE = "system_settings";
+const DEFAULT_SYSTEM_SETTINGS = Object.freeze({
+  errorBlockLimit: 3,
+  inactivityDays: 7,
+});
 const ASSET_KIND_BY_EXTENSION = new Map([
   ["png", "png"],
   ["jpg", "jpg"],
@@ -36,6 +48,7 @@ const MIME_BY_ASSET_KIND = {
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirPath = dirname(currentFilePath);
 const monorepoRootPath = resolve(currentDirPath, "..", "..", "..");
+const mobileRefRootPath = resolve(monorepoRootPath, "..", "letras-mobile-ref");
 const DEFAULT_BLUEPRINTS_MANIFEST_PATH = resolve(
   monorepoRootPath,
   "assets",
@@ -43,6 +56,12 @@ const DEFAULT_BLUEPRINTS_MANIFEST_PATH = resolve(
   "etapa-1",
   "manifest.json",
 );
+const DEFAULT_STAGE_TWO_CONTENTS_DIRECTORY_PATH = resolve(
+  mobileRefRootPath,
+  "docs",
+  "Conteudos das telas",
+);
+const ALLOWED_CONTENT_IMPORT_ROOTS = [monorepoRootPath, mobileRefRootPath].map((item) => resolve(item));
 
 function requireSupabase() {
   if (!isSupabaseConfigured || !supabaseAdmin) {
@@ -156,6 +175,33 @@ function splitIdsByUuid(ids) {
   }
 
   return { uuidIds, nonUuidIds };
+}
+
+function chunkArray(values, chunkSize = 100) {
+  const items = Array.isArray(values) ? values : [];
+  const chunks = [];
+
+  for (let index = 0; index < items.length; index += chunkSize) {
+    chunks.push(items.slice(index, index + chunkSize));
+  }
+
+  return chunks;
+}
+
+async function deleteRowsByIds(client, tableName, ids, contextMessage) {
+  const normalizedIds = (ids ?? []).map((value) => String(value ?? "").trim()).filter(Boolean);
+  if (normalizedIds.length === 0) {
+    return 0;
+  }
+
+  for (const batch of chunkArray(normalizedIds)) {
+    const { error } = await client.from(tableName).delete().in("id", batch);
+    if (error && !isOptionalSourceMissing(error)) {
+      throw new HttpError(400, `${contextMessage}: ${error.message}`);
+    }
+  }
+
+  return normalizedIds.length;
 }
 
 function slugify(value) {
@@ -338,6 +384,24 @@ function normalizeBoolean(value, fallback = false) {
   return fallback;
 }
 
+function normalizeSystemSettingsPayload(rawSettings) {
+  const settings =
+    rawSettings && typeof rawSettings === "object" && !Array.isArray(rawSettings)
+      ? rawSettings
+      : {};
+
+  return {
+    errorBlockLimit: Math.max(
+      1,
+      normalizeInteger(settings.errorBlockLimit, DEFAULT_SYSTEM_SETTINGS.errorBlockLimit),
+    ),
+    inactivityDays: Math.max(
+      1,
+      normalizeInteger(settings.inactivityDays, DEFAULT_SYSTEM_SETTINGS.inactivityDays),
+    ),
+  };
+}
+
 function normalizeSlug(value, fallback) {
   const normalized = slugify(value);
   if (normalized.length > 0) {
@@ -465,6 +529,31 @@ function buildStoragePublicUrl(objectPath) {
   const normalizedSupabaseUrl = normalizeText(env.supabaseUrl).replace(/\/+$/, "");
   const normalizedBucket = normalizeText(env.supabaseStorageBucket) || "letras-assets";
   return `${normalizedSupabaseUrl}/storage/v1/object/public/${normalizedBucket}/${objectPath}`;
+}
+
+function isPathInsideRoot(rootPath, targetPath) {
+  const relativePath = relative(rootPath, targetPath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+}
+
+function resolveAllowedContentImportDirectory(directoryPath) {
+  const requestedPath = normalizeText(directoryPath);
+  const resolvedDirectoryPath = requestedPath
+    ? resolve(monorepoRootPath, requestedPath)
+    : DEFAULT_STAGE_TWO_CONTENTS_DIRECTORY_PATH;
+
+  const isAllowed = ALLOWED_CONTENT_IMPORT_ROOTS.some((rootPath) =>
+    isPathInsideRoot(rootPath, resolvedDirectoryPath),
+  );
+
+  if (!isAllowed) {
+    throw new HttpError(
+      400,
+      `Diretorio fora das areas permitidas. Use uma pasta dentro de: ${ALLOWED_CONTENT_IMPORT_ROOTS.join(" | ")}`,
+    );
+  }
+
+  return resolvedDirectoryPath;
 }
 
 async function uploadBufferToStorage({ buffer, mimeType, objectPath }) {
@@ -835,10 +924,50 @@ export async function getProfiles({ role, ids } = {}) {
     shouldLoadMobileLearners ? getMobileLearners({ ids }) : Promise.resolve([]),
   ]);
 
-  let merged = profiles;
+  const mobileEducatorProfiles = shouldLoadMobileEducators
+    ? mobileEducators.map(mapMobileEducatorToProfile)
+    : [];
+  const mobileEducatorById = new Map(
+    mobileEducatorProfiles.map((item) => [String(item.id), item]),
+  );
+
+  let merged = profiles.map((profile) => {
+    if (profile.role !== "tutor") {
+      return profile;
+    }
+
+    const mobileMirror = mobileEducatorById.get(String(profile.id));
+    if (!mobileMirror) {
+      return profile;
+    }
+
+    const panelMetadata =
+      profile.metadata && typeof profile.metadata === "object" && !Array.isArray(profile.metadata)
+        ? profile.metadata
+        : {};
+    const mobileMetadata =
+      mobileMirror.metadata &&
+      typeof mobileMirror.metadata === "object" &&
+      !Array.isArray(mobileMirror.metadata)
+        ? mobileMirror.metadata
+        : {};
+    const panelEmail =
+      typeof panelMetadata.email === "string" && panelMetadata.email.trim().length > 0
+        ? panelMetadata.email.trim()
+        : "";
+
+    return {
+      ...profile,
+      metadata: {
+        ...mobileMetadata,
+        ...panelMetadata,
+        email: panelEmail || mobileMetadata.email || "",
+      },
+    };
+  });
 
   if (shouldLoadMobileEducators) {
-    merged = dedupeById(merged, mobileEducators.map(mapMobileEducatorToProfile));
+    merged = dedupeById(merged, mobileEducatorProfiles);
   }
 
   if (shouldLoadMobileLearners) {
@@ -1008,6 +1137,28 @@ export async function getLearningActivities({ ids } = {}) {
   return dedupeById(activities, mobileActivities.map(mapMobileActivityToActivity));
 }
 
+export async function getPanelLearningActivities({ ids } = {}) {
+  if (ids && ids.length === 0) {
+    return [];
+  }
+
+  const { uuidIds } = splitIdsByUuid(ids);
+  if (ids && uuidIds.length === 0) {
+    return [];
+  }
+
+  const client = requireSupabase();
+  let query = client
+    .from("learning_activities")
+    .select("id, module_id, type, title, instructions, sort_order, is_published, created_at, updated_at");
+
+  if (ids) {
+    query = query.in("id", uuidIds);
+  }
+
+  return runQuery(query, "Falha ao listar atividades do CMS");
+}
+
 export async function getLearningModules({ ids } = {}) {
   if (ids && ids.length === 0) {
     return [];
@@ -1036,6 +1187,28 @@ export async function getLearningModules({ ids } = {}) {
   return dedupeById(modules, mobileUnits.map(mapMobileUnitToModule));
 }
 
+export async function getPanelLearningModules({ ids } = {}) {
+  if (ids && ids.length === 0) {
+    return [];
+  }
+
+  const { uuidIds } = splitIdsByUuid(ids);
+  if (ids && uuidIds.length === 0) {
+    return [];
+  }
+
+  const client = requireSupabase();
+  let query = client
+    .from("learning_modules")
+    .select("id, theme_id, stage_number, title, description, sort_order, is_active, created_at, updated_at");
+
+  if (ids) {
+    query = query.in("id", uuidIds);
+  }
+
+  return runQuery(query, "Falha ao listar modulos do CMS");
+}
+
 export async function getLearningThemes() {
   const client = requireSupabase();
   const [themes, mobileThemes] = await Promise.all([
@@ -1051,6 +1224,29 @@ export async function getLearningThemes() {
 
   const merged = dedupeById(themes, mobileThemes.map(mapMobileThemeToTheme));
   return merged.sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
+}
+
+export async function getPanelLearningThemes({ ids } = {}) {
+  if (ids && ids.length === 0) {
+    return [];
+  }
+
+  const { uuidIds } = splitIdsByUuid(ids);
+  if (ids && uuidIds.length === 0) {
+    return [];
+  }
+
+  const client = requireSupabase();
+  let query = client
+    .from("learning_themes")
+    .select("id, slug, title, description, sort_order, is_active, created_at, updated_at")
+    .order("sort_order", { ascending: true });
+
+  if (ids) {
+    query = query.in("id", uuidIds);
+  }
+
+  return runQuery(query, "Falha ao listar temas do CMS");
 }
 
 export async function getContentAssets() {
@@ -1074,6 +1270,67 @@ export async function getSyncEvents({ limit = 100 } = {}) {
       .limit(limit),
     "Falha ao listar eventos de sincronizacao",
   );
+}
+
+export async function getPanelSystemSettings() {
+  const client = requireSupabase();
+  const settingsEvents = await runOptionalQuery(
+    client
+      .from("sync_events")
+      .select("entity_id, payload, created_at")
+      .eq("event_type", SYSTEM_SETTINGS_EVENT_TYPE)
+      .eq("entity_type", SYSTEM_SETTINGS_ENTITY_TYPE)
+      .order("created_at", { ascending: false })
+      .limit(1),
+    "Falha ao buscar configuracoes do sistema",
+  );
+
+  const latestEvent = settingsEvents[0] ?? null;
+  const rawPayload =
+    latestEvent?.payload &&
+    typeof latestEvent.payload === "object" &&
+    !Array.isArray(latestEvent.payload)
+      ? latestEvent.payload
+      : {};
+  const rawSettings =
+    rawPayload.settings &&
+    typeof rawPayload.settings === "object" &&
+    !Array.isArray(rawPayload.settings)
+      ? rawPayload.settings
+      : rawPayload;
+
+  return {
+    ...normalizeSystemSettingsPayload(rawSettings),
+    updatedAt: latestEvent?.created_at ?? null,
+    updatedBy:
+      typeof latestEvent?.entity_id === "string" && latestEvent.entity_id.trim().length > 0
+        ? latestEvent.entity_id
+        : null,
+  };
+}
+
+export async function updatePanelSystemSettings({ errorBlockLimit, inactivityDays, updatedBy } = {}) {
+  const nextSettings = normalizeSystemSettingsPayload({
+    errorBlockLimit,
+    inactivityDays,
+  });
+  const actor = normalizeText(updatedBy) || "sistema";
+
+  await registerSyncEvent({
+    sourcePlatform: "web",
+    eventType: SYSTEM_SETTINGS_EVENT_TYPE,
+    entityType: SYSTEM_SETTINGS_ENTITY_TYPE,
+    entityId: actor,
+    payload: {
+      settings: nextSettings,
+    },
+  });
+
+  return {
+    ...nextSettings,
+    updatedAt: new Date().toISOString(),
+    updatedBy: actor,
+  };
 }
 
 export async function getMobileScreenBlueprints() {
@@ -1358,6 +1615,62 @@ async function appendAssetToMobileActivity(assetRow) {
   }
 }
 
+async function removeAssetFromMobileActivity(activityId, assetId) {
+  if (!activityId || !assetId) {
+    return;
+  }
+
+  const client = requireSupabase();
+  const { data: mobileActivity, error: readError } = await client
+    .from("Activity")
+    .select("id, content")
+    .eq("id", String(activityId))
+    .maybeSingle();
+
+  if (readError) {
+    if (isOptionalSourceMissing(readError)) {
+      return;
+    }
+    throw new HttpError(500, `Falha ao carregar activity mobile para remover asset: ${readError.message}`);
+  }
+
+  if (!mobileActivity?.id) {
+    return;
+  }
+
+  const currentContent =
+    mobileActivity.content &&
+    typeof mobileActivity.content === "object" &&
+    !Array.isArray(mobileActivity.content)
+      ? { ...mobileActivity.content }
+      : {};
+
+  const currentAssets = Array.isArray(currentContent.assets)
+    ? currentContent.assets.filter(
+        (item) => item && typeof item === "object" && !Array.isArray(item),
+      )
+    : [];
+
+  const nextAssets = currentAssets.filter((item) => String(item.id ?? "") !== String(assetId));
+  if (nextAssets.length === currentAssets.length) {
+    return;
+  }
+
+  const nextContent = {
+    ...currentContent,
+    assets: nextAssets,
+  };
+
+  const { error: updateError } = await client
+    .from("Activity")
+    .update({ content: nextContent, updatedAt: new Date().toISOString() })
+    .eq("id", String(activityId));
+
+  if (updateError && !isOptionalSourceMissing(updateError)) {
+    throw new HttpError(500, `Falha ao remover asset da activity mobile: ${updateError.message}`);
+  }
+}
+
 export async function createLearningTheme({
   title,
   description,
@@ -1418,6 +1731,156 @@ export async function createLearningTheme({
   return data;
 }
 
+export async function updateLearningTheme({
+  themeId,
+  title,
+  description,
+  slug,
+  sortOrder,
+  isActive,
+}) {
+  const client = requireSupabase();
+  const normalizedThemeId = normalizeText(themeId);
+
+  if (!isUuid(normalizedThemeId)) {
+    throw new HttpError(400, "themeId invalido.");
+  }
+
+  const { data: existingTheme, error: readError } = await client
+    .from("learning_themes")
+    .select("id, slug, title, description, sort_order, is_active, created_at, updated_at")
+    .eq("id", normalizedThemeId)
+    .maybeSingle();
+
+  if (readError) {
+    throw new HttpError(400, `Falha ao buscar tema: ${readError.message}`);
+  }
+
+  if (!existingTheme) {
+    throw new HttpError(404, "Tema nao encontrado.");
+  }
+
+  const payload = {};
+
+  if (title !== undefined) {
+    const normalizedTitle = normalizeText(title);
+    if (!normalizedTitle) {
+      throw new HttpError(400, "Titulo do tema nao pode ficar vazio.");
+    }
+    payload.title = normalizedTitle;
+  }
+
+  if (description !== undefined) {
+    payload.description = normalizeNullableText(description);
+  }
+
+  if (slug !== undefined) {
+    const normalizedSlugInput = normalizeText(slug);
+    if (!normalizedSlugInput) {
+      throw new HttpError(400, "Slug do tema nao pode ficar vazio.");
+    }
+    payload.slug = normalizeSlug(normalizedSlugInput, payload.title ?? existingTheme.title);
+  }
+
+  if (sortOrder !== undefined) {
+    payload.sort_order = normalizeInteger(sortOrder, existingTheme.sort_order ?? 0);
+  }
+
+  if (isActive !== undefined) {
+    payload.is_active = normalizeBoolean(isActive, existingTheme.is_active ?? true);
+  }
+
+  if (Object.keys(payload).length === 0) {
+    throw new HttpError(400, "Nenhum campo valido para atualizar no tema.");
+  }
+
+  const { data, error } = await client
+    .from("learning_themes")
+    .update(payload)
+    .eq("id", normalizedThemeId)
+    .select("id, slug, title, description, sort_order, is_active, created_at, updated_at")
+    .maybeSingle();
+
+  if (error) {
+    const normalizedMessage = String(error.message ?? "").toLowerCase();
+    if (
+      String(error.code ?? "") === "23505" ||
+      normalizedMessage.includes("learning_themes_slug_key")
+    ) {
+      throw new HttpError(
+        400,
+        "Ja existe um tema com esse nome interno (slug). Escolha outro slug.",
+      );
+    }
+    throw new HttpError(400, `Falha ao atualizar tema: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new HttpError(404, "Tema nao encontrado.");
+  }
+
+  await runBestEffortMobileSync("sync updateLearningTheme to mobile schema", () =>
+    upsertMobileThemeFromPanel(data),
+  );
+
+  await runBestEffortMobileSync("sync_event updateLearningTheme", () =>
+    registerSyncEvent({
+      eventType: "content.theme.updated",
+      entityType: "learning_theme",
+      entityId: data.id,
+      payload: data,
+    }),
+  );
+
+  return data;
+}
+
+export async function deleteLearningTheme({ themeId }) {
+  const client = requireSupabase();
+  const normalizedThemeId = normalizeText(themeId);
+
+  if (!isUuid(normalizedThemeId)) {
+    throw new HttpError(400, "themeId invalido.");
+  }
+
+  const { data: existingTheme, error: readError } = await client
+    .from("learning_themes")
+    .select("id, slug, title")
+    .eq("id", normalizedThemeId)
+    .maybeSingle();
+
+  if (readError) {
+    throw new HttpError(400, `Falha ao buscar tema: ${readError.message}`);
+  }
+
+  if (!existingTheme) {
+    throw new HttpError(404, "Tema nao encontrado.");
+  }
+
+  const { error } = await client.from("learning_themes").delete().eq("id", normalizedThemeId);
+  if (error) {
+    throw new HttpError(400, `Falha ao excluir tema: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("sync deleteLearningTheme from mobile schema", async () => {
+    const { error: mobileError } = await client.from("Theme").delete().eq("id", normalizedThemeId);
+    if (mobileError && !isOptionalSourceMissing(mobileError)) {
+      throw new HttpError(500, `Falha ao remover tema no schema mobile: ${mobileError.message}`);
+    }
+  });
+
+  await runBestEffortMobileSync("sync_event deleteLearningTheme", () =>
+    registerSyncEvent({
+      eventType: "content.theme.deleted",
+      entityType: "learning_theme",
+      entityId: existingTheme.id,
+      payload: existingTheme,
+    }),
+  );
+
+  return { id: existingTheme.id, deleted: true };
+}
+
 export async function createLearningModule({
   themeId,
   title,
@@ -1438,12 +1901,38 @@ export async function createLearningModule({
 
   await ensureThemeExists(normalizedThemeId);
 
+  const resolvedStageNumber = Math.max(1, normalizeInteger(stageNumber, 1));
+  const hasExplicitSortOrder =
+    sortOrder !== undefined &&
+    sortOrder !== null &&
+    String(sortOrder).trim().length > 0;
+
+  let resolvedSortOrder = 0;
+  if (hasExplicitSortOrder) {
+    resolvedSortOrder = normalizeInteger(sortOrder, 0);
+  } else {
+    const { data: moduleRows, error: readSortError } = await client
+      .from("learning_modules")
+      .select("sort_order")
+      .eq("theme_id", normalizedThemeId)
+      .eq("stage_number", resolvedStageNumber)
+      .order("sort_order", { ascending: false })
+      .limit(1);
+
+    if (readSortError) {
+      throw new HttpError(400, `Falha ao definir ordem do modulo: ${readSortError.message}`);
+    }
+
+    const highestSortOrder = Number(moduleRows?.[0]?.sort_order ?? -1);
+    resolvedSortOrder = Number.isFinite(highestSortOrder) ? highestSortOrder + 1 : 0;
+  }
+
   const payload = {
     theme_id: normalizedThemeId,
-    stage_number: Math.max(1, normalizeInteger(stageNumber, 1)),
+    stage_number: resolvedStageNumber,
     title: normalizedTitle,
     description: normalizeNullableText(description),
-    sort_order: normalizeInteger(sortOrder, 0),
+    sort_order: resolvedSortOrder,
     is_active: normalizeBoolean(isActive, true),
   };
 
@@ -1454,6 +1943,12 @@ export async function createLearningModule({
     .single();
 
   if (error) {
+    if (error.code === "23505" && String(error.message || "").includes("learning_modules_unique_per_stage")) {
+      throw new HttpError(
+        400,
+        "Ja existe um modulo nesta etapa com a mesma ordem. Ajuste a etapa ou a ordem e tente novamente.",
+      );
+    }
     throw new HttpError(400, `Falha ao criar modulo: ${error.message}`);
   }
 
@@ -1471,6 +1966,152 @@ export async function createLearningModule({
   );
 
   return data;
+}
+
+export async function updateLearningModule({
+  moduleId,
+  themeId,
+  title,
+  description,
+  stageNumber,
+  sortOrder,
+  isActive,
+}) {
+  const client = requireSupabase();
+  const normalizedModuleId = normalizeText(moduleId);
+
+  if (!isUuid(normalizedModuleId)) {
+    throw new HttpError(400, "moduleId invalido.");
+  }
+
+  const { data: existingModule, error: readError } = await client
+    .from("learning_modules")
+    .select("id, theme_id, stage_number, title, description, sort_order, is_active, created_at, updated_at")
+    .eq("id", normalizedModuleId)
+    .maybeSingle();
+
+  if (readError) {
+    throw new HttpError(400, `Falha ao buscar modulo: ${readError.message}`);
+  }
+
+  if (!existingModule) {
+    throw new HttpError(404, "Modulo nao encontrado.");
+  }
+
+  const payload = {};
+
+  if (themeId !== undefined) {
+    const normalizedThemeId = normalizeText(themeId);
+    if (!normalizedThemeId) {
+      throw new HttpError(400, "themeId nao pode ficar vazio.");
+    }
+    await ensureThemeExists(normalizedThemeId);
+    payload.theme_id = normalizedThemeId;
+  }
+
+  if (title !== undefined) {
+    const normalizedTitle = normalizeText(title);
+    if (!normalizedTitle) {
+      throw new HttpError(400, "Titulo do modulo nao pode ficar vazio.");
+    }
+    payload.title = normalizedTitle;
+  }
+
+  if (description !== undefined) {
+    payload.description = normalizeNullableText(description);
+  }
+
+  if (stageNumber !== undefined) {
+    payload.stage_number = Math.max(1, normalizeInteger(stageNumber, existingModule.stage_number ?? 1));
+  }
+
+  if (sortOrder !== undefined) {
+    payload.sort_order = normalizeInteger(sortOrder, existingModule.sort_order ?? 0);
+  }
+
+  if (isActive !== undefined) {
+    payload.is_active = normalizeBoolean(isActive, existingModule.is_active ?? true);
+  }
+
+  if (Object.keys(payload).length === 0) {
+    throw new HttpError(400, "Nenhum campo valido para atualizar no modulo.");
+  }
+
+  const { data, error } = await client
+    .from("learning_modules")
+    .update(payload)
+    .eq("id", normalizedModuleId)
+    .select("id, theme_id, stage_number, title, description, sort_order, is_active, created_at, updated_at")
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao atualizar modulo: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new HttpError(404, "Modulo nao encontrado.");
+  }
+
+  await runBestEffortMobileSync("sync updateLearningModule to mobile schema", () =>
+    upsertMobileLearningUnitFromPanel(data),
+  );
+
+  await runBestEffortMobileSync("sync_event updateLearningModule", () =>
+    registerSyncEvent({
+      eventType: "content.module.updated",
+      entityType: "learning_module",
+      entityId: data.id,
+      payload: data,
+    }),
+  );
+
+  return data;
+}
+
+export async function deleteLearningModule({ moduleId }) {
+  const client = requireSupabase();
+  const normalizedModuleId = normalizeText(moduleId);
+
+  if (!isUuid(normalizedModuleId)) {
+    throw new HttpError(400, "moduleId invalido.");
+  }
+
+  const { data: existingModule, error: readError } = await client
+    .from("learning_modules")
+    .select("id, theme_id, title, stage_number")
+    .eq("id", normalizedModuleId)
+    .maybeSingle();
+
+  if (readError) {
+    throw new HttpError(400, `Falha ao buscar modulo: ${readError.message}`);
+  }
+
+  if (!existingModule) {
+    throw new HttpError(404, "Modulo nao encontrado.");
+  }
+
+  const { error } = await client.from("learning_modules").delete().eq("id", normalizedModuleId);
+  if (error) {
+    throw new HttpError(400, `Falha ao excluir modulo: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("sync deleteLearningModule from mobile schema", async () => {
+    const { error: mobileError } = await client.from("LearningUnit").delete().eq("id", normalizedModuleId);
+    if (mobileError && !isOptionalSourceMissing(mobileError)) {
+      throw new HttpError(500, `Falha ao remover modulo no schema mobile: ${mobileError.message}`);
+    }
+  });
+
+  await runBestEffortMobileSync("sync_event deleteLearningModule", () =>
+    registerSyncEvent({
+      eventType: "content.module.deleted",
+      entityType: "learning_module",
+      entityId: existingModule.id,
+      payload: existingModule,
+    }),
+  );
+
+  return { id: existingModule.id, deleted: true };
 }
 
 export async function createLearningActivity({
@@ -1533,6 +2174,156 @@ export async function createLearningActivity({
   return data;
 }
 
+export async function updateLearningActivity({
+  activityId,
+  moduleId,
+  type,
+  title,
+  instructions,
+  sortOrder,
+  isPublished,
+}) {
+  const client = requireSupabase();
+  const normalizedActivityId = normalizeText(activityId);
+
+  if (!isUuid(normalizedActivityId)) {
+    throw new HttpError(400, "activityId invalido.");
+  }
+
+  const { data: existingActivity, error: readError } = await client
+    .from("learning_activities")
+    .select("id, module_id, type, title, instructions, sort_order, is_published, created_at, updated_at")
+    .eq("id", normalizedActivityId)
+    .maybeSingle();
+
+  if (readError) {
+    throw new HttpError(400, `Falha ao buscar atividade: ${readError.message}`);
+  }
+
+  if (!existingActivity) {
+    throw new HttpError(404, "Atividade nao encontrada.");
+  }
+
+  const payload = {};
+
+  if (moduleId !== undefined) {
+    const normalizedModuleId = normalizeText(moduleId);
+    if (!normalizedModuleId) {
+      throw new HttpError(400, "moduleId nao pode ficar vazio.");
+    }
+    await ensureModuleExists(normalizedModuleId);
+    payload.module_id = normalizedModuleId;
+  }
+
+  if (type !== undefined) {
+    const normalizedType = normalizeText(type).toLowerCase();
+    if (!ACTIVITY_TYPES.has(normalizedType)) {
+      throw new HttpError(400, "Tipo de atividade invalido. Use: video, quiz, audio ou letra.");
+    }
+    payload.type = normalizedType;
+  }
+
+  if (title !== undefined) {
+    const normalizedTitle = normalizeText(title);
+    if (!normalizedTitle) {
+      throw new HttpError(400, "Titulo da atividade nao pode ficar vazio.");
+    }
+    payload.title = normalizedTitle;
+  }
+
+  if (instructions !== undefined) {
+    payload.instructions = normalizeNullableText(instructions);
+  }
+
+  if (sortOrder !== undefined) {
+    payload.sort_order = normalizeInteger(sortOrder, existingActivity.sort_order ?? 0);
+  }
+
+  if (isPublished !== undefined) {
+    payload.is_published = normalizeBoolean(isPublished, existingActivity.is_published ?? false);
+  }
+
+  if (Object.keys(payload).length === 0) {
+    throw new HttpError(400, "Nenhum campo valido para atualizar na atividade.");
+  }
+
+  const { data, error } = await client
+    .from("learning_activities")
+    .update(payload)
+    .eq("id", normalizedActivityId)
+    .select("id, module_id, type, title, instructions, sort_order, is_published, created_at, updated_at")
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao atualizar atividade: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new HttpError(404, "Atividade nao encontrada.");
+  }
+
+  await runBestEffortMobileSync("sync updateLearningActivity to mobile schema", () =>
+    upsertMobileActivityFromPanel(data),
+  );
+
+  await runBestEffortMobileSync("sync_event updateLearningActivity", () =>
+    registerSyncEvent({
+      eventType: "content.activity.updated",
+      entityType: "learning_activity",
+      entityId: data.id,
+      payload: data,
+    }),
+  );
+
+  return data;
+}
+
+export async function deleteLearningActivity({ activityId }) {
+  const client = requireSupabase();
+  const normalizedActivityId = normalizeText(activityId);
+
+  if (!isUuid(normalizedActivityId)) {
+    throw new HttpError(400, "activityId invalido.");
+  }
+
+  const { data: existingActivity, error: readError } = await client
+    .from("learning_activities")
+    .select("id, module_id, type, title")
+    .eq("id", normalizedActivityId)
+    .maybeSingle();
+
+  if (readError) {
+    throw new HttpError(400, `Falha ao buscar atividade: ${readError.message}`);
+  }
+
+  if (!existingActivity) {
+    throw new HttpError(404, "Atividade nao encontrada.");
+  }
+
+  const { error } = await client.from("learning_activities").delete().eq("id", normalizedActivityId);
+  if (error) {
+    throw new HttpError(400, `Falha ao excluir atividade: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("sync deleteLearningActivity from mobile schema", async () => {
+    const { error: mobileError } = await client.from("Activity").delete().eq("id", normalizedActivityId);
+    if (mobileError && !isOptionalSourceMissing(mobileError)) {
+      throw new HttpError(500, `Falha ao remover activity no schema mobile: ${mobileError.message}`);
+    }
+  });
+
+  await runBestEffortMobileSync("sync_event deleteLearningActivity", () =>
+    registerSyncEvent({
+      eventType: "content.activity.deleted",
+      entityType: "learning_activity",
+      entityId: existingActivity.id,
+      payload: existingActivity,
+    }),
+  );
+
+  return { id: existingActivity.id, deleted: true };
+}
+
 export async function createContentAsset({
   activityId,
   kind,
@@ -1548,9 +2339,6 @@ export async function createContentAsset({
   const normalizedMimeType = normalizeText(mimeType);
   const normalizedStatus = normalizeAssetStatusInput(status, "rascunho");
 
-  if (!normalizedActivityId) {
-    throw new HttpError(400, "activityId e obrigatorio.");
-  }
   if (!normalizedKind) {
     throw new HttpError(400, "Tipo de asset invalido. Use: png, mp4, mp3 ou jpg.");
   }
@@ -1560,13 +2348,15 @@ export async function createContentAsset({
   if (!normalizedMimeType) {
     throw new HttpError(400, "mimeType e obrigatorio.");
   }
-  await ensureActivityExists(normalizedActivityId);
+  if (normalizedActivityId) {
+    await ensureActivityExists(normalizedActivityId);
+  }
 
   const safeMetadata =
     metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {};
 
   const payload = {
-    activity_id: normalizedActivityId,
+    activity_id: normalizedActivityId || null,
     kind: normalizedKind,
     storage_path: normalizedPath,
     mime_type: normalizedMimeType,
@@ -1584,9 +2374,11 @@ export async function createContentAsset({
     throw new HttpError(400, `Falha ao criar asset: ${error.message}`);
   }
 
-  await runBestEffortMobileSync("sync createContentAsset to mobile schema", () =>
-    appendAssetToMobileActivity(data),
-  );
+  await runBestEffortMobileSync("sync createContentAsset to mobile schema", async () => {
+    if (data.activity_id) {
+      await appendAssetToMobileActivity(data);
+    }
+  });
 
   await runBestEffortMobileSync("sync_event createContentAsset", () =>
     registerSyncEvent({
@@ -1598,6 +2390,222 @@ export async function createContentAsset({
   );
 
   return data;
+}
+
+export async function updateContentAsset({
+  assetId,
+  activityId,
+  kind,
+  storagePath,
+  mimeType,
+  status,
+  metadata,
+}) {
+  const client = requireSupabase();
+  const normalizedAssetId = normalizeText(assetId);
+  if (!isUuid(normalizedAssetId)) {
+    throw new HttpError(400, "assetId invalido.");
+  }
+
+  const { data: existing, error: readError } = await client
+    .from("content_assets")
+    .select("id, activity_id, kind, storage_path, mime_type, status, metadata, created_at, updated_at")
+    .eq("id", normalizedAssetId)
+    .maybeSingle();
+
+  if (readError) {
+    throw new HttpError(400, `Falha ao buscar asset: ${readError.message}`);
+  }
+
+  if (!existing) {
+    throw new HttpError(404, "Asset nao encontrado.");
+  }
+
+  const payload = {};
+  if (activityId !== undefined) {
+    const normalizedActivityId = normalizeText(activityId);
+    if (normalizedActivityId) {
+      await ensureActivityExists(normalizedActivityId);
+    }
+    payload.activity_id = normalizedActivityId || null;
+  }
+
+  if (kind !== undefined) {
+    const normalizedKind = normalizeAssetKindInput(kind);
+    if (!normalizedKind) {
+      throw new HttpError(400, "Tipo de asset invalido. Use: png, mp4, mp3 ou jpg.");
+    }
+    payload.kind = normalizedKind;
+  }
+
+  if (storagePath !== undefined) {
+    const normalizedPath = normalizeText(storagePath);
+    if (!normalizedPath) {
+      throw new HttpError(400, "storagePath nao pode ficar vazio.");
+    }
+    payload.storage_path = normalizedPath;
+  }
+
+  if (mimeType !== undefined) {
+    const normalizedMimeType = normalizeText(mimeType);
+    if (!normalizedMimeType) {
+      throw new HttpError(400, "mimeType nao pode ficar vazio.");
+    }
+    payload.mime_type = normalizedMimeType;
+  }
+
+  if (status !== undefined) {
+    payload.status = normalizeAssetStatusInput(status, existing.status || "rascunho");
+  }
+
+  if (metadata !== undefined) {
+    payload.metadata =
+      metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {};
+  }
+
+  if (Object.keys(payload).length === 0) {
+    throw new HttpError(400, "Nenhum campo valido para atualizar.");
+  }
+
+  const { data, error } = await client
+    .from("content_assets")
+    .update(payload)
+    .eq("id", normalizedAssetId)
+    .select("id, activity_id, kind, storage_path, mime_type, status, metadata, created_at, updated_at")
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao atualizar asset: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new HttpError(404, "Asset nao encontrado.");
+  }
+
+  if (String(existing.activity_id || "") !== String(data.activity_id || "")) {
+    await removeAssetFromMobileActivity(existing.activity_id, existing.id);
+  }
+  if (data.activity_id) {
+    await appendAssetToMobileActivity(data);
+  }
+
+  await runBestEffortMobileSync("sync_event updateContentAsset", () =>
+    registerSyncEvent({
+      eventType: "content.asset.updated",
+      entityType: "content_asset",
+      entityId: data.id,
+      payload: data,
+    }),
+  );
+
+  return data;
+}
+
+export async function deleteContentAsset({ assetId }) {
+  const client = requireSupabase();
+  const normalizedAssetId = normalizeText(assetId);
+  if (!isUuid(normalizedAssetId)) {
+    throw new HttpError(400, "assetId invalido.");
+  }
+
+  const { data: existing, error: readError } = await client
+    .from("content_assets")
+    .select("id, activity_id, storage_path")
+    .eq("id", normalizedAssetId)
+    .maybeSingle();
+
+  if (readError) {
+    throw new HttpError(400, `Falha ao buscar asset: ${readError.message}`);
+  }
+
+  if (!existing) {
+    throw new HttpError(404, "Asset nao encontrado.");
+  }
+
+  const { error } = await client.from("content_assets").delete().eq("id", normalizedAssetId);
+  if (error) {
+    throw new HttpError(400, `Falha ao excluir asset: ${error.message}`);
+  }
+
+  await removeAssetFromMobileActivity(existing.activity_id, existing.id);
+
+  await runBestEffortMobileSync("sync_event deleteContentAsset", () =>
+    registerSyncEvent({
+      eventType: "content.asset.deleted",
+      entityType: "content_asset",
+      entityId: existing.id,
+      payload: existing,
+    }),
+  );
+
+  return { id: existing.id, deleted: true };
+}
+
+export async function resetCmsContent({ includeBlueprints = false } = {}) {
+  const client = requireSupabase();
+  const [themes, modules, activities, assets, blueprints] = await Promise.all([
+    getPanelLearningThemes(),
+    getPanelLearningModules(),
+    getPanelLearningActivities(),
+    getContentAssets(),
+    includeBlueprints ? getMobileScreenBlueprints() : Promise.resolve([]),
+  ]);
+
+  const themeIds = themes.map((item) => item.id);
+  const moduleIds = modules.map((item) => item.id);
+  const activityIds = activities.map((item) => item.id);
+  const assetIds = assets.map((item) => item.id);
+  const blueprintIds = includeBlueprints ? blueprints.map((item) => item.id) : [];
+
+  await deleteRowsByIds(client, "content_assets", assetIds, "Falha ao limpar midias do CMS");
+  await deleteRowsByIds(client, "learning_themes", themeIds, "Falha ao limpar temas do CMS");
+
+  if (includeBlueprints) {
+    await deleteRowsByIds(
+      client,
+      "mobile_screen_blueprints",
+      blueprintIds,
+      "Falha ao limpar blueprints do CMS",
+    );
+  }
+
+  await runBestEffortMobileSync("reset CMS content from mobile schema", async () => {
+    await deleteRowsByIds(client, "Activity", activityIds, "Falha ao limpar activities no schema mobile");
+    await deleteRowsByIds(
+      client,
+      "LearningUnit",
+      moduleIds,
+      "Falha ao limpar unidades no schema mobile",
+    );
+    await deleteRowsByIds(client, "Theme", themeIds, "Falha ao limpar temas no schema mobile");
+  });
+
+  await runBestEffortMobileSync("sync_event resetCmsContent", () =>
+    registerSyncEvent({
+      eventType: "content.cms.reset",
+      entityType: "learning_content",
+      entityId: "cms",
+      payload: {
+        deleted: {
+          themes: themeIds.length,
+          modules: moduleIds.length,
+          activities: activityIds.length,
+          assets: assetIds.length,
+          blueprints: blueprintIds.length,
+        },
+      },
+    }),
+  );
+
+  return {
+    deleted: {
+      themes: themeIds.length,
+      modules: moduleIds.length,
+      activities: activityIds.length,
+      assets: assetIds.length,
+      blueprints: blueprintIds.length,
+    },
+  };
 }
 
 export async function uploadContentAssetFile({
@@ -1640,7 +2648,7 @@ export async function uploadContentAssetFile({
   const resolvedTitle = normalizeText(title) || titleFromFileName(originalName);
   const objectPath = buildStorageObjectPath({
     extension,
-    folder: folder || (normalizedActivityId ? "conteudo" : "perfil"),
+    folder: folder || (normalizedActivityId ? "conteudo" : "acervo"),
   });
 
   const storage = await uploadBufferToStorage({
@@ -1659,32 +2667,15 @@ export async function uploadContentAssetFile({
   };
   const mergedMetadata = normalizeUploadMetadata(metadata, defaultMetadata);
 
-  let assetRow = null;
-  if (normalizedActivityId) {
-    const normalizedStatus = normalizeAssetStatusInput(status, "rascunho");
-    assetRow = await createContentAsset({
-      activityId: normalizedActivityId,
-      kind: detectedKind,
-      storagePath: storage.publicUrl,
-      mimeType: resolvedMimeType,
-      status: normalizedStatus,
-      metadata: mergedMetadata,
-    });
-  } else {
-    await runBestEffortMobileSync("sync_event uploadContentAssetFile", () =>
-      registerSyncEvent({
-        eventType: "content.asset.uploaded",
-        entityType: "storage_object",
-        entityId: storage.objectPath,
-        payload: {
-          kind: detectedKind,
-          sourceUrl: storage.publicUrl,
-          mimeType: resolvedMimeType,
-          bytes,
-        },
-      }),
-    );
-  }
+  const normalizedStatus = normalizeAssetStatusInput(status, "rascunho");
+  const assetRow = await createContentAsset({
+    activityId: normalizedActivityId || null,
+    kind: detectedKind,
+    storagePath: storage.publicUrl,
+    mimeType: resolvedMimeType,
+    status: normalizedStatus,
+    metadata: mergedMetadata,
+  });
 
   return {
     asset: mapAssetToUploadPayload(assetRow, {
@@ -1697,7 +2688,122 @@ export async function uploadContentAssetFile({
       createdByEducatorId: normalizeNullableText(createdByEducatorId),
     }),
     storage,
-    vinculado: Boolean(assetRow),
+    cadastrado: Boolean(assetRow),
+    vinculado: Boolean(assetRow?.activity_id),
+  };
+}
+
+export async function importContentAssetsFromDirectory({
+  directoryPath,
+  activityId,
+  status,
+  folder,
+  metadata,
+} = {}) {
+  const resolvedDirectoryPath = resolveAllowedContentImportDirectory(directoryPath);
+  const normalizedActivityId = normalizeText(activityId);
+  const normalizedStatus = normalizeAssetStatusInput(status, "rascunho");
+  const normalizedMetadata =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {};
+
+  if (normalizedActivityId) {
+    await ensureActivityExists(normalizedActivityId);
+  }
+
+  let directoryEntries;
+  try {
+    directoryEntries = await readdir(resolvedDirectoryPath, { withFileTypes: true });
+  } catch (error) {
+    throw new HttpError(
+      400,
+      `Falha ao ler a pasta de conteudos: ${error instanceof Error ? error.message : error}`,
+    );
+  }
+
+  const files = directoryEntries
+    .filter((entry) => entry.isFile())
+    .map((entry) => {
+      const extension = normalizeText(entry.name).split(".").pop()?.toLowerCase() ?? "";
+      const kind = ASSET_KIND_BY_EXTENSION.get(extension) ?? null;
+      if (!kind) {
+        return null;
+      }
+
+      return {
+        fileName: entry.name,
+        fullPath: resolve(resolvedDirectoryPath, entry.name),
+        kind,
+        mimeType: MIME_BY_ASSET_KIND[kind] || "application/octet-stream",
+      };
+    })
+    .filter(Boolean)
+    .sort((first, second) => first.fileName.localeCompare(second.fileName, "pt-BR"));
+
+  if (files.length === 0) {
+    return {
+      imported: 0,
+      skipped: 0,
+      items: [],
+      skippedItems: [],
+      directoryPath: resolvedDirectoryPath,
+    };
+  }
+
+  const existingAssets = await getContentAssets();
+  const importedSourcePaths = new Set(
+    existingAssets
+      .map((asset) => normalizeText(asset?.metadata?.sourceFilePath).toLowerCase())
+      .filter(Boolean),
+  );
+
+  const items = [];
+  const skippedItems = [];
+
+  for (const file of files) {
+    const sourcePathKey = file.fullPath.toLowerCase();
+    if (importedSourcePaths.has(sourcePathKey)) {
+      skippedItems.push({
+        fileName: file.fileName,
+        reason: "ja-importado",
+      });
+      continue;
+    }
+
+    const buffer = await readFile(file.fullPath);
+    const uploaded = await uploadContentAssetFile({
+      fileBuffer: buffer,
+      originalName: file.fileName,
+      mimeType: file.mimeType,
+      bytes: buffer.byteLength,
+      activityId: normalizedActivityId || null,
+      kind: file.kind,
+      status: normalizedStatus,
+      title: titleFromFileName(file.fileName),
+      folder: folder || "conteudo/importados-etapa-2",
+      metadata: {
+        ...normalizedMetadata,
+        source: "directory-import",
+        sourceDirectory: resolvedDirectoryPath,
+        sourceFilePath: file.fullPath,
+        sourceFileRelativePath: relative(resolvedDirectoryPath, file.fullPath).replace(/\\/g, "/"),
+      },
+    });
+
+    importedSourcePaths.add(sourcePathKey);
+    items.push({
+      fileName: file.fileName,
+      assetId: uploaded.asset?.id ?? null,
+      storagePath: uploaded.storage?.publicUrl ?? null,
+      linkedToActivity: Boolean(uploaded.vinculado),
+    });
+  }
+
+  return {
+    imported: items.length,
+    skipped: skippedItems.length,
+    items,
+    skippedItems,
+    directoryPath: resolvedDirectoryPath,
   };
 }
 
@@ -2012,6 +3118,38 @@ async function getProfileById(profileId) {
   return data ?? null;
 }
 
+async function resolveMobileEducatorByAnyId(candidateId) {
+  const client = requireSupabase();
+  const normalizedId = normalizeText(candidateId);
+  if (!normalizedId) {
+    return null;
+  }
+
+  const byId = await runOptionalQuery(
+    client
+      .from("Educator")
+      .select("id, name, email, cpf, phoneDigits, supabaseAuthUserId, createdAt, updatedAt")
+      .eq("id", normalizedId)
+      .limit(1),
+    "Falha ao buscar educador mobile por id",
+  );
+
+  if (byId.length > 0) {
+    return byId[0];
+  }
+
+  const byAuthUserId = await runOptionalQuery(
+    client
+      .from("Educator")
+      .select("id, name, email, cpf, phoneDigits, supabaseAuthUserId, createdAt, updatedAt")
+      .eq("supabaseAuthUserId", normalizedId)
+      .limit(1),
+    "Falha ao buscar educador mobile por supabaseAuthUserId",
+  );
+
+  return byAuthUserId[0] ?? null;
+}
+
 async function syncPanelProfileToMobile({ profile, email, password }) {
   if (!profile) {
     return;
@@ -2162,6 +3300,9 @@ export async function createAuthUserWithProfile({
       full_name: normalizedName,
       phone: normalizeText(phone) || null,
       cpf: normalizeText(cpf) || null,
+      metadata: {
+        email: normalizedEmail,
+      },
       role,
     })
     .eq("id", userId)
@@ -2181,6 +3322,530 @@ export async function createAuthUserWithProfile({
   );
 
   return profileData;
+}
+
+export async function updateProfileRecord({
+  profileId,
+  role,
+  fullName,
+  email,
+  phone,
+  cpf,
+  metadata,
+}) {
+  const client = requireSupabase();
+  const normalizedProfileId = normalizeText(profileId);
+  const normalizedRole = normalizeText(role).toLowerCase();
+
+  if (!normalizedProfileId) {
+    throw new HttpError(400, "ID do perfil invalido.");
+  }
+
+  if (normalizedRole && normalizedRole !== "tutor" && normalizedRole !== "alfabetizando") {
+    throw new HttpError(400, "Role invalida. Use tutor ou alfabetizando.");
+  }
+
+  const hasAnyFieldToUpdate =
+    fullName !== undefined ||
+    email !== undefined ||
+    phone !== undefined ||
+    cpf !== undefined ||
+    metadata !== undefined;
+
+  if (!hasAnyFieldToUpdate) {
+    throw new HttpError(400, "Nenhum campo valido para atualizar.");
+  }
+
+  if (isUuid(normalizedProfileId)) {
+    const { data: existingProfile, error: readError } = await client
+      .from("profiles")
+      .select("id, full_name, role, phone, cpf, metadata, created_at, updated_at")
+      .eq("id", normalizedProfileId)
+      .maybeSingle();
+
+    if (readError) {
+      throw new HttpError(400, `Falha ao buscar perfil: ${readError.message}`);
+    }
+
+    if (!existingProfile) {
+      throw new HttpError(404, "Perfil nao encontrado.");
+    }
+
+    if (normalizedRole && existingProfile.role !== normalizedRole) {
+      throw new HttpError(
+        400,
+        `Perfil encontrado com role '${existingProfile.role}', diferente de '${normalizedRole}'.`,
+      );
+    }
+
+    const payload = {};
+    const currentMetadata =
+      existingProfile.metadata &&
+      typeof existingProfile.metadata === "object" &&
+      !Array.isArray(existingProfile.metadata)
+        ? existingProfile.metadata
+        : {};
+    let nextMetadata = { ...currentMetadata };
+    let shouldUpdateMetadata = false;
+    let normalizedEmailForSync =
+      typeof currentMetadata.email === "string" ? currentMetadata.email.trim().toLowerCase() : "";
+
+    if (fullName !== undefined) {
+      const normalizedName = normalizeText(fullName);
+      if (!normalizedName) {
+        throw new HttpError(400, "Nome nao pode ficar vazio.");
+      }
+      payload.full_name = normalizedName;
+    }
+
+    if (phone !== undefined) {
+      payload.phone = normalizeNullableText(phone);
+    }
+
+    if (cpf !== undefined) {
+      payload.cpf = normalizeNullableText(cpf);
+    }
+
+    if (email !== undefined) {
+      const normalizedEmail = normalizeText(email).toLowerCase();
+      if (!normalizedEmail || !normalizedEmail.includes("@")) {
+        throw new HttpError(400, "O campo 'email' deve ser valido.");
+      }
+
+      const { error: authError } = await client.auth.admin.updateUserById(normalizedProfileId, {
+        email: normalizedEmail,
+      });
+
+      if (authError) {
+        throw new HttpError(400, `Falha ao atualizar email de acesso: ${authError.message}`);
+      }
+
+      nextMetadata.email = normalizedEmail;
+      normalizedEmailForSync = normalizedEmail;
+      shouldUpdateMetadata = true;
+    }
+
+    if (metadata !== undefined) {
+      if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+        throw new HttpError(400, "metadata deve ser um objeto JSON valido.");
+      }
+
+      nextMetadata = {
+        ...nextMetadata,
+        ...metadata,
+      };
+      shouldUpdateMetadata = true;
+    }
+
+    if (email !== undefined) {
+      nextMetadata.email = normalizedEmailForSync;
+    }
+
+    if (shouldUpdateMetadata) {
+      payload.metadata = nextMetadata;
+    }
+
+    const { data, error } = await client
+      .from("profiles")
+      .update(payload)
+      .eq("id", normalizedProfileId)
+      .select("id, full_name, role, phone, cpf, metadata, created_at, updated_at")
+      .maybeSingle();
+
+    if (error) {
+      throw new HttpError(400, `Falha ao atualizar perfil: ${error.message}`);
+    }
+
+    if (!data) {
+      throw new HttpError(404, "Perfil nao encontrado.");
+    }
+
+    if (data.role === "tutor" || data.role === "alfabetizando") {
+      await runBestEffortMobileSync("sync profile after updateProfileRecord", () =>
+        syncPanelProfileToMobile({
+          profile: data,
+          email: normalizedEmailForSync || data.metadata?.email || "",
+          password: "",
+        }),
+      );
+    }
+
+    return data;
+  }
+
+  if (!normalizedRole) {
+    throw new HttpError(
+      400,
+      "Para IDs nao UUID (schema mobile), informe a role (tutor ou alfabetizando).",
+    );
+  }
+
+  if (normalizedRole === "tutor") {
+    const existingEducator = await resolveMobileEducatorByAnyId(normalizedProfileId);
+    if (!existingEducator) {
+      throw new HttpError(404, "Alfabetizador nao encontrado no schema mobile.");
+    }
+
+    const payload = {};
+
+    if (fullName !== undefined) {
+      const normalizedName = normalizeText(fullName);
+      if (!normalizedName) {
+        throw new HttpError(400, "Nome nao pode ficar vazio.");
+      }
+      payload.name = normalizedName;
+    }
+
+    if (email !== undefined) {
+      const normalizedEmail = normalizeText(email).toLowerCase();
+      if (!normalizedEmail || !normalizedEmail.includes("@")) {
+        throw new HttpError(400, "O campo 'email' deve ser valido.");
+      }
+      payload.email = normalizedEmail;
+    }
+
+    if (phone !== undefined) {
+      payload.phoneDigits = normalizeNullableText(phone);
+    }
+
+    if (cpf !== undefined) {
+      payload.cpf = normalizeNullableText(cpf);
+    }
+
+    if (Object.keys(payload).length === 0) {
+      throw new HttpError(400, "Nenhum campo valido para atualizar.");
+    }
+
+    const { data, error } = await client
+      .from("Educator")
+      .update(payload)
+      .eq("id", String(existingEducator.id))
+      .select("id, name, email, cpf, phoneDigits, supabaseAuthUserId, createdAt, updatedAt")
+      .maybeSingle();
+
+    if (error && !isOptionalSourceMissing(error)) {
+      throw new HttpError(400, `Falha ao atualizar alfabetizador mobile: ${error.message}`);
+    }
+
+    if (!data) {
+      throw new HttpError(404, "Alfabetizador nao encontrado no schema mobile.");
+    }
+
+    return mapMobileEducatorToProfile(data);
+  }
+
+  const { data: existingLearner, error: readError } = await client
+    .from("LearnerProfile")
+    .select("id, displayName, notes, educatorId, createdAt, updatedAt")
+    .eq("id", normalizedProfileId)
+    .maybeSingle();
+
+  if (readError && !isOptionalSourceMissing(readError)) {
+    throw new HttpError(400, `Falha ao buscar alfabetizando mobile: ${readError.message}`);
+  }
+
+  if (!existingLearner) {
+    throw new HttpError(404, "Alfabetizando nao encontrado no schema mobile.");
+  }
+
+  if (email !== undefined) {
+    throw new HttpError(
+      400,
+      "Atualizacao de email nao suportada para alfabetizando no schema mobile sem perfil auth.",
+    );
+  }
+
+  const payload = {};
+
+  if (fullName !== undefined) {
+    const normalizedName = normalizeText(fullName);
+    if (!normalizedName) {
+      throw new HttpError(400, "Nome nao pode ficar vazio.");
+    }
+    payload.displayName = normalizedName;
+  }
+
+  if (metadata !== undefined) {
+    if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+      payload.notes = normalizeNullableText(metadata.notes);
+    } else {
+      throw new HttpError(400, "metadata deve ser um objeto JSON valido.");
+    }
+  }
+
+  if (Object.keys(payload).length === 0) {
+    throw new HttpError(400, "Nenhum campo valido para atualizar.");
+  }
+
+  const { data, error } = await client
+    .from("LearnerProfile")
+    .update(payload)
+    .eq("id", normalizedProfileId)
+    .select("id, displayName, notes, educatorId, createdAt, updatedAt")
+    .maybeSingle();
+
+  if (error && !isOptionalSourceMissing(error)) {
+    throw new HttpError(400, `Falha ao atualizar alfabetizando mobile: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new HttpError(404, "Alfabetizando nao encontrado no schema mobile.");
+  }
+
+  return mapMobileLearnerToProfile(data);
+}
+
+export async function deleteProfileRecord({ profileId, role }) {
+  const client = requireSupabase();
+  const normalizedProfileId = normalizeText(profileId);
+  const normalizedRole = normalizeText(role).toLowerCase();
+
+  if (!normalizedProfileId) {
+    throw new HttpError(400, "ID do perfil invalido.");
+  }
+
+  if (normalizedRole && normalizedRole !== "tutor" && normalizedRole !== "alfabetizando") {
+    throw new HttpError(400, "Role invalida. Use tutor ou alfabetizando.");
+  }
+
+  if (isUuid(normalizedProfileId)) {
+    const { data: existingProfile, error: readError } = await client
+      .from("profiles")
+      .select("id, role")
+      .eq("id", normalizedProfileId)
+      .maybeSingle();
+
+    if (readError) {
+      throw new HttpError(400, `Falha ao buscar perfil: ${readError.message}`);
+    }
+
+    if (!existingProfile) {
+      throw new HttpError(404, "Perfil nao encontrado.");
+    }
+
+    if (normalizedRole && existingProfile.role !== normalizedRole) {
+      throw new HttpError(
+        400,
+        `Perfil encontrado com role '${existingProfile.role}', diferente de '${normalizedRole}'.`,
+      );
+    }
+
+    const { error: deleteAuthError } = await client.auth.admin.deleteUser(normalizedProfileId);
+    if (deleteAuthError) {
+      const message = String(deleteAuthError.message ?? "").toLowerCase();
+      if (!message.includes("not found") && !message.includes("nao encontrado")) {
+        throw new HttpError(400, `Falha ao excluir usuario auth: ${deleteAuthError.message}`);
+      }
+
+      const { error: fallbackDeleteError } = await client
+        .from("profiles")
+        .delete()
+        .eq("id", normalizedProfileId);
+
+      if (fallbackDeleteError) {
+        throw new HttpError(400, `Falha ao excluir perfil: ${fallbackDeleteError.message}`);
+      }
+    }
+
+    if (existingProfile.role === "tutor") {
+      await runBestEffortMobileSync("delete tutor from mobile schema", async () => {
+        const mobileEducator = await resolveMobileEducatorByAnyId(normalizedProfileId);
+        if (!mobileEducator?.id) {
+          return;
+        }
+
+        const { error } = await client
+          .from("Educator")
+          .delete()
+          .eq("id", String(mobileEducator.id));
+
+        if (error && !isOptionalSourceMissing(error)) {
+          throw new HttpError(500, `Falha ao remover tutor no schema mobile: ${error.message}`);
+        }
+      });
+    }
+
+    if (existingProfile.role === "alfabetizando") {
+      await runBestEffortMobileSync("delete learner from mobile schema", async () => {
+        const { error } = await client
+          .from("LearnerProfile")
+          .delete()
+          .eq("id", normalizedProfileId);
+
+        if (error && !isOptionalSourceMissing(error)) {
+          throw new HttpError(500, `Falha ao remover alfabetizando no schema mobile: ${error.message}`);
+        }
+      });
+    }
+
+    return { id: normalizedProfileId, deleted: true };
+  }
+
+  if (!normalizedRole) {
+    throw new HttpError(
+      400,
+      "Para IDs nao UUID (schema mobile), informe a role (tutor ou alfabetizando).",
+    );
+  }
+
+  if (normalizedRole === "tutor") {
+    const existingEducator = await resolveMobileEducatorByAnyId(normalizedProfileId);
+    if (!existingEducator?.id) {
+      throw new HttpError(404, "Alfabetizador nao encontrado no schema mobile.");
+    }
+
+    const { error } = await client
+      .from("Educator")
+      .delete()
+      .eq("id", String(existingEducator.id));
+
+    if (error && !isOptionalSourceMissing(error)) {
+      throw new HttpError(400, `Falha ao excluir alfabetizador mobile: ${error.message}`);
+    }
+
+    return { id: String(existingEducator.id), deleted: true };
+  }
+
+  const { data: existingLearner, error: readError } = await client
+    .from("LearnerProfile")
+    .select("id")
+    .eq("id", normalizedProfileId)
+    .maybeSingle();
+
+  if (readError && !isOptionalSourceMissing(readError)) {
+    throw new HttpError(400, `Falha ao buscar alfabetizando mobile: ${readError.message}`);
+  }
+
+  if (!existingLearner) {
+    throw new HttpError(404, "Alfabetizando nao encontrado no schema mobile.");
+  }
+
+  const { error } = await client.from("LearnerProfile").delete().eq("id", normalizedProfileId);
+  if (error && !isOptionalSourceMissing(error)) {
+    throw new HttpError(400, `Falha ao excluir alfabetizando mobile: ${error.message}`);
+  }
+
+  return { id: normalizedProfileId, deleted: true };
+}
+
+export async function updateActivityProgressStatus({
+  progressId,
+  status,
+  attempts,
+  score,
+  completedAt,
+  metadataPatch,
+} = {}) {
+  const client = requireSupabase();
+  const normalizedProgressId = normalizeText(progressId);
+  if (!normalizedProgressId) {
+    throw new HttpError(400, "ID do progresso invalido.");
+  }
+
+  const normalizedStatus = normalizeText(status).toLowerCase();
+  if (normalizedStatus && !ACTIVITY_PROGRESS_STATUSES.has(normalizedStatus)) {
+    throw new HttpError(
+      400,
+      "Status invalido para progresso. Use: nao_iniciado, em_andamento, travado ou concluido.",
+    );
+  }
+
+  const { data: existing, error: readError } = await client
+    .from("activity_progress")
+    .select(
+      "id, student_id, activity_id, status, attempts, score, source_platform, last_interacted_at, completed_at, metadata, created_at, updated_at",
+    )
+    .eq("id", normalizedProgressId)
+    .maybeSingle();
+
+  if (readError) {
+    throw new HttpError(400, `Falha ao buscar progresso: ${readError.message}`);
+  }
+
+  if (!existing) {
+    throw new HttpError(404, "Registro de progresso nao encontrado.");
+  }
+
+  const payload = {
+    last_interacted_at: new Date().toISOString(),
+  };
+
+  if (normalizedStatus) {
+    payload.status = normalizedStatus;
+    if (normalizedStatus === "concluido" && completedAt === undefined) {
+      payload.completed_at = new Date().toISOString();
+    }
+    if (normalizedStatus !== "concluido" && completedAt === undefined) {
+      payload.completed_at = null;
+    }
+  }
+
+  if (attempts !== undefined) {
+    payload.attempts = Math.max(0, normalizeInteger(attempts, 0));
+  }
+
+  if (score !== undefined) {
+    const normalizedScore = Number(score);
+    if (!Number.isFinite(normalizedScore)) {
+      throw new HttpError(400, "Score invalido.");
+    }
+    payload.score = normalizedScore;
+  }
+
+  if (completedAt !== undefined) {
+    if (completedAt === null || completedAt === "") {
+      payload.completed_at = null;
+    } else {
+      const parsedCompletedAt = parseDate(completedAt);
+      if (!parsedCompletedAt) {
+        throw new HttpError(400, "completedAt invalido.");
+      }
+      payload.completed_at = parsedCompletedAt.toISOString();
+    }
+  }
+
+  if (metadataPatch !== undefined) {
+    if (!metadataPatch || typeof metadataPatch !== "object" || Array.isArray(metadataPatch)) {
+      throw new HttpError(400, "metadataPatch deve ser um objeto JSON valido.");
+    }
+    const currentMetadata =
+      existing.metadata && typeof existing.metadata === "object" && !Array.isArray(existing.metadata)
+        ? existing.metadata
+        : {};
+    payload.metadata = {
+      ...currentMetadata,
+      ...metadataPatch,
+    };
+  }
+
+  const { data, error } = await client
+    .from("activity_progress")
+    .update(payload)
+    .eq("id", normalizedProgressId)
+    .select(
+      "id, student_id, activity_id, status, attempts, score, source_platform, last_interacted_at, completed_at, metadata, created_at, updated_at",
+    )
+    .single();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao atualizar progresso: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("register activity progress update event", () =>
+    registerSyncEvent({
+      sourcePlatform: "web",
+      eventType: "activity.progress.updated",
+      entityType: "activity_progress",
+      entityId: data.id,
+      payload: {
+        studentId: data.student_id,
+        activityId: data.activity_id,
+        status: data.status,
+      },
+    }),
+  );
+
+  return data;
 }
 
 export async function createTutorStudentLink({
