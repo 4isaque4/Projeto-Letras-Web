@@ -47,6 +47,13 @@ export function toFriendlyErrorMessage(message: string) {
     return "Esse tema ja foi cadastrado. Use outro nome para o tema.";
   }
 
+  if (
+    normalized.includes("duplicate key value") &&
+    normalized.includes("learning_modules_unique_per_stage")
+  ) {
+    return "Ja existe um modulo nesta etapa. Use outro nome de modulo ou altere a etapa.";
+  }
+
   return message;
 }
 
@@ -62,6 +69,24 @@ export function inferAssetKindFromFile(file: File): AssetKind | null {
   if (extension === "mp3") return "mp3";
   if (extension === "png") return "png";
   if (extension === "jpg" || extension === "jpeg") return "jpg";
+  return null;
+}
+
+export function inferAssetKindFromPath(path: string): AssetKind | null {
+  const value = path.trim().toLowerCase();
+  if (!value) {
+    return null;
+  }
+
+  const cleanPath = value.split("?")[0]?.split("#")[0] ?? value;
+  if (cleanPath.endsWith(".mp4")) return "mp4";
+  if (cleanPath.endsWith(".mp3")) return "mp3";
+  if (cleanPath.endsWith(".png")) return "png";
+  if (cleanPath.endsWith(".jpg") || cleanPath.endsWith(".jpeg")) return "jpg";
+
+  if (value.includes("video")) return "mp4";
+  if (value.includes("audio")) return "mp3";
+  if (value.includes("image")) return "png";
   return null;
 }
 
