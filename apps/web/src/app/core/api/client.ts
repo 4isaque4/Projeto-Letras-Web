@@ -62,3 +62,9 @@ export async function apiPatch(path: string, body: unknown) {
     body: JSON.stringify(body),
   });
 }
+
+export async function apiDelete(path: string) {
+  return requestJson(path, {
+    method: "DELETE",
+  });
+}
