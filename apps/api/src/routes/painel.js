@@ -2,9 +2,13 @@ import { Router } from "express";
 import multer from "multer";
 import {
   createContentAsset,
+  deleteContentAsset,
   createLearningActivity,
   createLearningModule,
   createLearningTheme,
+  deleteLearningActivity,
+  deleteLearningModule,
+  deleteLearningTheme,
   createMobileScreenBlueprint,
   daysSince,
   formatDateTime,
@@ -13,14 +17,27 @@ import {
   getContentAssets,
   getLearningActivities,
   getLearningModules,
+  getPanelLearningActivities,
+  getPanelLearningModules,
+  getPanelLearningThemes,
   getMobileScreenBlueprints,
   getLearningThemes,
+  getPanelSystemSettings,
   getProfiles,
   getSyncEvents,
   getTutorStudentLinks,
+  importContentAssetsFromDirectory,
   importMobileBlueprintsFromManifest,
+  resetCmsContent,
+  updateActivityProgressStatus,
   updateMobileScreenBlueprint,
+  updatePanelSystemSettings,
+  updateLearningActivity,
+  updateLearningModule,
+  updateLearningTheme,
+  updateTutorStudentLink,
   toHttpError,
+  updateContentAsset,
   uploadContentAssetFile,
 } from "../services/letrasDataService.js";
 import { env } from "../config/env.js";
@@ -358,12 +375,14 @@ painelRouter.get("/dashboard/tutor", async (req, res) => {
   }
 });
 
-painelRouter.get("/conteudo", async (_req, res) => {
+painelRouter.get("/conteudo", async (req, res) => {
   try {
+    const scope = String(req.query?.scope || "all").trim().toLowerCase();
+    const cmsOnly = scope === "cms";
     const [themes, modules, activities, assets, blueprints] = await Promise.all([
-      getLearningThemes(),
-      getLearningModules(),
-      getLearningActivities(),
+      cmsOnly ? getPanelLearningThemes() : getLearningThemes(),
+      cmsOnly ? getPanelLearningModules() : getLearningModules(),
+      cmsOnly ? getPanelLearningActivities() : getLearningActivities(),
       getContentAssets(),
       getMobileScreenBlueprints(),
     ]);
@@ -405,6 +424,37 @@ painelRouter.post("/conteudo/temas", async (req, res) => {
   }
 });
 
+painelRouter.patch("/conteudo/temas/:id", async (req, res) => {
+  try {
+    const data = await updateLearningTheme({
+      themeId: req.params.id,
+      title: req.body?.title,
+      description: req.body?.description,
+      slug: req.body?.slug,
+      sortOrder: req.body?.sortOrder,
+      isActive: req.body?.isActive,
+    });
+
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.delete("/conteudo/temas/:id", async (req, res) => {
+  try {
+    const data = await deleteLearningTheme({
+      themeId: req.params.id,
+    });
+
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
 painelRouter.post("/conteudo/modulos", async (req, res) => {
   try {
     const data = await createLearningModule({
@@ -423,6 +473,38 @@ painelRouter.post("/conteudo/modulos", async (req, res) => {
   }
 });
 
+painelRouter.patch("/conteudo/modulos/:id", async (req, res) => {
+  try {
+    const data = await updateLearningModule({
+      moduleId: req.params.id,
+      themeId: req.body?.themeId,
+      title: req.body?.title,
+      description: req.body?.description,
+      stageNumber: req.body?.stageNumber,
+      sortOrder: req.body?.sortOrder,
+      isActive: req.body?.isActive,
+    });
+
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.delete("/conteudo/modulos/:id", async (req, res) => {
+  try {
+    const data = await deleteLearningModule({
+      moduleId: req.params.id,
+    });
+
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
 painelRouter.post("/conteudo/atividades", async (req, res) => {
   try {
     const data = await createLearningActivity({
@@ -435,6 +517,51 @@ painelRouter.post("/conteudo/atividades", async (req, res) => {
     });
 
     res.status(201).json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.patch("/conteudo/atividades/:id", async (req, res) => {
+  try {
+    const data = await updateLearningActivity({
+      activityId: req.params.id,
+      moduleId: req.body?.moduleId,
+      type: req.body?.type,
+      title: req.body?.title,
+      instructions: req.body?.instructions,
+      sortOrder: req.body?.sortOrder,
+      isPublished: req.body?.isPublished,
+    });
+
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.delete("/conteudo/atividades/:id", async (req, res) => {
+  try {
+    const data = await deleteLearningActivity({
+      activityId: req.params.id,
+    });
+
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.post("/conteudo/reset", async (req, res) => {
+  try {
+    const data = await resetCmsContent({
+      includeBlueprints: Boolean(req.body?.includeBlueprints),
+    });
+
+    res.json(data);
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });
@@ -483,6 +610,23 @@ painelRouter.post("/conteudo/assets/upload", parseMultipartFile, async (req, res
   }
 });
 
+painelRouter.post("/conteudo/assets/import-directory", async (req, res) => {
+  try {
+    const data = await importContentAssetsFromDirectory({
+      directoryPath: req.body?.directoryPath,
+      activityId: req.body?.activityId,
+      status: req.body?.status,
+      folder: req.body?.folder,
+      metadata: req.body?.metadata,
+    });
+
+    res.status(201).json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
 painelRouter.post("/conteudo/blueprints", async (req, res) => {
   try {
     const data = await createMobileScreenBlueprint({
@@ -495,6 +639,38 @@ painelRouter.post("/conteudo/blueprints", async (req, res) => {
     });
 
     res.status(201).json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.patch("/conteudo/assets/:id", async (req, res) => {
+  try {
+    const data = await updateContentAsset({
+      assetId: req.params.id,
+      activityId: req.body?.activityId,
+      kind: req.body?.kind,
+      storagePath: req.body?.storagePath,
+      mimeType: req.body?.mimeType,
+      status: req.body?.status,
+      metadata: req.body?.metadata,
+    });
+
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.delete("/conteudo/assets/:id", async (req, res) => {
+  try {
+    const data = await deleteContentAsset({
+      assetId: req.params.id,
+    });
+
+    res.json(data);
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });
@@ -551,11 +727,12 @@ painelRouter.get("/fila", async (_req, res) => {
       .filter((link) => link.status === "pendente")
       .map((link) => ({
         id: link.id,
+        queueType: "vinculo",
         tipo: "Vinculo pendente",
         aluno: studentById.get(link.student_id)?.full_name ?? "Sem nome",
         etapa: "Cadastro",
         atividade: "Confirmacao de vinculo",
-        status: "aberto",
+        status: link.status,
         tempo: formatRelativeTime(link.requested_at || link.created_at),
         prioridade: "alta",
       }));
@@ -567,11 +744,12 @@ painelRouter.get("/fila", async (_req, res) => {
         const module = activity ? moduleById.get(activity.module_id) : null;
         return {
           id: row.id,
+          queueType: "progresso",
           tipo: "Aluno travado",
           aluno: studentById.get(row.student_id)?.full_name ?? "Sem nome",
           etapa: toStageLabel(module?.stage_number ?? 1),
           atividade: activity?.title ?? "Atividade",
-          status: "aberto",
+          status: row.status,
           tempo: formatRelativeTime(row.last_interacted_at || row.updated_at || row.created_at),
           prioridade: "alta",
         };
@@ -580,6 +758,79 @@ painelRouter.get("/fila", async (_req, res) => {
     res.json({
       total: pendingLinks.length + lockedProgress.length,
       items: [...pendingLinks, ...lockedProgress].slice(0, 200),
+    });
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.patch("/fila/:id", async (req, res) => {
+  try {
+    const queueItemId = String(req.params.id ?? "").trim();
+    if (!queueItemId) {
+      res.status(400).json({ message: "ID do item da fila e obrigatorio." });
+      return;
+    }
+
+    const action = String(req.body?.action ?? "").trim().toLowerCase();
+    const reason = req.body?.reason;
+    const decidedBy = req.body?.decidedBy;
+
+    if (action === "confirmar" || action === "aprovar") {
+      const data = await updateTutorStudentLink(queueItemId, {
+        status: "confirmado",
+        reason,
+        decidedBy,
+      });
+      res.json({
+        id: queueItemId,
+        queueType: "vinculo",
+        action: "confirmar",
+        result: data,
+      });
+      return;
+    }
+
+    if (action === "negar" || action === "recusar") {
+      const data = await updateTutorStudentLink(queueItemId, {
+        status: "negado",
+        reason,
+        decidedBy,
+      });
+      res.json({
+        id: queueItemId,
+        queueType: "vinculo",
+        action: "negar",
+        result: data,
+      });
+      return;
+    }
+
+    if (action === "desbloquear" || action === "liberar") {
+      const data = await updateActivityProgressStatus({
+        progressId: queueItemId,
+        status: "em_andamento",
+        metadataPatch: {
+          queueResolution: {
+            action: "desbloquear",
+            reason: typeof reason === "string" ? reason : null,
+            resolvedBy: typeof decidedBy === "string" ? decidedBy : null,
+            resolvedAt: new Date().toISOString(),
+          },
+        },
+      });
+      res.json({
+        id: queueItemId,
+        queueType: "progresso",
+        action: "desbloquear",
+        result: data,
+      });
+      return;
+    }
+
+    res.status(400).json({
+      message: "Acao invalida. Use confirmar, negar ou desbloquear.",
     });
   } catch (error) {
     const httpError = toHttpError(error);
@@ -825,6 +1076,30 @@ painelRouter.get("/eventos", async (_req, res) => {
       total: events.length,
       items: events,
     });
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.get("/configuracoes/sistema", async (_req, res) => {
+  try {
+    const settings = await getPanelSystemSettings();
+    res.json(settings);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.patch("/configuracoes/sistema", async (req, res) => {
+  try {
+    const settings = await updatePanelSystemSettings({
+      errorBlockLimit: req.body?.errorBlockLimit,
+      inactivityDays: req.body?.inactivityDays,
+      updatedBy: req.body?.updatedBy,
+    });
+    res.json(settings);
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });
