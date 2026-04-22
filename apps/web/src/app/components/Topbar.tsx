@@ -24,6 +24,15 @@ export default function Topbar() {
     navigate("/login", { replace: true });
   };
 
+  const handleOpenNotifications = () => {
+    if (user?.role === "tutor") {
+      navigate("/tutor/fila");
+      return;
+    }
+
+    navigate("/admin/fila");
+  };
+
   return (
     <header className="h-16 border-b border-gray-300 bg-white px-6 flex items-center justify-between">
       <div className="flex items-center gap-4 flex-1 max-w-xl">
@@ -47,7 +56,7 @@ export default function Topbar() {
           <span className="text-xs font-medium text-gray-700">{realtime.onlineUsers.length} online</span>
         </div>
 
-        <button className="p-2 hover:bg-gray-100 border border-gray-300">
+        <button onClick={handleOpenNotifications} className="p-2 hover:bg-gray-100 border border-gray-300">
           <Bell className="w-5 h-5 text-gray-600" />
         </button>
 
