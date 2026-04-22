@@ -1,8 +1,18 @@
-﻿import { Folder, Layers, Plus, Upload, FileImage, FileAudio2, FileVideo, ChevronRight } from "lucide-react";
-import { Link, useNavigate } from "react-router";
+﻿import { FormEvent, useState } from "react";
+import {
+  Folder,
+  Layers,
+  Plus,
+  Upload,
+  FileImage,
+  FileAudio2,
+  FileVideo,
+  ChevronRight,
+} from "lucide-react";
+import { Link } from "react-router";
 import StateDisplay from "../../../components/StateDisplay";
 import { useConteudoData } from "./useConteudoData";
-import { assetStatusLabel } from "./cmsUtils";
+import { assetStatusLabel, formatBytes, inferAssetKindFromFile } from "./cmsUtils";
 
 function iconByKind(kind: string) {
   if (kind === "mp4") return <FileVideo className="w-4 h-4 text-slate-600" />;
@@ -11,8 +21,12 @@ function iconByKind(kind: string) {
 }
 
 export default function ConteudoDashboardPage() {
-  const navigate = useNavigate();
-  const { data, loading, error } = useConteudoData();
+  const { data, loading, error, busy, uploadAsset, cmsThemes } = useConteudoData();
+  const [uploadThemeId, setUploadThemeId] = useState("");
+  const [uploadStatus, setUploadStatus] = useState<"rascunho" | "publicado" | "arquivado">(
+    "publicado",
+  );
+  const [files, setFiles] = useState<File[]>([]);
 
   if (loading) {
     return <StateDisplay type="loading" />;
@@ -28,21 +42,41 @@ export default function ConteudoDashboardPage() {
 
   const recentAssets = data.assets.slice(0, 4);
 
+  const onQuickUpload = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const selectedTheme = cmsThemes.find((theme) => theme.id === uploadThemeId) ?? null;
+    if (files.length === 0 || !selectedTheme) {
+      return;
+    }
+
+    const themeSlug = selectedTheme.slug?.trim() || selectedTheme.id;
+    for (const file of files) {
+      await uploadAsset({
+        file,
+        kind: inferAssetKindFromFile(file) ?? "png",
+        status: uploadStatus,
+        folder: `acervo/${themeSlug}`,
+        metadata: {
+          source: "dashboard-theme-upload",
+          themeId: selectedTheme.id,
+          themeTitle: selectedTheme.title,
+          themeSlug,
+        },
+      });
+    }
+
+    setFiles([]);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-4xl font-semibold tracking-tight text-slate-900">Painel de conteudo</h1>
-          <p className="mt-2 text-sm text-slate-600">Crie e organize as aulas do aplicativo Letras Educador.</p>
+          <h1 className="text-4xl font-semibold tracking-tight text-slate-900">Aulas e Mídias do App</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            Monte as aulas que aparecem no aplicativo dos alfabetizandos e gerencie as mídias usadas nelas.
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={() => navigate("/admin/conteudo/nova-aula")}
-          className="inline-flex items-center gap-2 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-        >
-          <Plus className="h-4 w-4" />
-          Criar nova aula
-        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -99,6 +133,73 @@ export default function ConteudoDashboardPage() {
         </Link>
       </div>
 
+      <form onSubmit={onQuickUpload} className="space-y-3 border border-slate-300 bg-white p-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-lg font-semibold text-slate-900">Upload de arquivos</p>
+            <p className="text-sm text-slate-600">
+              Envie imagens, audios e videos com deteccao automatica de formato, sempre vinculando ao tema.
+            </p>
+          </div>
+          <button
+            type="submit"
+            disabled={busy === "asset-upload" || files.length === 0 || !uploadThemeId}
+            className="border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {busy === "asset-upload" ? "Enviando..." : `Enviar ${files.length || ""}`}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+          <select
+            value={uploadThemeId}
+            onChange={(event) => setUploadThemeId(event.target.value)}
+            className="border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="">Selecione o tema do upload</option>
+            {cmsThemes.map((theme) => (
+              <option key={`dashboard-upload-theme-${theme.id}`} value={theme.id}>
+                {theme.title}
+              </option>
+            ))}
+          </select>
+          <select
+            value={uploadStatus}
+            onChange={(event) =>
+              setUploadStatus(event.target.value as "rascunho" | "publicado" | "arquivado")
+            }
+            className="border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="publicado">Publicado</option>
+            <option value="rascunho">Rascunho</option>
+            <option value="arquivado">Arquivado</option>
+          </select>
+          <input
+            type="file"
+            accept="image/*,audio/*,video/*"
+            multiple
+            onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+            className="border border-slate-300 px-3 py-2 text-sm"
+          />
+        </div>
+
+        {!uploadThemeId ? (
+          <p className="text-xs text-amber-700">
+            Selecione um tema antes de enviar os arquivos.
+          </p>
+        ) : null}
+
+        {files.length > 0 ? (
+          <div className="max-h-28 space-y-1 overflow-auto border border-slate-200 bg-slate-50 p-2">
+            {files.map((file) => (
+              <p key={`dashboard-file-${file.name}-${file.size}`} className="text-xs text-slate-600">
+                {file.name} ({formatBytes(file.size)}) - {inferAssetKindFromFile(file) ?? "automatico"}
+              </p>
+            ))}
+          </div>
+        ) : null}
+      </form>
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <section className="xl:col-span-2 border border-slate-300 bg-white">
           <div className="border-b border-slate-300 px-4 py-3">
@@ -152,12 +253,14 @@ export default function ConteudoDashboardPage() {
       <section className="border border-slate-300 bg-white p-4">
         <div className="flex items-center gap-2">
           <Layers className="h-5 w-5 text-slate-700" />
-          <p className="font-semibold text-slate-900">Integracao web para mobile</p>
+          <p className="font-semibold text-slate-900">Tudo que é publicado aqui aparece no app</p>
         </div>
         <p className="mt-2 text-sm text-slate-600">
-          Tudo que for cadastrado aqui alimenta o fluxo de conteudo do mobile. Use o wizard para vincular telas base, orientacoes e midias na mesma aula.
+          Ao publicar uma aula, ela é sincronizada automaticamente com o aplicativo dos alfabetizandos. Use o wizard para vincular telas, orientações e mídias na mesma aula.
         </p>
       </section>
     </div>
   );
 }
+
+
