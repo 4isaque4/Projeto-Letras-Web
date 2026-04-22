@@ -11,5 +11,6 @@ Organizacao atual:
 
 Documentos funcionais chave:
 
+- `docs/product/glossario.md`: conceitos canônicos do produto (tema, módulo, aula, alfabetizando). **Ler antes de propor copy de UI.**
 - `docs/product/regras-negocio-mvp-alfabetizacao.md`: consolidado de RN001-RN123 com recorte de MVP e backlog.
 - `docs/meetings/ata-reuniao-alfabetizador-2026-04-06.md`: decisoes e encaminhamentos da reuniao de 06/04/2026.
