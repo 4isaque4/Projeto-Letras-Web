@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createAuthUserWithProfile,
   createTutorStudentLink,
+  deleteProfileRecord,
   daysSince,
   formatDateTime,
   formatRelativeTime,
@@ -11,6 +12,7 @@ import {
   getProfiles,
   getTutorStudentLinks,
   toHttpError,
+  updateProfileRecord,
   updateTutorStudentLink,
 } from "../services/letrasDataService.js";
 
@@ -18,6 +20,26 @@ export const cadastrosRouter = Router();
 
 function mapById(items) {
   return new Map(items.map((item) => [item.id, item]));
+}
+
+function extractProfileEmail(profile) {
+  if (!profile || typeof profile !== "object") {
+    return "";
+  }
+
+  const metadata = profile.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return "";
+  }
+
+  const email =
+    typeof metadata.email === "string"
+      ? metadata.email
+      : typeof metadata.email === "number"
+        ? String(metadata.email)
+        : "";
+
+  return email.trim().toLowerCase();
 }
 
 function computeStudentStatus(progressRows) {
@@ -39,6 +61,120 @@ function computeStageLabel(stageNumber) {
   }
 
   return `Etapa ${Math.floor(normalized)}`;
+}
+
+function normalizeSubmissionStatus(value, fallback = "pendente") {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+
+  if (normalized === "approved" || normalized === "aprovado" || normalized === "aprovada") {
+    return "aprovada";
+  }
+  if (normalized === "rejected" || normalized === "negado" || normalized === "negada") {
+    return "negada";
+  }
+  if (normalized === "sent" || normalized === "submitted" || normalized === "enviado") {
+    return "enviada";
+  }
+  return normalized;
+}
+
+function normalizeSubmissionType(rawItem) {
+  const typeCandidate = String(
+    rawItem?.tipo ?? rawItem?.type ?? rawItem?.kind ?? rawItem?.mimeType ?? rawItem?.mime_type ?? "",
+  )
+    .trim()
+    .toLowerCase();
+  const sourceUrl = String(rawItem?.url ?? rawItem?.sourceUrl ?? rawItem?.storagePath ?? "").toLowerCase();
+
+  if (
+    typeCandidate.includes("audio") ||
+    typeCandidate.includes("mp3") ||
+    sourceUrl.endsWith(".mp3") ||
+    sourceUrl.endsWith(".wav")
+  ) {
+    return "Audio";
+  }
+
+  if (
+    typeCandidate.includes("foto") ||
+    typeCandidate.includes("imagem") ||
+    typeCandidate.includes("image") ||
+    typeCandidate.includes("png") ||
+    typeCandidate.includes("jpg") ||
+    sourceUrl.endsWith(".png") ||
+    sourceUrl.endsWith(".jpg") ||
+    sourceUrl.endsWith(".jpeg")
+  ) {
+    return "Foto";
+  }
+
+  if (
+    typeCandidate.includes("video") ||
+    typeCandidate.includes("mp4") ||
+    sourceUrl.endsWith(".mp4") ||
+    sourceUrl.endsWith(".mov")
+  ) {
+    return "Video";
+  }
+
+  return "Arquivo";
+}
+
+function extractSubmissionsFromProgress(progressRows, activityById) {
+  const submissionItems = [];
+
+  for (const row of progressRows) {
+    const metadata = row.metadata;
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      continue;
+    }
+
+    const rawEntries = [];
+    if (Array.isArray(metadata.submissions)) {
+      rawEntries.push(...metadata.submissions);
+    }
+    if (metadata.submission && typeof metadata.submission === "object" && !Array.isArray(metadata.submission)) {
+      rawEntries.push(metadata.submission);
+    }
+    if (Array.isArray(metadata.assets)) {
+      rawEntries.push(...metadata.assets);
+    }
+    if (metadata.asset && typeof metadata.asset === "object" && !Array.isArray(metadata.asset)) {
+      rawEntries.push(metadata.asset);
+    }
+
+    if (rawEntries.length === 0) {
+      continue;
+    }
+
+    const fallbackStatus = row.status === "concluido" ? "aprovada" : "pendente";
+    const fallbackDate = row.last_interacted_at || row.updated_at || row.created_at;
+    const activityTitle = activityById.get(row.activity_id)?.title ?? "Atividade";
+
+    rawEntries.forEach((entry, index) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return;
+      }
+
+      const idCandidate = String(entry.id ?? "").trim();
+      const createdAtCandidate = entry.createdAt || entry.created_at || fallbackDate;
+      submissionItems.push({
+        id: idCandidate || `${row.id}-${index + 1}`,
+        tipo: normalizeSubmissionType(entry),
+        atividade: activityTitle,
+        data: formatDateTime(createdAtCandidate),
+        status: normalizeSubmissionStatus(entry.status, fallbackStatus),
+        createdAt: new Date(createdAtCandidate || fallbackDate || 0).getTime(),
+      });
+    });
+  }
+
+  return submissionItems
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map(({ createdAt, ...item }) => item);
 }
 
 cadastrosRouter.get("/alfabetizadores", async (_req, res) => {
@@ -74,7 +210,7 @@ cadastrosRouter.get("/alfabetizadores", async (_req, res) => {
       return {
         id: tutor.id,
         nome: tutor.full_name,
-        email: "",
+        email: extractProfileEmail(tutor),
         telefone: tutor.phone ?? "",
         cpf: tutor.cpf ?? "",
         alunos: uniqueStudents.length,
@@ -106,6 +242,81 @@ cadastrosRouter.post("/alfabetizadores", async (req, res) => {
     });
 
     res.status(201).json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+cadastrosRouter.get("/perfis/:id", async (req, res) => {
+  try {
+    const profileId = String(req.params.id ?? "").trim();
+    if (!profileId) {
+      res.status(400).json({ message: "ID invalido." });
+      return;
+    }
+
+    const profiles = await getProfiles({ ids: [profileId] });
+    const profile = profiles[0] ?? null;
+
+    if (!profile) {
+      res.status(404).json({ message: "Perfil nao encontrado." });
+      return;
+    }
+
+    res.json(profile);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+cadastrosRouter.patch("/perfis/:id", async (req, res) => {
+  try {
+    const data = await updateProfileRecord({
+      profileId: req.params.id,
+      role: req.body?.role,
+      fullName: req.body?.fullName ?? req.body?.nome,
+      email: req.body?.email,
+      phone: req.body?.phone,
+      cpf: req.body?.cpf,
+      metadata: req.body?.metadata,
+    });
+
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+cadastrosRouter.patch("/alfabetizadores/:id", async (req, res) => {
+  try {
+    const data = await updateProfileRecord({
+      profileId: req.params.id,
+      role: "tutor",
+      fullName: req.body?.fullName ?? req.body?.nome,
+      email: req.body?.email,
+      phone: req.body?.phone,
+      cpf: req.body?.cpf,
+      metadata: req.body?.metadata,
+    });
+
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+cadastrosRouter.delete("/alfabetizadores/:id", async (req, res) => {
+  try {
+    const data = await deleteProfileRecord({
+      profileId: req.params.id,
+      role: "tutor",
+    });
+
+    res.json(data);
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });
@@ -186,6 +397,7 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
       return {
         id: student.id,
         nome: student.full_name,
+        email: extractProfileEmail(student),
         grupo:
           typeof student.metadata?.group_name === "string" && student.metadata.group_name.length > 0
             ? student.metadata.group_name
@@ -288,6 +500,7 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
         obs: link.reason || "Atualizacao de vinculo",
       }))
       .sort((a, b) => b.data.localeCompare(a.data));
+    const submissoes = extractSubmissionsFromProgress(progress, activityById);
 
     const activeLink = links.find((item) => item.status === "confirmado");
     const tutor = activeLink ? tutorById.get(activeLink.tutor_id) : null;
@@ -309,6 +522,9 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
     res.json({
       id: student.id,
       nome: student.full_name,
+      email: extractProfileEmail(student),
+      telefone: student.phone ?? "",
+      cpf: student.cpf ?? "",
       tutor: tutor?.full_name ?? "Sem tutor",
       grupo:
         typeof student.metadata?.group_name === "string" && student.metadata.group_name.length > 0
@@ -318,7 +534,7 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
       status,
       progresso,
       tentativas,
-      submissoes: [],
+      submissoes,
       historico,
     });
   } catch (error) {
@@ -339,6 +555,39 @@ cadastrosRouter.post("/alfabetizandos", async (req, res) => {
     });
 
     res.status(201).json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+cadastrosRouter.patch("/alfabetizandos/:id", async (req, res) => {
+  try {
+    const data = await updateProfileRecord({
+      profileId: req.params.id,
+      role: "alfabetizando",
+      fullName: req.body?.fullName ?? req.body?.nome,
+      email: req.body?.email,
+      phone: req.body?.phone,
+      cpf: req.body?.cpf,
+      metadata: req.body?.metadata,
+    });
+
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+cadastrosRouter.delete("/alfabetizandos/:id", async (req, res) => {
+  try {
+    const data = await deleteProfileRecord({
+      profileId: req.params.id,
+      role: "alfabetizando",
+    });
+
+    res.json(data);
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });
