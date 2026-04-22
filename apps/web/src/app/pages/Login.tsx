@@ -7,12 +7,15 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [infoMessage, setInfoMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { status, isAuthenticated, user, warnings, signIn } = useAuth();
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const { status, isAuthenticated, user, warnings, signIn, requestPasswordReset } = useAuth();
 
   const handleLogin = (event: FormEvent) => {
     event.preventDefault();
     setErrorMessage("");
+    setInfoMessage("");
     setIsSubmitting(true);
 
     signIn(email.trim(), password)
@@ -23,6 +26,21 @@ export default function Login() {
       .finally(() => {
         setIsSubmitting(false);
       });
+  };
+
+  const handleForgotPassword = async () => {
+    try {
+      setErrorMessage("");
+      setInfoMessage("");
+      setIsResettingPassword(true);
+      await requestPasswordReset(email.trim());
+      setInfoMessage("Se o email existir, voce recebera instrucoes para redefinir a senha.");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Falha ao solicitar recuperacao de senha.";
+      setErrorMessage(message);
+    } finally {
+      setIsResettingPassword(false);
+    }
   };
 
   if (isAuthenticated && user) {
@@ -81,8 +99,13 @@ export default function Login() {
             </div>
 
             <div className="text-right">
-              <button type="button" className="text-sm text-gray-600 hover:underline">
-                Esqueci minha senha
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={isResettingPassword}
+                className="text-sm text-gray-600 hover:underline disabled:opacity-60"
+              >
+                {isResettingPassword ? "Enviando..." : "Esqueci minha senha"}
               </button>
             </div>
 
@@ -96,6 +119,7 @@ export default function Login() {
             </button>
 
             {errorMessage && <p className="text-xs text-red-700">{errorMessage}</p>}
+            {infoMessage && <p className="text-xs text-emerald-700">{infoMessage}</p>}
           </form>
         </div>
       </div>

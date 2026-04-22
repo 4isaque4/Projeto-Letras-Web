@@ -106,6 +106,22 @@ export async function signOut() {
   }
 }
 
+export async function sendPasswordResetEmail(email: string) {
+  if (!supabaseClient) {
+    throw new Error("Supabase nao configurado no ambiente.");
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    throw new Error("Informe um email valido para recuperar a senha.");
+  }
+
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(normalizedEmail);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export function subscribeAuthState(listener: (user: AuthUser | null) => void) {
   if (!supabaseClient) {
     return () => {};

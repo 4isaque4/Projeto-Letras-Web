@@ -3,6 +3,7 @@ import {
   getAuthProvider,
   getAuthWarnings,
   getCurrentAuthUser,
+  sendPasswordResetEmail,
   signInWithEmailPassword,
   signOut as performSignOut,
   subscribeAuthState,
@@ -19,6 +20,7 @@ interface AuthContextValue {
   warnings: string[];
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -80,6 +82,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         await performSignOut();
         setUser(null);
         setStatus("unauthenticated");
+      },
+      requestPasswordReset: async (email) => {
+        await sendPasswordResetEmail(email);
       },
     }),
     [provider, status, user, warnings],
