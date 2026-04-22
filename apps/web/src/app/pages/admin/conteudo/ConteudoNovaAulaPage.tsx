@@ -13,6 +13,7 @@ import { useNavigate } from "react-router";
 import StateDisplay from "../../../components/StateDisplay";
 import { apiGet } from "../../../core/api/client";
 import { useAuth } from "../../../core/auth/AuthProvider";
+import { env } from "../../../core/config/env";
 import { ActivityType, AssetKind, AssetStatus } from "./cmsTypes";
 import { formatBytes, inferAssetKindFromFile, inferAssetKindFromPath } from "./cmsUtils";
 import { useConteudoData } from "./useConteudoData";
@@ -32,6 +33,30 @@ const STEP_HELPERS: Record<number, string> = {
   3: "Envie imagens, áudios ou vídeos de apoio. Para exercícios RN121/RN123 você já pode ter informado URLs no passo anterior.",
   4: "Revise tudo e publique. Ao publicar, a aula já aparece no aplicativo dos alfabetizandos.",
 };
+
+const DRAFT_STORAGE_KEY = "conteudo-nova-aula-draft-v3";
+const STAGE_OPTIONS = [
+  { value: "1", label: "Etapa 1" },
+  { value: "2", label: "Etapa 2" },
+  { value: "3", label: "Etapa 3" },
+] as const;
+const SUPABASE_PUBLIC_BUCKET = "letras-assets";
+const NON_VISUAL_BLUEPRINT_EXTENSIONS = new Set([
+  "mp3",
+  "wav",
+  "ogg",
+  "m4a",
+  "aac",
+  "mp4",
+  "webm",
+  "mov",
+  "avi",
+  "mkv",
+  "json",
+  "txt",
+  "md",
+  "pdf",
+]);
 
 type ScreenTemplate = "default" | "exercise-match-letter" | "exercise-mark-images" | "locked";
 
@@ -231,6 +256,58 @@ function normalizeCompareText(value: string) {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function extractFileExtension(pathValue: string) {
+  const sanitized = String(pathValue ?? "").split("#")[0].split("?")[0];
+  const extension = sanitized.split(".").pop()?.trim().toLowerCase() ?? "";
+  return extension;
+}
+
+function isNonVisualBlueprintAsset(pathValue: string) {
+  const extension = extractFileExtension(pathValue);
+  if (!extension) {
+    return false;
+  }
+  return NON_VISUAL_BLUEPRINT_EXTENSIONS.has(extension);
+}
+
+function resolveBlueprintPreviewUrl(svgPath: string) {
+  const normalized = String(svgPath ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  if (/^(https?:)?\/\//i.test(normalized) || normalized.startsWith("data:")) {
+    return normalized;
+  }
+
+  const normalizedPath = normalized
+    .replace(/\\/g, "/")
+    .replace(/^\.\/+/, "")
+    .replace(/^\/+/, "");
+
+  const supabaseBaseUrl = String(env.supabaseUrl ?? "").trim().replace(/\/+$/, "");
+  const encodedPath = encodeURI(normalizedPath);
+
+  if (
+    supabaseBaseUrl &&
+    (normalizedPath.startsWith("storage/v1/object/public/") ||
+      normalizedPath.startsWith(`/${SUPABASE_PUBLIC_BUCKET}/`))
+  ) {
+    const trimmedStoragePath = normalizedPath.startsWith("/") ? normalizedPath.slice(1) : normalizedPath;
+    return `${supabaseBaseUrl}/${encodeURI(trimmedStoragePath)}`;
+  }
+
+  if (supabaseBaseUrl && normalizedPath.startsWith(`${SUPABASE_PUBLIC_BUCKET}/`)) {
+    return `${supabaseBaseUrl}/storage/v1/object/public/${encodedPath}`;
+  }
+
+  if (supabaseBaseUrl && /^(acervo|conteudo|blueprints)\//i.test(normalizedPath)) {
+    return `${supabaseBaseUrl}/storage/v1/object/public/${SUPABASE_PUBLIC_BUCKET}/${encodedPath}`;
+  }
+
+  return normalizedPath ? `/${encodeURI(normalizedPath)}` : "";
+}
+
 function normalizeMatchRows(rows: MatchLetterRow[], targetLetter: string): ExerciseRowPayload[] {
   const normalizedTarget = normalizeSingleLetter(targetLetter);
   return rows
@@ -293,6 +370,49 @@ interface BuildInstructionsInput {
   progressiveUnlock: boolean;
   matchRowsPayload: ExerciseRowPayload[];
   markRowsPayload: ExerciseRowPayload[];
+}
+
+type ThemeEntryMode = "existing" | "new";
+type AudioFieldTarget = "lock" | "exercise" | "reinforcement";
+
+interface WizardDraftPayload {
+  step: number;
+  themeEntryMode: ThemeEntryMode;
+  themeId: string;
+  newThemeName: string;
+  moduleTitle: string;
+  moduleDescription: string;
+  stageNumber: string;
+  lessonTitle: string;
+  previewName: string;
+  selectedLearnerId: string;
+  selectedBlueprintIds: string[];
+  orientationTutor: string;
+  orientationStudent: string;
+  activityType: ActivityType;
+  screenTemplate: ScreenTemplate;
+  lockReason: string;
+  lockMessage: string;
+  lockAudioUrl: string;
+  exerciseInstructionText: string;
+  exerciseInstructionAudioUrl: string;
+  reinforcementText: string;
+  reinforcementAudioUrl: string;
+  reinforcementAutoReturnMs: string;
+  reinforcementPreserveProgress: boolean;
+  targetLetter: string;
+  maxAttemptsBeforeLock: string;
+  expectedSelections: string;
+  progressiveUnlock: boolean;
+  matchRows: MatchLetterRow[];
+  markRows: MarkImageRow[];
+  matchRowsBulkInput: string;
+  markRowsBulkInput: string;
+  isPublished: boolean;
+  assetLink: string;
+  assetKind: AssetKind;
+  assetStatus: AssetStatus;
+  assetSearch: string;
 }
 
 function buildInstructionsPayload(input: BuildInstructionsInput) {
@@ -382,6 +502,7 @@ export default function ConteudoNovaAulaPage() {
   } = useConteudoData();
 
   const [step, setStep] = useState(0);
+  const [themeEntryMode, setThemeEntryMode] = useState<ThemeEntryMode>("existing");
   const [themeId, setThemeId] = useState("");
   const [newThemeName, setNewThemeName] = useState("");
   const [moduleTitle, setModuleTitle] = useState("");
@@ -427,6 +548,59 @@ export default function ConteudoNovaAulaPage() {
   const [localError, setLocalError] = useState("");
   const [wizardDone, setWizardDone] = useState(false);
   const [assetPreviewUrl, setAssetPreviewUrl] = useState("");
+  const [blueprintPreviewErrors, setBlueprintPreviewErrors] = useState<Record<string, true>>({});
+  const [pendingDraft, setPendingDraft] = useState<WizardDraftPayload | null>(null);
+  const [draftGateReleased, setDraftGateReleased] = useState(false);
+
+  const clearSavedDraft = () => {
+    try {
+      window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch {
+      // noop
+    }
+  };
+
+  const applyDraftPayload = (draft: WizardDraftPayload) => {
+    setStep(Math.max(0, Math.min(draft.step ?? 0, STEPS.length - 1)));
+    setThemeEntryMode(draft.themeEntryMode === "new" ? "new" : "existing");
+    setThemeId(draft.themeId || "");
+    setNewThemeName(draft.newThemeName || "");
+    setModuleTitle(draft.moduleTitle || "");
+    setModuleDescription(draft.moduleDescription || "");
+    setStageNumber(STAGE_OPTIONS.some((item) => item.value === draft.stageNumber) ? draft.stageNumber : "1");
+    setLessonTitle(draft.lessonTitle || "");
+    setPreviewName(draft.previewName || "Maria Silva");
+    setSelectedLearnerId(draft.selectedLearnerId || "");
+    setSelectedBlueprintIds(Array.isArray(draft.selectedBlueprintIds) ? draft.selectedBlueprintIds : []);
+    setOrientationTutor(draft.orientationTutor || "");
+    setOrientationStudent(draft.orientationStudent || "");
+    setActivityType(draft.activityType || "video");
+    setScreenTemplate(draft.screenTemplate || "default");
+    setLockReason(draft.lockReason || "pedido_ajuda");
+    setLockMessage(draft.lockMessage || "");
+    setLockAudioUrl(draft.lockAudioUrl || "");
+    setExerciseInstructionText(draft.exerciseInstructionText || "");
+    setExerciseInstructionAudioUrl(draft.exerciseInstructionAudioUrl || "");
+    setReinforcementText(draft.reinforcementText || "Vamos reforcar esse passo e tentar novamente.");
+    setReinforcementAudioUrl(draft.reinforcementAudioUrl || "");
+    setReinforcementAutoReturnMs(draft.reinforcementAutoReturnMs || "2500");
+    setReinforcementPreserveProgress(Boolean(draft.reinforcementPreserveProgress));
+    setTargetLetter(draft.targetLetter || "A");
+    setMaxAttemptsBeforeLock(draft.maxAttemptsBeforeLock || "3");
+    setExpectedSelections(draft.expectedSelections || "2");
+    setProgressiveUnlock(Boolean(draft.progressiveUnlock));
+    setMatchRows(Array.isArray(draft.matchRows) && draft.matchRows.length > 0 ? draft.matchRows : INITIAL_MATCH_ROWS);
+    setMarkRows(Array.isArray(draft.markRows) && draft.markRows.length > 0 ? draft.markRows : INITIAL_MARK_ROWS);
+    setMatchRowsBulkInput(draft.matchRowsBulkInput || "");
+    setMarkRowsBulkInput(draft.markRowsBulkInput || "");
+    setIsPublished(Boolean(draft.isPublished));
+    setAssetLink(draft.assetLink || "");
+    setAssetKind(draft.assetKind || "png");
+    setAssetStatus(draft.assetStatus || "publicado");
+    setAssetSearch(draft.assetSearch || "");
+    setAssetFile(null);
+    setLocalError("");
+  };
 
   useEffect(() => {
     if (screenTemplate === "exercise-match-letter" || screenTemplate === "exercise-mark-images") {
@@ -439,6 +613,39 @@ export default function ConteudoNovaAulaPage() {
       setActivityType("audio");
     }
   }, [screenTemplate, activityType]);
+
+  useEffect(() => {
+    if (cmsThemes.length === 0) {
+      setThemeEntryMode("new");
+      setThemeId("");
+      return;
+    }
+
+    if (themeEntryMode === "existing" && !themeId && newThemeName.trim()) {
+      setThemeEntryMode("new");
+    }
+  }, [cmsThemes.length, newThemeName, themeEntryMode, themeId]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (!raw) {
+        setDraftGateReleased(true);
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as { payload?: WizardDraftPayload };
+      if (!parsed?.payload) {
+        setDraftGateReleased(true);
+        return;
+      }
+
+      setPendingDraft(parsed.payload);
+      setDraftGateReleased(false);
+    } catch {
+      setDraftGateReleased(true);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -505,6 +712,28 @@ export default function ConteudoNovaAulaPage() {
     () => data.blueprints.filter((item) => selectedBlueprintIds.includes(item.id)),
     [data.blueprints, selectedBlueprintIds],
   );
+
+  const stageScopedBlueprints = useMemo(() => {
+    const stageTag = `etapa-${toPositiveInteger(stageNumber, 1)}`;
+    const matching = data.blueprints.filter((item) =>
+      String(item.stage_tag || "").toLowerCase().includes(stageTag),
+    );
+    return matching.length > 0 ? matching : data.blueprints;
+  }, [data.blueprints, stageNumber]);
+
+  const stageScopedBlueprintsVisible = useMemo(() => {
+    const visualItems = stageScopedBlueprints.filter(
+      (item) => !isNonVisualBlueprintAsset(item.svg_path),
+    );
+    return visualItems.length > 0 ? visualItems : stageScopedBlueprints;
+  }, [stageScopedBlueprints]);
+
+  const hiddenNonVisualBlueprintCount = useMemo(() => {
+    if (stageScopedBlueprintsVisible.length >= stageScopedBlueprints.length) {
+      return 0;
+    }
+    return stageScopedBlueprints.length - stageScopedBlueprintsVisible.length;
+  }, [stageScopedBlueprints.length, stageScopedBlueprintsVisible.length]);
 
   const selectedThemeForAssets = useMemo(() => {
     if (themeId) {
@@ -676,6 +905,169 @@ export default function ConteudoNovaAulaPage() {
     ],
   );
 
+  const draftPayload = useMemo<WizardDraftPayload>(
+    () => ({
+      step,
+      themeEntryMode,
+      themeId,
+      newThemeName,
+      moduleTitle,
+      moduleDescription,
+      stageNumber,
+      lessonTitle,
+      previewName,
+      selectedLearnerId,
+      selectedBlueprintIds,
+      orientationTutor,
+      orientationStudent,
+      activityType,
+      screenTemplate,
+      lockReason,
+      lockMessage,
+      lockAudioUrl,
+      exerciseInstructionText,
+      exerciseInstructionAudioUrl,
+      reinforcementText,
+      reinforcementAudioUrl,
+      reinforcementAutoReturnMs,
+      reinforcementPreserveProgress,
+      targetLetter,
+      maxAttemptsBeforeLock,
+      expectedSelections,
+      progressiveUnlock,
+      matchRows,
+      markRows,
+      matchRowsBulkInput,
+      markRowsBulkInput,
+      isPublished,
+      assetLink,
+      assetKind,
+      assetStatus,
+      assetSearch,
+    }),
+    [
+      activityType,
+      assetKind,
+      assetLink,
+      assetSearch,
+      assetStatus,
+      exerciseInstructionAudioUrl,
+      exerciseInstructionText,
+      expectedSelections,
+      isPublished,
+      lessonTitle,
+      lockAudioUrl,
+      lockMessage,
+      lockReason,
+      markRows,
+      markRowsBulkInput,
+      matchRows,
+      matchRowsBulkInput,
+      maxAttemptsBeforeLock,
+      moduleDescription,
+      moduleTitle,
+      newThemeName,
+      orientationStudent,
+      orientationTutor,
+      previewName,
+      progressiveUnlock,
+      reinforcementAudioUrl,
+      reinforcementAutoReturnMs,
+      reinforcementPreserveProgress,
+      reinforcementText,
+      screenTemplate,
+      selectedBlueprintIds,
+      selectedLearnerId,
+      stageNumber,
+      step,
+      targetLetter,
+      themeEntryMode,
+      themeId,
+    ],
+  );
+
+  const hasWizardProgress = useMemo(() => {
+    return (
+      step > 0 ||
+      Boolean(themeId) ||
+      Boolean(newThemeName.trim()) ||
+      Boolean(moduleTitle.trim()) ||
+      Boolean(moduleDescription.trim()) ||
+      Boolean(lessonTitle.trim()) ||
+      Boolean(selectedBlueprintIds.length) ||
+      Boolean(orientationTutor.trim()) ||
+      Boolean(orientationStudent.trim()) ||
+      Boolean(lockMessage.trim()) ||
+      Boolean(lockAudioUrl.trim()) ||
+      Boolean(exerciseInstructionText.trim()) ||
+      Boolean(exerciseInstructionAudioUrl.trim()) ||
+      Boolean(reinforcementAudioUrl.trim()) ||
+      Boolean(assetLink.trim()) ||
+      Boolean(assetFile) ||
+      screenTemplate !== "default" ||
+      activityType !== "video"
+    );
+  }, [
+    activityType,
+    assetFile,
+    assetLink,
+    exerciseInstructionAudioUrl,
+    exerciseInstructionText,
+    lessonTitle,
+    lockAudioUrl,
+    lockMessage,
+    moduleDescription,
+    moduleTitle,
+    newThemeName,
+    orientationStudent,
+    orientationTutor,
+    reinforcementAudioUrl,
+    screenTemplate,
+    selectedBlueprintIds.length,
+    step,
+    themeId,
+  ]);
+
+  useEffect(() => {
+    if (!draftGateReleased || wizardDone) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          DRAFT_STORAGE_KEY,
+          JSON.stringify({
+            savedAt: new Date().toISOString(),
+            payload: draftPayload,
+          }),
+        );
+      } catch {
+        // noop
+      }
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [draftGateReleased, draftPayload, wizardDone]);
+
+  useEffect(() => {
+    if (!hasWizardProgress || wizardDone) {
+      return;
+    }
+
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [hasWizardProgress, wizardDone]);
+
   useEffect(() => {
     if (!assetFile) {
       setAssetPreviewUrl("");
@@ -697,9 +1089,10 @@ export default function ConteudoNovaAulaPage() {
     return <StateDisplay type="error" message={error} />;
   }
 
-  const selectedThemeTitle = themeId
-    ? cmsThemes.find((item) => item.id === themeId)?.title || ""
-    : newThemeName.trim();
+  const selectedThemeTitle =
+    themeEntryMode === "existing"
+      ? cmsThemes.find((item) => item.id === themeId)?.title || ""
+      : newThemeName.trim();
   const previewMediaUrl = assetFile ? assetPreviewUrl : assetLink.trim();
   const previewMediaKind = assetFile
     ? inferAssetKindFromFile(assetFile) ?? assetKind
@@ -715,18 +1108,26 @@ export default function ConteudoNovaAulaPage() {
         themeSlug: selectedThemeSlug,
       }
     : {};
+  const selectedBlueprintPreview = selectedBlueprints[0] ?? null;
+  const selectedBlueprintPreviewUrl = selectedBlueprintPreview
+    ? resolveBlueprintPreviewUrl(selectedBlueprintPreview.svg_path)
+    : "";
 
   const toggleBlueprint = (blueprintId: string) => {
     setSelectedBlueprintIds((previous) => {
       if (previous.includes(blueprintId)) {
         return previous.filter((item) => item !== blueprintId);
       }
+      const selectedBlueprint = data.blueprints.find((item) => item.id === blueprintId);
+      if (!lessonTitle.trim() && selectedBlueprint?.title) {
+        setLessonTitle(selectedBlueprint.title);
+      }
       return [...previous, blueprintId];
     });
   };
 
   const resolveTheme = async () => {
-    if (themeId) {
+    if (themeEntryMode === "existing" && themeId) {
       return cmsThemes.find((item) => item.id === themeId) ?? null;
     }
 
@@ -794,8 +1195,13 @@ export default function ConteudoNovaAulaPage() {
     setLocalError("");
 
     if (step === 0) {
-      if (!themeId && !newThemeName.trim()) {
-        setLocalError("Selecione um tema existente ou crie um novo tema.");
+      if (themeEntryMode === "existing") {
+        if (!themeId) {
+          setLocalError("Selecione um tema existente para continuar.");
+          return false;
+        }
+      } else if (!newThemeName.trim()) {
+        setLocalError("Informe o nome do novo tema.");
         return false;
       }
       if (!moduleTitle.trim()) {
@@ -831,6 +1237,126 @@ export default function ConteudoNovaAulaPage() {
     setLocalError("");
     setStep((previous) => Math.max(previous - 1, 0));
   };
+
+  const restorePendingDraft = () => {
+    if (!pendingDraft) {
+      setDraftGateReleased(true);
+      return;
+    }
+    applyDraftPayload(pendingDraft);
+    setPendingDraft(null);
+    setDraftGateReleased(true);
+    setLocalError("");
+  };
+
+  const discardPendingDraft = () => {
+    clearSavedDraft();
+    setPendingDraft(null);
+    setDraftGateReleased(true);
+  };
+
+  const handleCancelWizard = () => {
+    if (hasWizardProgress && !wizardDone) {
+      const confirmed = window.confirm(
+        "Voce tem alteracoes em andamento. Deseja realmente sair da criacao da aula?",
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+    navigate("/admin/conteudo");
+  };
+
+  const markBlueprintPreviewError = (blueprintId: string) => {
+    setBlueprintPreviewErrors((previous) => {
+      if (previous[blueprintId]) {
+        return previous;
+      }
+      return { ...previous, [blueprintId]: true };
+    });
+  };
+
+  const applyAudioValueToField = (target: AudioFieldTarget, value: string) => {
+    const nextValue = value.trim();
+    if (target === "lock") {
+      setLockAudioUrl(nextValue);
+      return;
+    }
+    if (target === "exercise") {
+      setExerciseInstructionAudioUrl(nextValue);
+      return;
+    }
+    setReinforcementAudioUrl(nextValue);
+  };
+
+  const onUploadAudioField = async (target: AudioFieldTarget, file: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    const uploaded = await uploadAsset({
+      file,
+      kind: inferAssetKindFromFile(file) ?? "mp3",
+      status: assetStatus,
+      title: file.name.replace(/\.[^/.]+$/, ""),
+      folder: selectedThemeFolder,
+      metadata: {
+        source: "wizard-audio-field-upload",
+        targetField: target,
+        screenTemplate,
+        ...selectedThemeMetadata,
+      },
+    });
+
+    if (uploaded?.sourceUrl) {
+      applyAudioValueToField(target, uploaded.sourceUrl);
+      setLocalError("");
+    }
+  };
+
+  const renderAudioFieldInput = (
+    label: string,
+    target: AudioFieldTarget,
+    value: string,
+    placeholder: string,
+  ) => (
+    <div className="space-y-2">
+      <label className="block text-xs font-semibold uppercase text-slate-600">{label}</label>
+      <input
+        value={value}
+        onChange={(event) => applyAudioValueToField(target, event.target.value)}
+        placeholder={placeholder}
+        className="w-full border border-slate-300 bg-white px-3 py-2 text-sm"
+      />
+      <div className="grid grid-cols-[1fr_auto] gap-2">
+        <select
+          value=""
+          onChange={(event) => {
+            if (event.target.value) {
+              applyAudioValueToField(target, event.target.value);
+            }
+          }}
+          className="border border-slate-300 bg-white px-2 py-2 text-xs"
+        >
+          <option value="">Usar audio da biblioteca</option>
+          {audioLibraryAssets.map((asset) => (
+            <option key={`${target}-audio-field-${asset.id}`} value={asset.storage_path}>
+              {asset.storage_path.split("/").pop() || asset.storage_path}
+            </option>
+          ))}
+        </select>
+        <label className="cursor-pointer border border-slate-300 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700">
+          Upload
+          <input
+            type="file"
+            accept="audio/*"
+            className="sr-only"
+            onChange={(event) => void onUploadAudioField(target, event.target.files?.[0] ?? null)}
+          />
+        </label>
+      </div>
+    </div>
+  );
 
   const updateMatchRow = (rowId: string, field: keyof MatchLetterRow, value: string) => {
     setMatchRows((previous) =>
@@ -1068,6 +1594,7 @@ export default function ConteudoNovaAulaPage() {
         });
       }
 
+      clearSavedDraft();
       setWizardDone(true);
     } finally {
       setSubmitting(false);
@@ -1094,12 +1621,12 @@ export default function ConteudoNovaAulaPage() {
             placeholder="Mensagem para o alfabetizando quando a tela travar"
             className="w-full border border-red-200 bg-white px-3 py-2 text-sm"
           />
-          <input
-            value={lockAudioUrl}
-            onChange={(event) => setLockAudioUrl(event.target.value)}
-            placeholder="URL do audio de bloqueio (RN120, opcional)"
-            className="w-full border border-red-200 bg-white px-3 py-2 text-sm"
-          />
+          {renderAudioFieldInput(
+            "Audio de bloqueio (opcional)",
+            "lock",
+            lockAudioUrl,
+            "URL do audio de bloqueio (RN120, opcional)",
+          )}
           <p className="text-xs text-red-700">
             O mobile mostrara a tela travada e impedira o avancar ate liberacao do alfabetizador.
           </p>
@@ -1147,12 +1674,12 @@ export default function ConteudoNovaAulaPage() {
               placeholder="Instrucao do audio (ex.: Marque a caixa da letra A)"
               className="w-full border border-slate-300 px-3 py-2 text-sm"
             />
-            <input
-              value={exerciseInstructionAudioUrl}
-              onChange={(event) => setExerciseInstructionAudioUrl(event.target.value)}
-              placeholder="URL do audio instrucional (opcional)"
-              className="w-full border border-slate-300 px-3 py-2 text-sm"
-            />
+            {renderAudioFieldInput(
+              "Audio instrucional (opcional)",
+              "exercise",
+              exerciseInstructionAudioUrl,
+              "URL do audio instrucional (opcional)",
+            )}
           </div>
 
           <div className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
@@ -1164,12 +1691,12 @@ export default function ConteudoNovaAulaPage() {
                 placeholder="Texto da tela de reforco em caso de erro"
                 className="w-full border border-slate-300 bg-white px-3 py-2 text-sm"
               />
-              <input
-                value={reinforcementAudioUrl}
-                onChange={(event) => setReinforcementAudioUrl(event.target.value)}
-                placeholder="URL de audio da tela de reforco (opcional)"
-                className="w-full border border-slate-300 bg-white px-3 py-2 text-sm"
-              />
+              {renderAudioFieldInput(
+                "Audio de reforco (opcional)",
+                "reinforcement",
+                reinforcementAudioUrl,
+                "URL de audio da tela de reforco (opcional)",
+              )}
             </div>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               <input
@@ -1191,30 +1718,34 @@ export default function ConteudoNovaAulaPage() {
             </div>
           </div>
 
-          <div className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-semibold uppercase text-slate-700">
-              Importar itens em lote (formato:{" "}
-              <code>palavra|opcoes|correta|imageUrl|audioPalavra|audioSoletracao</code>)
-            </p>
-            <textarea
-              rows={4}
-              value={matchRowsBulkInput}
-              onChange={(event) => setMatchRowsBulkInput(event.target.value)}
-              placeholder={
-                "Anzol|A,N,Z,O,L|A|https://.../anzol.png|https://.../anzol-palavra.mp3|https://.../anzol-soletrar.mp3\nSal|S,A,L|A|https://.../sal.png|https://.../sal-palavra.mp3|"
-              }
-              className="w-full border border-slate-300 bg-white px-3 py-2 text-xs"
-            />
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={applyMatchRowsBulk}
-                className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-              >
-                Aplicar importacao
-              </button>
+          <details className="rounded border border-slate-200 bg-slate-50 p-3">
+            <summary className="cursor-pointer text-xs font-semibold uppercase text-slate-700">
+              Importar itens em lote (opcional)
+            </summary>
+            <div className="mt-2 space-y-2">
+              <p className="text-[11px] text-slate-600">
+                Formato: <code>palavra|opcoes|correta|imageUrl|audioPalavra|audioSoletracao</code>
+              </p>
+              <textarea
+                rows={4}
+                value={matchRowsBulkInput}
+                onChange={(event) => setMatchRowsBulkInput(event.target.value)}
+                placeholder={
+                  "Anzol|A,N,Z,O,L|A|https://.../anzol.png|https://.../anzol-palavra.mp3|https://.../anzol-soletrar.mp3\nSal|S,A,L|A|https://.../sal.png|https://.../sal-palavra.mp3|"
+                }
+                className="w-full border border-slate-300 bg-white px-3 py-2 text-xs"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={applyMatchRowsBulk}
+                  className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Aplicar importacao
+                </button>
+              </div>
             </div>
-          </div>
+          </details>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -1493,35 +2024,40 @@ export default function ConteudoNovaAulaPage() {
               placeholder="Instrucao do audio (ex.: Marque as imagens que comecam com a letra A)"
               className="w-full border border-slate-300 px-3 py-2 text-sm"
             />
-            <input
-              value={exerciseInstructionAudioUrl}
-              onChange={(event) => setExerciseInstructionAudioUrl(event.target.value)}
-              placeholder="URL do audio instrucional (opcional)"
-              className="w-full border border-slate-300 px-3 py-2 text-sm"
-            />
+            {renderAudioFieldInput(
+              "Audio instrucional (opcional)",
+              "exercise",
+              exerciseInstructionAudioUrl,
+              "URL do audio instrucional (opcional)",
+            )}
           </div>
 
-          <div className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-semibold uppercase text-slate-700">
-              Importar caixas em lote (formato: <code>rotulo|correta(1/0)|imageUrl|audioUrl</code>)
-            </p>
-            <textarea
-              rows={4}
-              value={markRowsBulkInput}
-              onChange={(event) => setMarkRowsBulkInput(event.target.value)}
-              placeholder={"Abelha|1|https://.../abelha.png|\nGirafa|0|https://.../girafa.png|"}
-              className="w-full border border-slate-300 bg-white px-3 py-2 text-xs"
-            />
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={applyMarkRowsBulk}
-                className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-              >
-                Aplicar importacao
-              </button>
+          <details className="rounded border border-slate-200 bg-slate-50 p-3">
+            <summary className="cursor-pointer text-xs font-semibold uppercase text-slate-700">
+              Importar caixas em lote (opcional)
+            </summary>
+            <div className="mt-2 space-y-2">
+              <p className="text-[11px] text-slate-600">
+                Formato: <code>rotulo|correta(1/0)|imageUrl|audioUrl</code>
+              </p>
+              <textarea
+                rows={4}
+                value={markRowsBulkInput}
+                onChange={(event) => setMarkRowsBulkInput(event.target.value)}
+                placeholder={"Abelha|1|https://.../abelha.png|\nGirafa|0|https://.../girafa.png|"}
+                className="w-full border border-slate-300 bg-white px-3 py-2 text-xs"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={applyMarkRowsBulk}
+                  className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Aplicar importacao
+                </button>
+              </div>
             </div>
-          </div>
+          </details>
 
           <div className="space-y-3">
             {markRows.map((row, index) => (
@@ -1662,46 +2198,71 @@ export default function ConteudoNovaAulaPage() {
               </label>
 
               {hasThemes ? (
-                <>
-                  <select
-                    value={themeId}
-                    onChange={(event) => {
-                      setThemeId(event.target.value);
-                      if (event.target.value) setNewThemeName("");
-                    }}
-                    className="w-full border border-slate-300 px-3 py-2 text-sm"
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setThemeEntryMode("existing")}
+                    className={`border px-3 py-2 text-xs font-semibold ${
+                      themeEntryMode === "existing"
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-300 bg-white text-slate-700"
+                    }`}
                   >
-                    <option value="">— Escolher tema existente —</option>
-                    {cmsThemes.map((theme) => (
-                      <option key={theme.id} value={theme.id}>
-                        {theme.title}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <span className="h-px flex-1 bg-slate-200" />
-                    <span>ou</span>
-                    <span className="h-px flex-1 bg-slate-200" />
-                  </div>
-                </>
+                    Tema existente
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setThemeEntryMode("new");
+                      setThemeId("");
+                    }}
+                    className={`border px-3 py-2 text-xs font-semibold ${
+                      themeEntryMode === "new"
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-300 bg-white text-slate-700"
+                    }`}
+                  >
+                    Novo tema
+                  </button>
+                </div>
               ) : (
                 <p className="border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  Ainda não existe nenhum tema. Crie agora digitando um nome abaixo — o tema será salvo quando você avançar.
+                  Ainda nao existe nenhum tema. Cadastre o primeiro tema abaixo.
                 </p>
               )}
 
-              <label className="block text-xs font-semibold uppercase text-slate-600">
-                Criar novo tema
-              </label>
-              <input
-                value={newThemeName}
-                onChange={(event) => {
-                  setNewThemeName(event.target.value);
-                  if (event.target.value) setThemeId("");
-                }}
-                placeholder="Ex.: Animais, Comida, Profissões, Zona rural"
-                className="w-full border border-slate-300 px-3 py-2 text-sm"
-              />
+              {themeEntryMode === "existing" && hasThemes ? (
+                <select
+                  value={themeId}
+                  onChange={(event) => {
+                    setThemeId(event.target.value);
+                    if (event.target.value) {
+                      setNewThemeName("");
+                    }
+                  }}
+                  className="w-full border border-slate-300 px-3 py-2 text-sm"
+                >
+                  <option value="">Escolher tema existente</option>
+                  {cmsThemes.map((theme) => (
+                    <option key={theme.id} value={theme.id}>
+                      {theme.title}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={newThemeName}
+                  onChange={(event) => {
+                    setNewThemeName(event.target.value);
+                    if (event.target.value) {
+                      setThemeId("");
+                      setThemeEntryMode("new");
+                    }
+                  }}
+                  placeholder="Ex.: Animais, Comida, Profissoes, Zona rural"
+                  className="w-full border border-slate-300 px-3 py-2 text-sm"
+                />
+              )}
               <p className="text-xs text-slate-500">
                 Dica: o tema é o <strong>universo de interesse do alfabetizando</strong> — use algo que ele goste (animais, comida, profissões). A etapa didática vai no nome do módulo ao lado, não aqui.
               </p>
@@ -1722,13 +2283,17 @@ export default function ConteudoNovaAulaPage() {
                 className="w-full border border-slate-300 px-3 py-2 text-sm"
               />
               <label className="block text-sm font-semibold text-slate-700">Etapa</label>
-              <input
-                type="number"
+              <select
                 value={stageNumber}
-                min={1}
                 onChange={(event) => setStageNumber(event.target.value)}
                 className="w-full border border-slate-300 px-3 py-2 text-sm"
-              />
+              >
+                {STAGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -1836,12 +2401,36 @@ export default function ConteudoNovaAulaPage() {
             </div>
           </div>
 
-          {data.blueprints.length === 0 ? (
+          <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            Exibindo telas da {STAGE_OPTIONS.find((item) => item.value === stageNumber)?.label || "Etapa"} quando disponivel.
+          </div>
+
+          {selectedBlueprintIds.length > 0 ? (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedBlueprintIds([])}
+                className="border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+              >
+                Limpar selecao de telas
+              </button>
+            </div>
+          ) : null}
+
+          {hiddenNonVisualBlueprintCount > 0 ? (
+            <p className="text-xs text-slate-500">
+              {hiddenNonVisualBlueprintCount} arquivo(s) de audio/video foram ocultados desta selecao para ficar mais clara.
+            </p>
+          ) : null}
+
+          {stageScopedBlueprintsVisible.length === 0 ? (
             <StateDisplay type="empty" message="Nenhuma tela base importada. Use 'Importar telas' antes." />
           ) : (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {data.blueprints.map((blueprint) => {
+              {stageScopedBlueprintsVisible.map((blueprint) => {
                 const selected = selectedBlueprintIds.includes(blueprint.id);
+                const previewUrl = resolveBlueprintPreviewUrl(blueprint.svg_path);
+                const previewUnavailable = !previewUrl || Boolean(blueprintPreviewErrors[blueprint.id]);
                 return (
                   <button
                     key={blueprint.id}
@@ -1853,6 +2442,21 @@ export default function ConteudoNovaAulaPage() {
                         : "border-slate-300 bg-white hover:bg-slate-50"
                     }`}
                   >
+                    <div className="mb-2 rounded border border-slate-200 bg-white p-1">
+                      {previewUnavailable ? (
+                        <div className="flex h-24 items-center justify-center text-[11px] text-slate-500">
+                          Sem preview visual
+                        </div>
+                      ) : (
+                        <img
+                          src={previewUrl}
+                          alt={blueprint.title}
+                          className="h-24 w-full rounded object-contain"
+                          loading="lazy"
+                          onError={() => markBlueprintPreviewError(blueprint.id)}
+                        />
+                      )}
+                    </div>
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <p className="font-semibold text-slate-900">{blueprint.title}</p>
@@ -1866,6 +2470,28 @@ export default function ConteudoNovaAulaPage() {
               })}
             </div>
           )}
+
+          <div className="rounded border border-slate-200 bg-white p-3">
+            <p className="text-xs font-semibold uppercase text-slate-700">Preview da tela selecionada</p>
+            {selectedBlueprintPreview && selectedBlueprintPreviewUrl && !blueprintPreviewErrors[selectedBlueprintPreview.id] ? (
+              <img
+                src={selectedBlueprintPreviewUrl}
+                alt={selectedBlueprintPreview.title}
+                className="mt-2 h-52 w-full rounded border border-slate-200 bg-slate-50 object-contain"
+                onError={() => markBlueprintPreviewError(selectedBlueprintPreview.id)}
+              />
+            ) : (
+              <div className="mt-2 flex h-52 items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-500">
+                Selecione uma tela para ver o preview ampliado.
+              </div>
+            )}
+            {selectedBlueprintPreview ? (
+              <div className="mt-2 text-xs text-slate-600">
+                <p className="font-semibold text-slate-900">{selectedBlueprintPreview.title}</p>
+                <p>{selectedBlueprintPreview.stage_tag || "Sem etapa"}</p>
+              </div>
+            ) : null}
+          </div>
         </div>
       );
     }
@@ -2298,7 +2924,7 @@ export default function ConteudoNovaAulaPage() {
       <div className="flex items-start justify-between">
         <button
           type="button"
-          onClick={() => navigate("/admin/conteudo")}
+          onClick={handleCancelWizard}
           className="text-sm text-slate-700 hover:underline"
         >
           Cancelar
@@ -2357,6 +2983,29 @@ export default function ConteudoNovaAulaPage() {
               }`}
             >
               {feedback.text}
+            </div>
+          ) : null}
+
+          {pendingDraft && !draftGateReleased ? (
+            <div className="space-y-2 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <p className="font-semibold">Rascunho encontrado</p>
+              <p>Existe um preenchimento anterior salvo neste navegador. Voce quer restaurar?</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={restorePendingDraft}
+                  className="border border-amber-500 bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white"
+                >
+                  Restaurar rascunho
+                </button>
+                <button
+                  type="button"
+                  onClick={discardPendingDraft}
+                  className="border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700"
+                >
+                  Descartar rascunho
+                </button>
+              </div>
             </div>
           ) : null}
 
@@ -2494,13 +3143,24 @@ export default function ConteudoNovaAulaPage() {
 
                   {selectedBlueprints.length > 0 ? (
                     <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                      <p className="text-[11px] font-semibold text-slate-700">Telas vinculadas</p>
-                      <p className="mt-1 text-[11px] text-slate-600">
-                        {selectedBlueprints
-                          .slice(0, 2)
-                          .map((item) => item.title)
-                          .join(" - ")}
-                        {selectedBlueprints.length > 2 ? ` +${selectedBlueprints.length - 2}` : ""}
+                      <p className="text-[11px] font-semibold text-slate-700">Tela base selecionada</p>
+                      {selectedBlueprintPreview && selectedBlueprintPreviewUrl && !blueprintPreviewErrors[selectedBlueprintPreview.id] ? (
+                        <img
+                          src={selectedBlueprintPreviewUrl}
+                          alt={selectedBlueprintPreview.title}
+                          className="mt-1 h-24 w-full rounded border border-slate-200 bg-white object-contain"
+                          onError={() => markBlueprintPreviewError(selectedBlueprintPreview.id)}
+                        />
+                      ) : (
+                        <p className="mt-1 text-[11px] text-slate-600">
+                          Preview nao disponivel para a tela selecionada.
+                        </p>
+                      )}
+                      <p className="mt-1 text-[11px] text-slate-700">
+                        {selectedBlueprintPreview?.title || selectedBlueprints[0]?.title || "Tela vinculada"}
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        {selectedBlueprints.length} tela(s) vinculada(s)
                       </p>
                     </div>
                   ) : null}
@@ -2513,3 +3173,5 @@ export default function ConteudoNovaAulaPage() {
     </form>
   );
 }
+
+
