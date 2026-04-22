@@ -31,7 +31,7 @@ export interface Activity {
 
 export interface Asset {
   id: string;
-  activity_id: string;
+  activity_id?: string | null;
   kind: AssetKind;
   status: AssetStatus;
   storage_path: string;

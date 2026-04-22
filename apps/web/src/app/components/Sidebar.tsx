@@ -24,7 +24,7 @@ export default function Sidebar({ userRole = 'admin' }: SidebarProps) {
     { icon: Link2, label: "Vínculos e Convites", path: "/admin/vinculos" },
     { icon: UsersRound, label: "Grupos", path: "/admin/grupos" },
     { icon: Inbox, label: "Fila de Atendimento", path: "/admin/fila" },
-    { icon: FileText, label: "Conteúdo (CMS)", path: "/admin/conteudo" },
+    { icon: FileText, label: "Aulas e Mídias", path: "/admin/conteudo" },
     { icon: Trophy, label: "Pontuação & Ranking", path: "/admin/ranking" },
     { icon: FileBarChart, label: "Relatórios", path: "/admin/relatorios" },
     { icon: Settings, label: "Configurações", path: "/admin/configuracoes" },

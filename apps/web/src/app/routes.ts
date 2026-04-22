@@ -18,6 +18,7 @@ import ConteudoNovaAulaPage from "./pages/admin/conteudo/ConteudoNovaAulaPage";
 import Ranking from "./pages/admin/Ranking";
 import Relatorios from "./pages/admin/Relatorios";
 import Configuracoes from "./pages/admin/Configuracoes";
+import MobileModulos from "./pages/MobileModulos";
 
 // Tutor Pages
 import TutorDashboard from "./pages/tutor/Dashboard";
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
       { path: "admin/ranking", Component: Ranking },
       { path: "admin/relatorios", Component: Relatorios },
       { path: "admin/configuracoes", Component: Configuracoes },
+      { path: "mobile/modulos", Component: MobileModulos },
       
       // Tutor routes
       { path: "tutor/dashboard", Component: TutorDashboard },
