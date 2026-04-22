@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { RefreshCw, Search, X } from "lucide-react";
 import StateDisplay from "../../components/StateDisplay";
-import { apiGet } from "../../core/api/client";
+import { apiGet, apiPatch } from "../../core/api/client";
 
 interface QueueItem {
   id: string;
+  queueType?: "vinculo" | "progresso" | string;
   tipo: string;
   aluno: string;
   etapa: string;
@@ -27,6 +28,8 @@ export default function Fila() {
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedId, setSelectedId] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionMessage, setActionMessage] = useState("");
 
   const loadQueue = async () => {
     try {
@@ -85,6 +88,31 @@ export default function Fila() {
     }
   }, [filteredItems, selectedId]);
 
+  const runQueueAction = async (action: "confirmar" | "negar" | "desbloquear") => {
+    if (!selectedItem) {
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      setError("");
+      setActionMessage("");
+
+      await apiPatch(`/painel/fila/${selectedItem.id}`, {
+        action,
+        decidedBy: "painel-web",
+      });
+
+      await loadQueue();
+      setSelectedId("");
+      setActionMessage("Item atualizado com sucesso.");
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Falha ao atualizar item da fila.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
@@ -100,6 +128,11 @@ export default function Fila() {
           Atualizar
         </button>
       </div>
+      {actionMessage ? (
+        <div className="border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {actionMessage}
+        </div>
+      ) : null}
 
       <div className="border border-gray-300 bg-white p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
@@ -235,6 +268,38 @@ export default function Fila() {
                 <p className="text-xs text-gray-500 mb-1">Tempo aberto</p>
                 <p className="text-sm text-gray-900">{selectedItem.tempo}</p>
               </div>
+              {selectedItem.queueType === "vinculo" ? (
+                <div className="pt-2 border-t border-gray-200 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => void runQueueAction("confirmar")}
+                    disabled={actionLoading}
+                    className="w-full px-3 py-2 text-sm font-semibold border border-emerald-600 bg-emerald-600 text-white disabled:opacity-60"
+                  >
+                    {actionLoading ? "Processando..." : "Confirmar vinculo"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void runQueueAction("negar")}
+                    disabled={actionLoading}
+                    className="w-full px-3 py-2 text-sm font-semibold border border-red-600 bg-white text-red-700 disabled:opacity-60"
+                  >
+                    {actionLoading ? "Processando..." : "Negar vinculo"}
+                  </button>
+                </div>
+              ) : null}
+              {selectedItem.queueType === "progresso" ? (
+                <div className="pt-2 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => void runQueueAction("desbloquear")}
+                    disabled={actionLoading}
+                    className="w-full px-3 py-2 text-sm font-semibold border border-gray-900 bg-gray-900 text-white disabled:opacity-60"
+                  >
+                    {actionLoading ? "Processando..." : "Desbloquear aluno"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         )}

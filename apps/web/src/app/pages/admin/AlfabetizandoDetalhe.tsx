@@ -39,6 +39,9 @@ interface HistoryItem {
 interface StudentDetailResponse {
   id: string;
   nome: string;
+  email: string;
+  telefone: string;
+  cpf: string;
   tutor: string;
   grupo: string;
   etapa: string;
@@ -127,10 +130,22 @@ export default function AlfabetizandoDetalhe() {
       ) : (
         <>
           <div className="border border-gray-300 bg-white p-6">
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <p className="text-xs text-gray-500 mb-1">Nome</p>
                 <p className="text-sm font-bold text-gray-900">{detail.nome}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Email</p>
+                <p className="text-sm text-gray-700">{detail.email || "-"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">Telefone</p>
+                <p className="text-sm text-gray-700">{detail.telefone || "-"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">CPF</p>
+                <p className="text-sm text-gray-700">{detail.cpf || "-"}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Tutor</p>
