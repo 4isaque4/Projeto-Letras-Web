@@ -2668,14 +2668,19 @@ export async function uploadContentAssetFile({
   const mergedMetadata = normalizeUploadMetadata(metadata, defaultMetadata);
 
   const normalizedStatus = normalizeAssetStatusInput(status, "rascunho");
-  const assetRow = await createContentAsset({
-    activityId: normalizedActivityId || null,
-    kind: detectedKind,
-    storagePath: storage.publicUrl,
-    mimeType: resolvedMimeType,
-    status: normalizedStatus,
-    metadata: mergedMetadata,
-  });
+  let assetRow = null;
+  // Ambientes com `content_assets.activity_id` NOT NULL nao aceitam acervo sem aula vinculada.
+  // Nesse caso, mantemos o upload no Storage e retornamos payload utilizavel no wizard sem quebrar o fluxo.
+  if (normalizedActivityId) {
+    assetRow = await createContentAsset({
+      activityId: normalizedActivityId,
+      kind: detectedKind,
+      storagePath: storage.publicUrl,
+      mimeType: resolvedMimeType,
+      status: normalizedStatus,
+      metadata: mergedMetadata,
+    });
+  }
 
   return {
     asset: mapAssetToUploadPayload(assetRow, {
@@ -2688,7 +2693,7 @@ export async function uploadContentAssetFile({
       createdByEducatorId: normalizeNullableText(createdByEducatorId),
     }),
     storage,
-    cadastrado: Boolean(assetRow),
+    cadastrado: Boolean(assetRow?.id),
     vinculado: Boolean(assetRow?.activity_id),
   };
 }

@@ -1,0 +1,43 @@
+{
+  "theme": {
+    "title": "Alfabeto Completo - Etapa Inicial",
+    "description": "Aula base para reconhecimento das 26 letras, vogais, consoantes e associacao som-imagem.",
+    "slug": "alfabeto-completo-etapa-inicial",
+    "sortOrder": 10
+  },
+  "module": {
+    "title": "Modulo 1 - Alfabeto Completo",
+    "description": "Apresentacao das letras A a Z, diferenciacao entre vogais e consoantes e inicio da leitura por associacao visual e auditiva.",
+    "stageNumber": 1,
+    "sortOrder": 10
+  },
+  "videoActivity": {
+    "title": "Aula 1 - Introducao ao Alfabeto (A a Z)",
+    "type": "video",
+    "sortOrder": 1,
+    "isPublished": true,
+    "instructions": "Objetivo geral: apresentar o alfabeto completo e criar referencia para leitura inicial.",
+    "objective": "O alfabeto da lingua portuguesa possui 26 letras: A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z. As vogais sao A, E, I, O, U. As demais letras sao consoantes.",
+    "educatorGuidance": "Apresente as letras em sequencia, destaque maiusculas e minusculas, repita os sons principais e conecte cada letra a exemplos de palavras do cotidiano. Reforce que cada palavra tem letras em ordem e que a troca de letra muda o significado.",
+    "learnerSpeech": "Eu reconheco as letras do alfabeto de A a Z. Eu sei que as vogais sao A, E, I, O e U. Eu posso observar imagens e palavras para identificar o som inicial das letras."
+  },
+  "dynamicActivity": {
+    "title": "Aula 1 - Atividade RN123 Letra A (Marcar Imagens)",
+    "type": "letra",
+    "targetLetter": "A",
+    "sortOrder": 2,
+    "isPublished": true,
+    "instructionText": "Observe as imagens e marque apenas as que comecam com a letra A.",
+    "educatorGuidance": "Leia os nomes das imagens em voz alta, pergunte qual e o som inicial e estimule o alfabetizando a justificar cada escolha.",
+    "learnerSpeech": "Vou procurar imagens cujos nomes comecam com a letra A.",
+    "maxAttemptsBeforeLock": 3,
+    "successFeedback": "Excelente! Voce identificou corretamente as imagens da letra A.",
+    "errorFeedback": "Alguma selecao nao comeca com A. Vamos tentar novamente com calma."
+  },
+  "assets": {
+    "videosDirectory": "C:/Projetos/letras-mobile-ref/docs/Conteudos das telas/Videos e Imagens",
+    "dynamicImagesDirectory": "C:/Projetos/letras-mobile-ref/docs/Conteudos das telas/Animais Imagens",
+    "status": "publicado",
+    "folder": "conteudo/alfabeto-completo/etapa-1"
+  }
+}

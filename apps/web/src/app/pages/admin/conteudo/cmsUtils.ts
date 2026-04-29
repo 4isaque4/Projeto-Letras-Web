@@ -102,3 +102,36 @@ export function formatBytes(value: number) {
 
   return `${(kb / 1024).toFixed(2)} MB`;
 }
+
+export function getAssetDisplayName(path: string) {
+  const normalized = String(path ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+  try {
+    const withoutQuery = normalized.split("?")[0] || normalized;
+    const parts = withoutQuery.split("/").filter(Boolean);
+    return decodeURIComponent(parts[parts.length - 1] || normalized);
+  } catch {
+    return normalized;
+  }
+}
+
+export function resolvePublicAssetUrl(path: string, supabaseUrl: string, publicBucket = "letras-assets") {
+  const normalized = String(path ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (/^(https?:)?\/\//i.test(normalized) || normalized.startsWith("blob:") || normalized.startsWith("data:")) {
+    return normalized;
+  }
+  const base = String(supabaseUrl ?? "").trim().replace(/\/+$/, "");
+  const cleaned = normalized.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!base) {
+    return cleaned ? `/${encodeURI(cleaned)}` : "";
+  }
+  if (cleaned.startsWith("storage/v1/object/public/")) {
+    return `${base}/${encodeURI(cleaned)}`;
+  }
+  return `${base}/storage/v1/object/public/${publicBucket}/${encodeURI(cleaned)}`;
+}

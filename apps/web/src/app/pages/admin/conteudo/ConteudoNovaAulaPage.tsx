@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -9,12 +9,12 @@ import {
   Plus,
   Volume2,
 } from "lucide-react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import StateDisplay from "../../../components/StateDisplay";
 import { apiGet } from "../../../core/api/client";
 import { useAuth } from "../../../core/auth/AuthProvider";
 import { env } from "../../../core/config/env";
-import { ActivityType, AssetKind, AssetStatus } from "./cmsTypes";
+import { ActivityType, AssetKind, AssetStatus, ModuleItem } from "./cmsTypes";
 import { formatBytes, inferAssetKindFromFile, inferAssetKindFromPath } from "./cmsUtils";
 import { useConteudoData } from "./useConteudoData";
 
@@ -30,7 +30,7 @@ const STEP_HELPERS: Record<number, string> = {
   0: "Escolha em qual tema essa aula vai ficar e dê um nome ao módulo e à aula.",
   1: "Selecione as telas prontas (blueprints) que servem de base visual desta aula.",
   2: "Monte o conteúdo da aula: instrução para o aluno, modelo da tela e itens do exercício.",
-  3: "Envie imagens, áudios ou vídeos de apoio. Para exercícios RN121/RN123 você já pode ter informado URLs no passo anterior.",
+  3: "Envie imagens, audios ou videos de apoio. Links manuais sao opcionais: use biblioteca ou upload.",
   4: "Revise tudo e publique. Ao publicar, a aula já aparece no aplicativo dos alfabetizandos.",
 };
 
@@ -60,6 +60,13 @@ const NON_VISUAL_BLUEPRINT_EXTENSIONS = new Set([
 
 type ScreenTemplate = "default" | "exercise-match-letter" | "exercise-mark-images" | "locked";
 
+const SCREEN_TEMPLATE_LABELS: Record<ScreenTemplate, string> = {
+  default: "Padrao (texto e midia)",
+  "exercise-match-letter": "Marcar letra correta",
+  "exercise-mark-images": "Marcar imagens corretas",
+  locked: "Tela bloqueada",
+};
+
 interface MatchLetterRow {
   id: string;
   label: string;
@@ -69,6 +76,7 @@ interface MatchLetterRow {
   spellingAudioUrl: string;
   optionsText: string;
   correctOption: string;
+  notes: string;
 }
 
 interface MarkImageRow {
@@ -77,6 +85,7 @@ interface MarkImageRow {
   imageUrl: string;
   audioUrl: string;
   isCorrectTarget: boolean;
+  notes: string;
 }
 
 interface ExerciseRowPayload {
@@ -84,11 +93,14 @@ interface ExerciseRowPayload {
   label: string;
   imageUrl: string | null;
   audioUrl: string | null;
+  audioText?: string | null;
   wordAudioUrl?: string | null;
   spellingAudioUrl?: string | null;
+  spellingText?: string | null;
   options?: string[];
   correctOptions?: string[];
   isCorrectTarget?: boolean;
+  notes?: string | null;
 }
 
 interface LearnerListItem {
@@ -113,6 +125,7 @@ const INITIAL_MATCH_ROWS: MatchLetterRow[] = [
     spellingAudioUrl: "",
     optionsText: "A, N, Z, O, L",
     correctOption: "A",
+    notes: "",
   },
   {
     id: "match-2",
@@ -123,6 +136,7 @@ const INITIAL_MATCH_ROWS: MatchLetterRow[] = [
     spellingAudioUrl: "",
     optionsText: "S, A, L",
     correctOption: "A",
+    notes: "",
   },
   {
     id: "match-3",
@@ -133,6 +147,7 @@ const INITIAL_MATCH_ROWS: MatchLetterRow[] = [
     spellingAudioUrl: "",
     optionsText: "R, A, T, O",
     correctOption: "A",
+    notes: "",
   },
 ];
 
@@ -143,6 +158,7 @@ const INITIAL_MARK_ROWS: MarkImageRow[] = [
     imageUrl: "",
     audioUrl: "",
     isCorrectTarget: true,
+    notes: "",
   },
   {
     id: "mark-2",
@@ -150,6 +166,7 @@ const INITIAL_MARK_ROWS: MarkImageRow[] = [
     imageUrl: "",
     audioUrl: "",
     isCorrectTarget: false,
+    notes: "",
   },
   {
     id: "mark-3",
@@ -157,6 +174,7 @@ const INITIAL_MARK_ROWS: MarkImageRow[] = [
     imageUrl: "",
     audioUrl: "",
     isCorrectTarget: true,
+    notes: "",
   },
 ];
 
@@ -174,6 +192,15 @@ function splitTokens(value: string) {
     .split(/[,\s]+/g)
     .map((token) => token.trim().toUpperCase())
     .filter(Boolean);
+}
+
+function buildSpellingHintFromLabel(value: string) {
+  const letters = String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .split("")
+    .filter((char) => /[A-Z]/.test(char));
+  return letters.length > 0 ? letters.join(", ") : null;
 }
 
 function parseBooleanToken(value: string) {
@@ -210,6 +237,7 @@ function parseMatchRowsImport(raw: string, targetLetter: string): MatchLetterRow
       spellingAudioUrl: normalizedSpellingAudio,
       optionsText: optionsRaw || fallbackLetter,
       correctOption: normalizeSingleLetter(correctRaw || firstOption || fallbackLetter) || fallbackLetter,
+      notes: "",
     };
   });
 }
@@ -230,6 +258,7 @@ function parseMarkRowsImport(raw: string): MarkImageRow[] {
       imageUrl: imageRaw,
       audioUrl: audioRaw,
       isCorrectTarget: parseBooleanToken(correctRaw),
+      notes: "",
     };
   });
 }
@@ -270,9 +299,69 @@ function isNonVisualBlueprintAsset(pathValue: string) {
   return NON_VISUAL_BLUEPRINT_EXTENSIONS.has(extension);
 }
 
+function isLocalObjectUrl(value: string) {
+  return String(value ?? "").trim().startsWith("blob:");
+}
+
+function sanitizeAssetReference(value: string) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+  return isLocalObjectUrl(normalized) ? "" : normalized;
+}
+
+function isMobileBlueprintReference(svgPath: string) {
+  return /^mobile:\/\//i.test(String(svgPath ?? "").trim());
+}
+
+function getBlueprintPreviewFallbackMessage(svgPath: string) {
+  if (isMobileBlueprintReference(svgPath)) {
+    return "Sem miniatura web para mobile://. Reimporte a tela com arquivo de imagem/SVG para ver preview.";
+  }
+  return "Sem preview visual";
+}
+
+function resolveAssetImageUrl(path: string) {
+  const normalized = String(path ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+  if (/^(https?:)?\/\//i.test(normalized) || normalized.startsWith("blob:") || normalized.startsWith("data:")) {
+    return normalized;
+  }
+  const supabaseBaseUrl = String(env.supabaseUrl ?? "").trim().replace(/\/+$/, "");
+  const cleaned = normalized.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!supabaseBaseUrl) {
+    return cleaned ? `/${encodeURI(cleaned)}` : "";
+  }
+  if (cleaned.startsWith("storage/v1/object/public/")) {
+    return `${supabaseBaseUrl}/${encodeURI(cleaned)}`;
+  }
+  return `${supabaseBaseUrl}/storage/v1/object/public/${SUPABASE_PUBLIC_BUCKET}/${encodeURI(cleaned)}`;
+}
+
+function getAssetDisplayName(path: string) {
+  const normalized = String(path ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+  try {
+    const withoutQuery = normalized.split("?")[0] || normalized;
+    const parts = withoutQuery.split("/").filter(Boolean);
+    return decodeURIComponent(parts[parts.length - 1] || normalized);
+  } catch {
+    return normalized;
+  }
+}
+
 function resolveBlueprintPreviewUrl(svgPath: string) {
   const normalized = String(svgPath ?? "").trim();
   if (!normalized) {
+    return "";
+  }
+
+  if (isMobileBlueprintReference(normalized)) {
     return "";
   }
 
@@ -323,17 +412,21 @@ function normalizeMatchRows(rows: MatchLetterRow[], targetLetter: string): Exerc
             : normalizedCorrect
               ? [normalizedCorrect]
               : ["A"];
-      const normalizedWordAudioUrl = row.wordAudioUrl.trim() || row.audioUrl.trim() || null;
-      const normalizedSpellingAudioUrl = row.spellingAudioUrl.trim() || null;
+      const normalizedWordAudioUrl =
+        sanitizeAssetReference(row.wordAudioUrl) || sanitizeAssetReference(row.audioUrl) || null;
+      const normalizedSpellingAudioUrl = sanitizeAssetReference(row.spellingAudioUrl) || null;
       return {
         id: row.id || buildId("match"),
         label: row.label.trim() || fallbackLabel,
-        imageUrl: row.imageUrl.trim() || null,
+        imageUrl: sanitizeAssetReference(row.imageUrl) || null,
         audioUrl: normalizedWordAudioUrl,
+        audioText: normalizedWordAudioUrl ? null : row.label.trim() || fallbackLabel,
         wordAudioUrl: normalizedWordAudioUrl,
         spellingAudioUrl: normalizedSpellingAudioUrl,
+        spellingText: normalizedSpellingAudioUrl ? null : buildSpellingHintFromLabel(row.label),
         options: fallbackOptions,
         correctOptions: normalizedCorrect ? [normalizedCorrect] : [fallbackOptions[0]],
+        notes: row.notes?.trim() || null,
       };
     })
     .filter((row) => Boolean(row.label));
@@ -344,9 +437,11 @@ function normalizeMarkRows(rows: MarkImageRow[]): ExerciseRowPayload[] {
     .map((row, index) => ({
       id: row.id || buildId("mark"),
       label: row.label.trim() || `Item ${index + 1}`,
-      imageUrl: row.imageUrl.trim() || null,
-      audioUrl: row.audioUrl.trim() || null,
+      imageUrl: sanitizeAssetReference(row.imageUrl) || null,
+      audioUrl: sanitizeAssetReference(row.audioUrl) || null,
+      audioText: sanitizeAssetReference(row.audioUrl) ? null : row.label.trim() || `Item ${index + 1}`,
       isCorrectTarget: row.isCorrectTarget,
+      notes: row.notes?.trim() || null,
     }))
     .filter((row) => Boolean(row.label));
 }
@@ -481,8 +576,168 @@ function buildInstructionsPayload(input: BuildInstructionsInput) {
   return JSON.stringify(basePayload, null, 2);
 }
 
+function buildDraftFromActivity(
+  activity: { id: string; module_id: string; title: string; type: ActivityType; instructions?: string | null; is_published?: boolean },
+  moduleItem: { id: string; theme_id: string; title: string; stage_number: number; description?: string | null } | null,
+): WizardDraftPayload {
+  const fallback: WizardDraftPayload = {
+    step: 0,
+    themeEntryMode: "existing",
+    themeId: moduleItem?.theme_id || "",
+    newThemeName: "",
+    moduleTitle: moduleItem?.title || "",
+    moduleDescription: moduleItem?.description || "",
+    stageNumber: String(moduleItem?.stage_number ?? 1),
+    lessonTitle: activity.title || "",
+    previewName: "Maria Silva",
+    selectedLearnerId: "",
+    selectedBlueprintIds: [],
+    orientationTutor: "",
+    orientationStudent: "",
+    activityType: activity.type,
+    screenTemplate: "default",
+    lockReason: "pedido_ajuda",
+    lockMessage: "",
+    lockAudioUrl: "",
+    exerciseInstructionText: "",
+    exerciseInstructionAudioUrl: "",
+    reinforcementText: "Vamos reforcar esse passo e tentar novamente.",
+    reinforcementAudioUrl: "",
+    reinforcementAutoReturnMs: "2500",
+    reinforcementPreserveProgress: true,
+    targetLetter: "A",
+    maxAttemptsBeforeLock: "3",
+    expectedSelections: "2",
+    progressiveUnlock: false,
+    matchRows: INITIAL_MATCH_ROWS,
+    markRows: INITIAL_MARK_ROWS,
+    matchRowsBulkInput: "",
+    markRowsBulkInput: "",
+    isPublished: Boolean(activity.is_published),
+    assetLink: "",
+    assetKind: "png",
+    assetStatus: "publicado",
+    assetSearch: "",
+  };
+
+  const raw = String(activity.instructions ?? "").trim();
+  if (!raw) {
+    return fallback;
+  }
+
+  if (!raw.startsWith("{")) {
+    const lines = raw.split(/\n\s*\n/);
+    return {
+      ...fallback,
+      orientationTutor: lines[0] || "",
+      orientationStudent: lines.slice(1).join("\n\n") || "",
+    };
+  }
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { ...fallback, orientationTutor: raw };
+  }
+
+  const screenTemplate = (parsed.screenTemplate as ScreenTemplate) || "default";
+  const educatorGuidance = typeof parsed.educatorGuidance === "string" ? parsed.educatorGuidance : "";
+  const learnerSpeech = typeof parsed.learnerSpeech === "string" ? parsed.learnerSpeech : "";
+  const lockReason = typeof parsed.lockReason === "string" ? parsed.lockReason : "pedido_ajuda";
+  const lockMessage = typeof parsed.lockMessage === "string" ? parsed.lockMessage : "";
+  const lockAudioUrl = typeof parsed.lockAudioUrl === "string" ? parsed.lockAudioUrl : "";
+
+  const draft: WizardDraftPayload = {
+    ...fallback,
+    screenTemplate,
+    orientationTutor: educatorGuidance,
+    orientationStudent: learnerSpeech,
+    lockReason,
+    lockMessage,
+    lockAudioUrl,
+  };
+
+  const exercise = parsed.exercise as Record<string, unknown> | undefined;
+  if (!exercise) {
+    return draft;
+  }
+
+  const targetLetter = typeof exercise.targetLetter === "string" ? exercise.targetLetter : "A";
+  const instructionText = typeof exercise.instructionText === "string" ? exercise.instructionText : "";
+  const instructionAudioUrl =
+    typeof exercise.instructionAudioUrl === "string" ? exercise.instructionAudioUrl : "";
+  const expectedSelections = Number.isFinite(exercise.expectedSelections)
+    ? String(exercise.expectedSelections)
+    : "2";
+  const maxAttemptsBeforeLock = Number.isFinite(exercise.maxAttemptsBeforeLock)
+    ? String(exercise.maxAttemptsBeforeLock)
+    : "3";
+  const progressiveUnlock = Boolean(exercise.progressiveUnlock);
+  const items = Array.isArray(exercise.items) ? (exercise.items as Record<string, unknown>[]) : [];
+
+  draft.targetLetter = targetLetter || "A";
+  draft.exerciseInstructionText = instructionText;
+  draft.exerciseInstructionAudioUrl = instructionAudioUrl;
+  draft.expectedSelections = expectedSelections;
+  draft.maxAttemptsBeforeLock = maxAttemptsBeforeLock;
+  draft.progressiveUnlock = progressiveUnlock;
+
+  const feedbackFlow = exercise.feedbackFlow as { onError?: Record<string, unknown> } | undefined;
+  const onError = feedbackFlow?.onError;
+  if (onError) {
+    draft.reinforcementText =
+      typeof onError.instructionText === "string" ? onError.instructionText : draft.reinforcementText;
+    draft.reinforcementAudioUrl =
+      typeof onError.instructionAudioUrl === "string" ? onError.instructionAudioUrl : "";
+    draft.reinforcementAutoReturnMs = Number.isFinite(onError.autoReturnMs)
+      ? String(onError.autoReturnMs)
+      : "2500";
+    draft.reinforcementPreserveProgress = onError.preserveProgress !== false;
+  }
+
+  if (screenTemplate === "exercise-match-letter") {
+    draft.matchRows = items.map((item, index) => {
+      const options = Array.isArray(item.options) ? (item.options as string[]) : [];
+      const correctOptions = Array.isArray(item.correctOptions) ? (item.correctOptions as string[]) : [];
+      return {
+        id: String(item.id ?? `match-${index + 1}`),
+        label: String(item.label ?? `Item ${index + 1}`),
+        imageUrl: String(item.imageUrl ?? ""),
+        audioUrl: String(item.audioUrl ?? ""),
+        wordAudioUrl: String(item.wordAudioUrl ?? item.audioUrl ?? ""),
+        spellingAudioUrl: String(item.spellingAudioUrl ?? ""),
+        optionsText: options.join(", "),
+        correctOption: correctOptions[0] ?? targetLetter ?? "A",
+        notes: typeof item.notes === "string" ? item.notes : "",
+      };
+    });
+    if (draft.matchRows.length === 0) {
+      draft.matchRows = INITIAL_MATCH_ROWS;
+    }
+  }
+
+  if (screenTemplate === "exercise-mark-images") {
+    draft.markRows = items.map((item, index) => ({
+      id: String(item.id ?? `mark-${index + 1}`),
+      label: String(item.label ?? `Item ${index + 1}`),
+      imageUrl: String(item.imageUrl ?? ""),
+      audioUrl: String(item.audioUrl ?? ""),
+      isCorrectTarget: Boolean(item.isCorrectTarget),
+      notes: typeof item.notes === "string" ? item.notes : "",
+    }));
+    if (draft.markRows.length === 0) {
+      draft.markRows = INITIAL_MARK_ROWS;
+    }
+  }
+
+  return draft;
+}
+
 export default function ConteudoNovaAulaPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editingActivityId = searchParams.get("id") || null;
   const { user } = useAuth();
   const {
     data,
@@ -494,6 +749,7 @@ export default function ConteudoNovaAulaPage() {
     createModule,
     updateModule,
     createActivity,
+    updateActivity,
     uploadAsset,
     saveAssetLink,
     updateBlueprint,
@@ -551,6 +807,8 @@ export default function ConteudoNovaAulaPage() {
   const [blueprintPreviewErrors, setBlueprintPreviewErrors] = useState<Record<string, true>>({});
   const [pendingDraft, setPendingDraft] = useState<WizardDraftPayload | null>(null);
   const [draftGateReleased, setDraftGateReleased] = useState(false);
+  const [pendingTemplateUploads, setPendingTemplateUploads] = useState<Record<string, File>>({});
+  const pendingTemplateUploadsRef = useRef<Record<string, File>>({});
 
   const clearSavedDraft = () => {
     try {
@@ -627,6 +885,11 @@ export default function ConteudoNovaAulaPage() {
   }, [cmsThemes.length, newThemeName, themeEntryMode, themeId]);
 
   useEffect(() => {
+    if (editingActivityId) {
+      setDraftGateReleased(true);
+      setPendingDraft(null);
+      return;
+    }
     try {
       const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
       if (!raw) {
@@ -645,6 +908,33 @@ export default function ConteudoNovaAulaPage() {
     } catch {
       setDraftGateReleased(true);
     }
+  }, [editingActivityId]);
+
+  const [editHydrated, setEditHydrated] = useState(false);
+  useEffect(() => {
+    if (!editingActivityId || editHydrated || loading) {
+      return;
+    }
+    const activity = data.activities.find((item) => item.id === editingActivityId);
+    if (!activity) {
+      return;
+    }
+    const moduleItem = data.modules.find((item) => item.id === activity.module_id) ?? null;
+    const draft = buildDraftFromActivity(activity, moduleItem);
+    applyDraftPayload(draft);
+    setEditHydrated(true);
+  }, [editingActivityId, editHydrated, loading, data.activities, data.modules]);
+
+  useEffect(() => {
+    pendingTemplateUploadsRef.current = pendingTemplateUploads;
+  }, [pendingTemplateUploads]);
+
+  useEffect(() => {
+    return () => {
+      for (const objectUrl of Object.keys(pendingTemplateUploadsRef.current)) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -860,6 +1150,39 @@ export default function ConteudoNovaAulaPage() {
     () => toPositiveInteger(reinforcementAutoReturnMs, 2500),
     [reinforcementAutoReturnMs],
   );
+  const pendingTemplateUploadsCount = useMemo(() => {
+    const references = new Set<string>();
+    const collect = (value: string) => {
+      const normalized = String(value ?? "").trim();
+      if (isLocalObjectUrl(normalized)) {
+        references.add(normalized);
+      }
+    };
+
+    collect(lockAudioUrl);
+    collect(exerciseInstructionAudioUrl);
+    collect(reinforcementAudioUrl);
+
+    for (const row of matchRows) {
+      collect(row.imageUrl);
+      collect(row.audioUrl);
+      collect(row.wordAudioUrl);
+      collect(row.spellingAudioUrl);
+    }
+
+    for (const row of markRows) {
+      collect(row.imageUrl);
+      collect(row.audioUrl);
+    }
+
+    return references.size;
+  }, [
+    exerciseInstructionAudioUrl,
+    lockAudioUrl,
+    markRows,
+    matchRows,
+    reinforcementAudioUrl,
+  ]);
 
   const instructionsPayloadPreview = useMemo(
     () =>
@@ -1029,7 +1352,7 @@ export default function ConteudoNovaAulaPage() {
   ]);
 
   useEffect(() => {
-    if (!draftGateReleased || wizardDone) {
+    if (!draftGateReleased || wizardDone || editingActivityId) {
       return;
     }
 
@@ -1167,7 +1490,7 @@ export default function ConteudoNovaAulaPage() {
         (row) => !row.options || row.options.length === 0 || !row.correctOptions || row.correctOptions.length === 0,
       );
       if (hasInvalidRow) {
-        return "Cada item precisa ter opcoes e uma resposta correta para o modelo RN121.";
+        return "Cada item precisa ter opcoes e uma resposta correta no modelo de marcar letra.";
       }
       if (reinforcementAutoReturnValue < 500) {
         return "A tela de reforco precisa de pelo menos 500ms para retorno automatico.";
@@ -1276,8 +1599,45 @@ export default function ConteudoNovaAulaPage() {
     });
   };
 
+  const registerPendingTemplateUpload = (file: File) => {
+    const objectUrl = URL.createObjectURL(file);
+    setPendingTemplateUploads((previous) => ({ ...previous, [objectUrl]: file }));
+    return objectUrl;
+  };
+
+  const releasePendingTemplateUpload = (value: string) => {
+    const normalized = String(value ?? "").trim();
+    if (!isLocalObjectUrl(normalized)) {
+      return;
+    }
+
+    setPendingTemplateUploads((previous) => {
+      if (!previous[normalized]) {
+        return previous;
+      }
+      const next = { ...previous };
+      delete next[normalized];
+      return next;
+    });
+    URL.revokeObjectURL(normalized);
+  };
+
+  const clearPendingTemplateUploads = () => {
+    setPendingTemplateUploads((previous) => {
+      for (const objectUrl of Object.keys(previous)) {
+        URL.revokeObjectURL(objectUrl);
+      }
+      return {};
+    });
+  };
+
   const applyAudioValueToField = (target: AudioFieldTarget, value: string) => {
     const nextValue = value.trim();
+    const previousValue =
+      target === "lock" ? lockAudioUrl : target === "exercise" ? exerciseInstructionAudioUrl : reinforcementAudioUrl;
+    if (previousValue !== nextValue) {
+      releasePendingTemplateUpload(previousValue);
+    }
     if (target === "lock") {
       setLockAudioUrl(nextValue);
       return;
@@ -1289,29 +1649,17 @@ export default function ConteudoNovaAulaPage() {
     setReinforcementAudioUrl(nextValue);
   };
 
-  const onUploadAudioField = async (target: AudioFieldTarget, file: File | null) => {
+  const onUploadAudioField = (target: AudioFieldTarget, file: File | null) => {
     if (!file) {
       return;
     }
 
-    const uploaded = await uploadAsset({
-      file,
-      kind: inferAssetKindFromFile(file) ?? "mp3",
-      status: assetStatus,
-      title: file.name.replace(/\.[^/.]+$/, ""),
-      folder: selectedThemeFolder,
-      metadata: {
-        source: "wizard-audio-field-upload",
-        targetField: target,
-        screenTemplate,
-        ...selectedThemeMetadata,
-      },
-    });
-
-    if (uploaded?.sourceUrl) {
-      applyAudioValueToField(target, uploaded.sourceUrl);
-      setLocalError("");
-    }
+    const previousValue =
+      target === "lock" ? lockAudioUrl : target === "exercise" ? exerciseInstructionAudioUrl : reinforcementAudioUrl;
+    releasePendingTemplateUpload(previousValue);
+    const objectUrl = registerPendingTemplateUpload(file);
+    applyAudioValueToField(target, objectUrl);
+    setLocalError("");
   };
 
   const renderAudioFieldInput = (
@@ -1326,7 +1674,7 @@ export default function ConteudoNovaAulaPage() {
         value={value}
         onChange={(event) => applyAudioValueToField(target, event.target.value)}
         placeholder={placeholder}
-        className="w-full border border-slate-300 bg-white px-3 py-2 text-sm"
+        className="w-full border border-slate-300 bg-white px-3 py-1.5 text-sm"
       />
       <div className="grid grid-cols-[1fr_auto] gap-2">
         <select
@@ -1336,17 +1684,17 @@ export default function ConteudoNovaAulaPage() {
               applyAudioValueToField(target, event.target.value);
             }
           }}
-          className="border border-slate-300 bg-white px-2 py-2 text-xs"
+          className="border border-slate-300 bg-white px-2 py-1.5 text-xs"
         >
           <option value="">Usar audio da biblioteca</option>
           {audioLibraryAssets.map((asset) => (
             <option key={`${target}-audio-field-${asset.id}`} value={asset.storage_path}>
-              {asset.storage_path.split("/").pop() || asset.storage_path}
+              {getAssetDisplayName(asset.storage_path)}
             </option>
           ))}
         </select>
-        <label className="cursor-pointer border border-slate-300 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700">
-          Upload
+        <label className="cursor-pointer border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
+          Enviar audio
           <input
             type="file"
             accept="audio/*"
@@ -1389,7 +1737,7 @@ export default function ConteudoNovaAulaPage() {
     setAssetFile(null);
   };
 
-  const onUploadMatchRowMedia = async (
+  const onUploadMatchRowMedia = (
     rowId: string,
     file: File | null,
     field: "imageUrl" | "audioUrl" | "wordAudioUrl" | "spellingAudioUrl",
@@ -1398,29 +1746,20 @@ export default function ConteudoNovaAulaPage() {
       return;
     }
 
-    const uploaded = await uploadAsset({
-      file,
-      status: assetStatus,
-      title: file.name.replace(/\.[^/.]+$/, ""),
-      folder: selectedThemeFolder,
-      metadata: { source: "wizard-row-upload", rowId, screenTemplate, ...selectedThemeMetadata },
-    });
-
-    if (uploaded?.sourceUrl) {
-      if (field === "wordAudioUrl") {
-        updateMatchRow(rowId, "wordAudioUrl", uploaded.sourceUrl);
-        updateMatchRow(rowId, "audioUrl", uploaded.sourceUrl);
-      } else if (field === "audioUrl") {
-        updateMatchRow(rowId, "audioUrl", uploaded.sourceUrl);
-        updateMatchRow(rowId, "wordAudioUrl", uploaded.sourceUrl);
-      } else {
-        updateMatchRow(rowId, field, uploaded.sourceUrl);
-      }
-      setLocalError("");
+    const objectUrl = registerPendingTemplateUpload(file);
+    if (field === "wordAudioUrl") {
+      updateMatchRow(rowId, "wordAudioUrl", objectUrl);
+      updateMatchRow(rowId, "audioUrl", objectUrl);
+    } else if (field === "audioUrl") {
+      updateMatchRow(rowId, "audioUrl", objectUrl);
+      updateMatchRow(rowId, "wordAudioUrl", objectUrl);
+    } else {
+      updateMatchRow(rowId, field, objectUrl);
     }
+    setLocalError("");
   };
 
-  const onUploadMarkRowMedia = async (
+  const onUploadMarkRowMedia = (
     rowId: string,
     file: File | null,
     field: "imageUrl" | "audioUrl",
@@ -1429,26 +1768,23 @@ export default function ConteudoNovaAulaPage() {
       return;
     }
 
-    const uploaded = await uploadAsset({
-      file,
-      status: assetStatus,
-      title: file.name.replace(/\.[^/.]+$/, ""),
-      folder: selectedThemeFolder,
-      metadata: { source: "wizard-row-upload", rowId, screenTemplate, ...selectedThemeMetadata },
-    });
-
-    if (uploaded?.sourceUrl) {
-      updateMarkRow(rowId, field, uploaded.sourceUrl);
-      setLocalError("");
-    }
+    const objectUrl = registerPendingTemplateUpload(file);
+    updateMarkRow(rowId, field, objectUrl);
+    setLocalError("");
   };
 
   const applyMatchRowsBulk = () => {
     const parsedRows = parseMatchRowsImport(matchRowsBulkInput, targetLetter);
     if (parsedRows.length === 0) {
-      setLocalError("Nenhuma linha valida para importar no modelo RN121.");
+      setLocalError("Nenhuma linha valida para importar no modelo de marcar letra.");
       return;
     }
+    matchRows.forEach((row) => {
+      releasePendingTemplateUpload(row.imageUrl);
+      releasePendingTemplateUpload(row.audioUrl);
+      releasePendingTemplateUpload(row.wordAudioUrl);
+      releasePendingTemplateUpload(row.spellingAudioUrl);
+    });
     setMatchRows(parsedRows);
     setLocalError("");
   };
@@ -1456,9 +1792,13 @@ export default function ConteudoNovaAulaPage() {
   const applyMarkRowsBulk = () => {
     const parsedRows = parseMarkRowsImport(markRowsBulkInput);
     if (parsedRows.length === 0) {
-      setLocalError("Nenhuma linha valida para importar no modelo RN123.");
+      setLocalError("Nenhuma linha valida para importar no modelo de marcar imagens.");
       return;
     }
+    markRows.forEach((row) => {
+      releasePendingTemplateUpload(row.imageUrl);
+      releasePendingTemplateUpload(row.audioUrl);
+    });
     setMarkRows(parsedRows);
     setLocalError("");
   };
@@ -1493,7 +1833,7 @@ export default function ConteudoNovaAulaPage() {
           (item) => normalizeCompareText(item.title) === normalizeCompareText(normalizedModuleTitle),
         ) ?? null;
 
-      let targetModule = existingExactModule ?? sameThemeAndStageModules[0] ?? null;
+      let targetModule: ModuleItem | null = existingExactModule ?? sameThemeAndStageModules[0] ?? null;
 
       if (!targetModule) {
         targetModule = await createModule({
@@ -1546,16 +1886,184 @@ export default function ConteudoNovaAulaPage() {
         markRowsPayload,
       });
 
-      const createdActivity = await createActivity({
-        moduleId: targetModule.id,
-        title: lessonTitle.trim(),
-        type: activityType,
-        instructions: instructions || undefined,
-        isPublished,
-      });
+      let activityId: string | null = null;
+      if (editingActivityId) {
+        const updated = await updateActivity({
+          activityId: editingActivityId,
+          moduleId: targetModule.id,
+          title: lessonTitle.trim(),
+          type: activityType,
+          instructions: instructions || undefined,
+          isPublished,
+        });
+        if (!updated) {
+          return;
+        }
+        activityId = editingActivityId;
+      } else {
+        const created = await createActivity({
+          moduleId: targetModule.id,
+          title: lessonTitle.trim(),
+          type: activityType,
+          instructions: instructions || undefined,
+          isPublished,
+        });
+        if (!created) {
+          return;
+        }
+        activityId = created.id;
+      }
 
-      if (!createdActivity) {
-        return;
+      const hasPendingTemplateUploads = pendingTemplateUploadsCount > 0;
+      if (hasPendingTemplateUploads) {
+        const uploadCache = new Map<string, string>();
+
+        const resolveLocalReference = async (
+          sourceValue: string,
+          fallbackKind: AssetKind,
+          metadata: Record<string, unknown>,
+        ) => {
+          const normalizedValue = String(sourceValue ?? "").trim();
+          if (!isLocalObjectUrl(normalizedValue)) {
+            return normalizedValue;
+          }
+
+          if (uploadCache.has(normalizedValue)) {
+            return uploadCache.get(normalizedValue) || "";
+          }
+
+          const pendingFile = pendingTemplateUploads[normalizedValue];
+          if (!pendingFile) {
+            uploadCache.set(normalizedValue, "");
+            return "";
+          }
+
+          const uploaded = await uploadAsset({
+            activityId,
+            file: pendingFile,
+            kind: inferAssetKindFromFile(pendingFile) ?? fallbackKind,
+            status: assetStatus,
+            title: pendingFile.name.replace(/\.[^/.]+$/, ""),
+            folder: selectedThemeFolder,
+            metadata: {
+              source: "wizard-template-upload-on-submit",
+              screenTemplate,
+              ...selectedThemeMetadata,
+              ...metadata,
+            },
+          });
+
+          if (!uploaded?.sourceUrl) {
+            throw new Error("Falha ao enviar midia do conteudo. Revise os uploads e tente novamente.");
+          }
+
+          uploadCache.set(normalizedValue, uploaded.sourceUrl);
+          return uploaded.sourceUrl;
+        };
+
+        const resolvedLockAudioUrl = await resolveLocalReference(lockAudioUrl, "mp3", {
+          targetField: "lockAudioUrl",
+        });
+        const resolvedExerciseInstructionAudioUrl = await resolveLocalReference(
+          exerciseInstructionAudioUrl,
+          "mp3",
+          { targetField: "exerciseInstructionAudioUrl" },
+        );
+        const resolvedReinforcementAudioUrl = await resolveLocalReference(reinforcementAudioUrl, "mp3", {
+          targetField: "reinforcementAudioUrl",
+        });
+
+        const resolvedMatchRows: MatchLetterRow[] = [];
+        for (const row of matchRows) {
+          const resolvedImageUrl = await resolveLocalReference(row.imageUrl, "png", {
+            rowId: row.id,
+            rowLabel: row.label,
+            targetField: "imageUrl",
+          });
+          const resolvedWordAudioUrl = await resolveLocalReference(
+            row.wordAudioUrl || row.audioUrl,
+            "mp3",
+            {
+              rowId: row.id,
+              rowLabel: row.label,
+              targetField: "wordAudioUrl",
+            },
+          );
+          const resolvedSpellingAudioUrl = await resolveLocalReference(row.spellingAudioUrl, "mp3", {
+            rowId: row.id,
+            rowLabel: row.label,
+            targetField: "spellingAudioUrl",
+          });
+
+          resolvedMatchRows.push({
+            ...row,
+            imageUrl: resolvedImageUrl,
+            audioUrl: resolvedWordAudioUrl,
+            wordAudioUrl: resolvedWordAudioUrl,
+            spellingAudioUrl: resolvedSpellingAudioUrl,
+          });
+        }
+
+        const resolvedMarkRows: MarkImageRow[] = [];
+        for (const row of markRows) {
+          const resolvedImageUrl = await resolveLocalReference(row.imageUrl, "png", {
+            rowId: row.id,
+            rowLabel: row.label,
+            targetField: "imageUrl",
+          });
+          const resolvedAudioUrl = await resolveLocalReference(row.audioUrl, "mp3", {
+            rowId: row.id,
+            rowLabel: row.label,
+            targetField: "audioUrl",
+          });
+
+          resolvedMarkRows.push({
+            ...row,
+            imageUrl: resolvedImageUrl,
+            audioUrl: resolvedAudioUrl,
+          });
+        }
+
+        const resolvedInstructions = buildInstructionsPayload({
+          screenTemplate,
+          orientationTutor,
+          orientationStudent,
+          lockReason,
+          lockMessage,
+          lockAudioUrl: resolvedLockAudioUrl,
+          exerciseInstructionText,
+          exerciseInstructionAudioUrl: resolvedExerciseInstructionAudioUrl,
+          reinforcementText,
+          reinforcementAudioUrl: resolvedReinforcementAudioUrl,
+          reinforcementAutoReturnMs: reinforcementAutoReturnValue,
+          reinforcementPreserveProgress,
+          targetLetter,
+          maxAttemptsBeforeLock: maxAttemptsValue,
+          expectedSelections: expectedSelectionsValue,
+          progressiveUnlock,
+          matchRowsPayload: normalizeMatchRows(resolvedMatchRows, targetLetter),
+          markRowsPayload: normalizeMarkRows(resolvedMarkRows),
+        });
+
+        const activityPatched = await updateActivity({
+          activityId,
+          moduleId: targetModule.id,
+          title: lessonTitle.trim(),
+          type: activityType,
+          instructions: resolvedInstructions || undefined,
+          isPublished,
+        });
+
+        if (!activityPatched) {
+          return;
+        }
+
+        setLockAudioUrl(resolvedLockAudioUrl);
+        setExerciseInstructionAudioUrl(resolvedExerciseInstructionAudioUrl);
+        setReinforcementAudioUrl(resolvedReinforcementAudioUrl);
+        setMatchRows(resolvedMatchRows);
+        setMarkRows(resolvedMarkRows);
+        clearPendingTemplateUploads();
       }
 
       for (const blueprint of selectedBlueprints) {
@@ -1568,7 +2076,7 @@ export default function ConteudoNovaAulaPage() {
       if (assetFile) {
         const guessedKind = inferAssetKindFromFile(assetFile) ?? assetKind;
         await uploadAsset({
-          activityId: createdActivity.id,
+          activityId,
           file: assetFile,
           kind: guessedKind,
           status: assetStatus,
@@ -1578,7 +2086,7 @@ export default function ConteudoNovaAulaPage() {
       } else if (assetLink.trim()) {
         const inferredKind = inferAssetKindFromPath(assetLink.trim()) ?? assetKind;
         await saveAssetLink({
-          activityId: createdActivity.id,
+          activityId,
           kind: inferredKind,
           status: assetStatus,
           storagePath: assetLink.trim(),
@@ -1595,7 +2103,12 @@ export default function ConteudoNovaAulaPage() {
       }
 
       clearSavedDraft();
+      clearPendingTemplateUploads();
       setWizardDone(true);
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : "Falha ao salvar a aula. Tente novamente.";
+      setLocalError(message);
     } finally {
       setSubmitting(false);
     }
@@ -1607,7 +2120,7 @@ export default function ConteudoNovaAulaPage() {
         <div className="space-y-3 border border-red-200 bg-red-50/40 p-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
             <Lock className="h-4 w-4" />
-            Tela bloqueada (RN119/RN120)
+            Tela bloqueada
           </div>
           <input
             value={lockReason}
@@ -1625,7 +2138,7 @@ export default function ConteudoNovaAulaPage() {
             "Audio de bloqueio (opcional)",
             "lock",
             lockAudioUrl,
-            "URL do audio de bloqueio (RN120, opcional)",
+            "Link manual de audio de bloqueio (opcional)",
           )}
           <p className="text-xs text-red-700">
             O mobile mostrara a tela travada e impedira o avancar ate liberacao do alfabetizador.
@@ -1663,7 +2176,7 @@ export default function ConteudoNovaAulaPage() {
                 checked={progressiveUnlock}
                 onChange={(event) => setProgressiveUnlock(event.target.checked)}
               />
-              Liberar itens em ordem (RN122)
+              Liberar itens em ordem (sequencial)
             </label>
           </div>
 
@@ -1678,12 +2191,12 @@ export default function ConteudoNovaAulaPage() {
               "Audio instrucional (opcional)",
               "exercise",
               exerciseInstructionAudioUrl,
-              "URL do audio instrucional (opcional)",
+              "Link manual de audio instrucional (opcional)",
             )}
           </div>
 
           <div className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-semibold uppercase text-slate-700">Fluxo de reforco (RN121)</p>
+            <p className="text-xs font-semibold uppercase text-slate-700">Fluxo de reforco</p>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               <input
                 value={reinforcementText}
@@ -1695,7 +2208,7 @@ export default function ConteudoNovaAulaPage() {
                 "Audio de reforco (opcional)",
                 "reinforcement",
                 reinforcementAudioUrl,
-                "URL de audio da tela de reforco (opcional)",
+                "Link manual de audio de reforco (opcional)",
               )}
             </div>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -1764,6 +2277,7 @@ export default function ConteudoNovaAulaPage() {
                       spellingAudioUrl: "",
                       optionsText: "",
                       correctOption: targetLetter || "A",
+                      notes: "",
                     },
                   ])
                 }
@@ -1777,8 +2291,13 @@ export default function ConteudoNovaAulaPage() {
               Biblioteca filtrada por tema: {selectedThemeForAssets?.title || "todos os temas"}
             </p>
             <p className="text-[11px] text-slate-500">
-              Cada item aceita locucao do interlocutor para palavra inteira e para soletracao letra por letra (URL, biblioteca ou upload).
+              Audio manual e opcional. Priorize biblioteca ou upload para a palavra inteira e para a soletracao.
             </p>
+            {pendingTemplateUploadsCount > 0 ? (
+              <p className="text-[11px] text-sky-700">
+                {pendingTemplateUploadsCount} arquivo(s) pendente(s). O envio final acontece ao salvar a aula.
+              </p>
+            ) : null}
 
             {matchRows.map((row, index) => (
               <div key={row.id} className="space-y-2 border border-slate-200 bg-slate-50 p-3">
@@ -1787,59 +2306,86 @@ export default function ConteudoNovaAulaPage() {
                     value={row.label}
                     onChange={(event) => updateMatchRow(row.id, "label", event.target.value)}
                     placeholder={`Palavra ${index + 1}`}
-                    className="border border-slate-300 px-2 py-2 text-xs"
+                    className="border border-slate-300 px-2 py-1.5 text-xs"
                   />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setMatchRows((previous) => previous.filter((item) => item.id !== row.id))
-                    }
-                    disabled={matchRows.length <= 1}
-                    className="border border-red-200 bg-white px-2 py-2 text-xs font-semibold text-red-700 disabled:opacity-40"
-                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMatchRows((previous) => {
+                          const targetRow = previous.find((item) => item.id === row.id);
+                          if (targetRow) {
+                            releasePendingTemplateUpload(targetRow.imageUrl);
+                            releasePendingTemplateUpload(targetRow.audioUrl);
+                            releasePendingTemplateUpload(targetRow.wordAudioUrl);
+                            releasePendingTemplateUpload(targetRow.spellingAudioUrl);
+                          }
+                          return previous.filter((item) => item.id !== row.id);
+                        })
+                      }
+                      disabled={matchRows.length <= 1}
+                      className="border border-red-200 bg-white px-2 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-40"
+                    >
                     Remover
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                  <input
-                    value={row.imageUrl}
-                    onChange={(event) => updateMatchRow(row.id, "imageUrl", event.target.value)}
-                    placeholder="Imagem: URL opcional"
-                    className="border border-slate-300 px-2 py-2 text-xs"
-                  />
-                  <div className="grid grid-cols-[1fr_auto] gap-2">
-                    <select
-                      value=""
-                      onChange={(event) => {
-                        if (event.target.value) {
-                          updateMatchRow(row.id, "imageUrl", event.target.value);
-                        }
-                      }}
-                      className="border border-slate-300 bg-white px-2 py-2 text-xs"
-                    >
-                      <option value="">Usar imagem da biblioteca</option>
-                      {imageLibraryAssets.map((asset) => (
-                        <option key={`${row.id}-img-${asset.id}`} value={asset.storage_path}>
-                          {asset.storage_path.split("/").pop() || asset.storage_path}
-                        </option>
-                      ))}
-                    </select>
-                    <label className="cursor-pointer border border-slate-300 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700">
-                      Upload
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="sr-only"
-                        onChange={(event) =>
-                          void onUploadMatchRowMedia(
-                            row.id,
-                            event.target.files?.[0] ?? null,
-                            "imageUrl",
-                          )
-                        }
+                <div className="grid grid-cols-[64px_1fr] items-start gap-2">
+                  {row.imageUrl ? (
+                    <div className="relative h-16 w-16 overflow-hidden rounded border border-slate-200 bg-white">
+                      <img
+                        src={resolveAssetImageUrl(row.imageUrl)}
+                        alt={row.label || `Imagem ${index + 1}`}
+                        className="h-full w-full object-cover"
+                        onError={(event) => {
+                          event.currentTarget.style.visibility = "hidden";
+                        }}
                       />
-                    </label>
+                    </div>
+                  ) : (
+                    <div className="flex h-16 w-16 items-center justify-center rounded border border-dashed border-slate-300 bg-white text-[10px] text-slate-400">
+                      sem imagem
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <input
+                      value={row.imageUrl}
+                      onChange={(event) => updateMatchRow(row.id, "imageUrl", event.target.value)}
+                      placeholder="Imagem (link manual opcional)"
+                      className="w-full border border-slate-300 px-2 py-1.5 text-xs"
+                    />
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <select
+                        value=""
+                        onChange={(event) => {
+                          if (event.target.value) {
+                            updateMatchRow(row.id, "imageUrl", event.target.value);
+                          }
+                        }}
+                        className="border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                      >
+                        <option value="">Usar imagem da biblioteca</option>
+                        {imageLibraryAssets.map((asset) => (
+                          <option key={`${row.id}-img-${asset.id}`} value={asset.storage_path}>
+                            {getAssetDisplayName(asset.storage_path)}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="cursor-pointer border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
+                        Enviar imagem
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(event) =>
+                            void onUploadMatchRowMedia(
+                              row.id,
+                              event.target.files?.[0] ?? null,
+                              "imageUrl",
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
 
@@ -1852,8 +2398,8 @@ export default function ConteudoNovaAulaPage() {
                         updateMatchRow(row.id, "wordAudioUrl", event.target.value);
                         updateMatchRow(row.id, "audioUrl", event.target.value);
                       }}
-                      placeholder="Audio palavra: URL opcional"
-                      className="border border-slate-300 px-2 py-2 text-xs"
+                      placeholder="Audio da palavra (link manual opcional)"
+                      className="border border-slate-300 px-2 py-1.5 text-xs"
                     />
                     <div className="grid grid-cols-[1fr_auto] gap-2">
                       <select
@@ -1864,7 +2410,7 @@ export default function ConteudoNovaAulaPage() {
                             updateMatchRow(row.id, "audioUrl", event.target.value);
                           }
                         }}
-                        className="border border-slate-300 bg-white px-2 py-2 text-xs"
+                        className="border border-slate-300 bg-white px-2 py-1.5 text-xs"
                       >
                         <option value="">Usar audio da biblioteca</option>
                         {audioLibraryAssets.map((asset) => (
@@ -1873,8 +2419,8 @@ export default function ConteudoNovaAulaPage() {
                           </option>
                         ))}
                       </select>
-                      <label className="cursor-pointer border border-slate-300 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700">
-                        Upload
+                      <label className="cursor-pointer border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
+                        Enviar audio
                         <input
                           type="file"
                           accept="audio/*"
@@ -1899,8 +2445,8 @@ export default function ConteudoNovaAulaPage() {
                   <input
                     value={row.spellingAudioUrl}
                     onChange={(event) => updateMatchRow(row.id, "spellingAudioUrl", event.target.value)}
-                    placeholder="Audio soletrado: URL opcional"
-                    className="border border-slate-300 px-2 py-2 text-xs"
+                    placeholder="Audio da soletracao (link manual opcional)"
+                    className="border border-slate-300 px-2 py-1.5 text-xs"
                   />
                   <div className="grid grid-cols-[1fr_auto] gap-2">
                     <select
@@ -1910,7 +2456,7 @@ export default function ConteudoNovaAulaPage() {
                           updateMatchRow(row.id, "spellingAudioUrl", event.target.value);
                         }
                       }}
-                      className="border border-slate-300 bg-white px-2 py-2 text-xs"
+                      className="border border-slate-300 bg-white px-2 py-1.5 text-xs"
                     >
                       <option value="">Usar audio da biblioteca</option>
                       {audioLibraryAssets.map((asset) => (
@@ -1919,8 +2465,8 @@ export default function ConteudoNovaAulaPage() {
                         </option>
                       ))}
                     </select>
-                    <label className="cursor-pointer border border-slate-300 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700">
-                      Upload
+                    <label className="cursor-pointer border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
+                      Enviar audio
                       <input
                         type="file"
                         accept="audio/*"
@@ -1942,7 +2488,7 @@ export default function ConteudoNovaAulaPage() {
                     value={row.optionsText}
                     onChange={(event) => updateMatchRow(row.id, "optionsText", event.target.value)}
                     placeholder="Opcoes (ex.: A, N, Z, O, L)"
-                    className="border border-slate-300 px-2 py-2 text-xs"
+                    className="border border-slate-300 px-2 py-1.5 text-xs"
                   />
                   <input
                     value={row.correctOption}
@@ -1951,9 +2497,16 @@ export default function ConteudoNovaAulaPage() {
                       updateMatchRow(row.id, "correctOption", event.target.value.toUpperCase())
                     }
                     placeholder="Correta"
-                    className="border border-slate-300 px-2 py-2 text-xs"
+                    className="border border-slate-300 px-2 py-1.5 text-xs"
                   />
                 </div>
+                <textarea
+                  value={row.notes}
+                  onChange={(event) => updateMatchRow(row.id, "notes", event.target.value)}
+                  rows={2}
+                  placeholder="Observacao livre para este item (explicacao, dica, contexto pedagogico)"
+                  className="w-full border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                />
               </div>
             ))}
           </div>
@@ -2006,6 +2559,7 @@ export default function ConteudoNovaAulaPage() {
                       imageUrl: "",
                       audioUrl: "",
                       isCorrectTarget: false,
+                      notes: "",
                     },
                   ])
                 }
@@ -2028,7 +2582,7 @@ export default function ConteudoNovaAulaPage() {
               "Audio instrucional (opcional)",
               "exercise",
               exerciseInstructionAudioUrl,
-              "URL do audio instrucional (opcional)",
+              "Link manual de audio instrucional (opcional)",
             )}
           </div>
 
@@ -2060,6 +2614,11 @@ export default function ConteudoNovaAulaPage() {
           </details>
 
           <div className="space-y-3">
+            {pendingTemplateUploadsCount > 0 ? (
+              <p className="text-[11px] text-sky-700">
+                {pendingTemplateUploadsCount} arquivo(s) pendente(s). O envio final acontece ao salvar a aula.
+              </p>
+            ) : null}
             {markRows.map((row, index) => (
               <div key={row.id} className="space-y-2 border border-slate-200 bg-slate-50 p-3">
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
@@ -2067,57 +2626,84 @@ export default function ConteudoNovaAulaPage() {
                     value={row.label}
                     onChange={(event) => updateMarkRow(row.id, "label", event.target.value)}
                     placeholder={`Imagem ${index + 1}`}
-                    className="border border-slate-300 px-2 py-2 text-xs"
+                    className="border border-slate-300 px-2 py-1.5 text-xs"
                   />
                   <button
                     type="button"
-                    onClick={() => setMarkRows((previous) => previous.filter((item) => item.id !== row.id))}
+                    onClick={() =>
+                      setMarkRows((previous) => {
+                        const targetRow = previous.find((item) => item.id === row.id);
+                        if (targetRow) {
+                          releasePendingTemplateUpload(targetRow.imageUrl);
+                          releasePendingTemplateUpload(targetRow.audioUrl);
+                        }
+                        return previous.filter((item) => item.id !== row.id);
+                      })
+                    }
                     disabled={markRows.length <= 2}
-                    className="border border-red-200 bg-white px-2 py-2 text-xs font-semibold text-red-700 disabled:opacity-40"
+                    className="border border-red-200 bg-white px-2 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-40"
                   >
                     Remover
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                  <input
-                    value={row.imageUrl}
-                    onChange={(event) => updateMarkRow(row.id, "imageUrl", event.target.value)}
-                    placeholder="Imagem: URL opcional"
-                    className="border border-slate-300 px-2 py-2 text-xs"
-                  />
-                  <div className="grid grid-cols-[1fr_auto] gap-2">
-                    <select
-                      value=""
-                      onChange={(event) => {
-                        if (event.target.value) {
-                          updateMarkRow(row.id, "imageUrl", event.target.value);
-                        }
-                      }}
-                      className="border border-slate-300 bg-white px-2 py-2 text-xs"
-                    >
-                      <option value="">Usar imagem da biblioteca</option>
-                      {imageLibraryAssets.map((asset) => (
-                        <option key={`${row.id}-mark-img-${asset.id}`} value={asset.storage_path}>
-                          {asset.storage_path.split("/").pop() || asset.storage_path}
-                        </option>
-                      ))}
-                    </select>
-                    <label className="cursor-pointer border border-slate-300 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700">
-                      Upload
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="sr-only"
-                        onChange={(event) =>
-                          void onUploadMarkRowMedia(
-                            row.id,
-                            event.target.files?.[0] ?? null,
-                            "imageUrl",
-                          )
-                        }
+                <div className="grid grid-cols-[64px_1fr] items-start gap-2">
+                  {row.imageUrl ? (
+                    <div className="relative h-16 w-16 overflow-hidden rounded border border-slate-200 bg-white">
+                      <img
+                        src={resolveAssetImageUrl(row.imageUrl)}
+                        alt={row.label || `Imagem ${index + 1}`}
+                        className="h-full w-full object-cover"
+                        onError={(event) => {
+                          event.currentTarget.style.visibility = "hidden";
+                        }}
                       />
-                    </label>
+                    </div>
+                  ) : (
+                    <div className="flex h-16 w-16 items-center justify-center rounded border border-dashed border-slate-300 bg-white text-[10px] text-slate-400">
+                      sem imagem
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <input
+                      value={row.imageUrl}
+                      onChange={(event) => updateMarkRow(row.id, "imageUrl", event.target.value)}
+                      placeholder="Imagem (link manual opcional)"
+                      className="w-full border border-slate-300 px-2 py-1.5 text-xs"
+                    />
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <select
+                        value=""
+                        onChange={(event) => {
+                          if (event.target.value) {
+                            updateMarkRow(row.id, "imageUrl", event.target.value);
+                          }
+                        }}
+                        className="border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                      >
+                        <option value="">Usar imagem da biblioteca</option>
+                        {imageLibraryAssets.map((asset) => (
+                          <option key={`${row.id}-mark-img-${asset.id}`} value={asset.storage_path}>
+                            {getAssetDisplayName(asset.storage_path)}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="cursor-pointer border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
+                        Enviar imagem
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(event) =>
+                            void onUploadMarkRowMedia(
+                              row.id,
+                              event.target.files?.[0] ?? null,
+                              "imageUrl",
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
 
@@ -2125,8 +2711,8 @@ export default function ConteudoNovaAulaPage() {
                   <input
                     value={row.audioUrl}
                     onChange={(event) => updateMarkRow(row.id, "audioUrl", event.target.value)}
-                    placeholder="Audio: URL opcional"
-                    className="border border-slate-300 px-2 py-2 text-xs"
+                    placeholder="Audio (link manual opcional)"
+                    className="border border-slate-300 px-2 py-1.5 text-xs"
                   />
                   <div className="grid grid-cols-[1fr_auto] gap-2">
                     <select
@@ -2136,7 +2722,7 @@ export default function ConteudoNovaAulaPage() {
                           updateMarkRow(row.id, "audioUrl", event.target.value);
                         }
                       }}
-                      className="border border-slate-300 bg-white px-2 py-2 text-xs"
+                      className="border border-slate-300 bg-white px-2 py-1.5 text-xs"
                     >
                       <option value="">Usar audio da biblioteca</option>
                       {audioLibraryAssets.map((asset) => (
@@ -2145,8 +2731,8 @@ export default function ConteudoNovaAulaPage() {
                         </option>
                       ))}
                     </select>
-                    <label className="cursor-pointer border border-slate-300 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700">
-                      Upload
+                    <label className="cursor-pointer border border-slate-300 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-700">
+                      Enviar audio
                       <input
                         type="file"
                         accept="audio/*"
@@ -2163,7 +2749,7 @@ export default function ConteudoNovaAulaPage() {
                   </div>
                 </div>
 
-                <label className="flex items-center gap-2 border border-slate-300 bg-white px-2 py-2 text-xs text-slate-700">
+                <label className="flex items-center gap-2 border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700">
                   <input
                     type="checkbox"
                     checked={row.isCorrectTarget}
@@ -2171,6 +2757,14 @@ export default function ConteudoNovaAulaPage() {
                   />
                   Esta imagem conta como resposta correta
                 </label>
+
+                <textarea
+                  value={row.notes}
+                  onChange={(event) => updateMarkRow(row.id, "notes", event.target.value)}
+                  rows={2}
+                  placeholder="Observacao livre para este item (explicacao, dica, contexto pedagogico)"
+                  className="w-full border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                />
               </div>
             ))}
           </div>
@@ -2226,7 +2820,7 @@ export default function ConteudoNovaAulaPage() {
                   </button>
                 </div>
               ) : (
-                <p className="border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <p className="border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
                   Ainda nao existe nenhum tema. Cadastre o primeiro tema abaixo.
                 </p>
               )}
@@ -2444,8 +3038,8 @@ export default function ConteudoNovaAulaPage() {
                   >
                     <div className="mb-2 rounded border border-slate-200 bg-white p-1">
                       {previewUnavailable ? (
-                        <div className="flex h-24 items-center justify-center text-[11px] text-slate-500">
-                          Sem preview visual
+                        <div className="flex h-24 items-center justify-center px-2 text-center text-[11px] text-slate-500">
+                          {getBlueprintPreviewFallbackMessage(blueprint.svg_path)}
                         </div>
                       ) : (
                         <img
@@ -2473,13 +3067,28 @@ export default function ConteudoNovaAulaPage() {
 
           <div className="rounded border border-slate-200 bg-white p-3">
             <p className="text-xs font-semibold uppercase text-slate-700">Preview da tela selecionada</p>
-            {selectedBlueprintPreview && selectedBlueprintPreviewUrl && !blueprintPreviewErrors[selectedBlueprintPreview.id] ? (
-              <img
-                src={selectedBlueprintPreviewUrl}
-                alt={selectedBlueprintPreview.title}
-                className="mt-2 h-52 w-full rounded border border-slate-200 bg-slate-50 object-contain"
-                onError={() => markBlueprintPreviewError(selectedBlueprintPreview.id)}
-              />
+            {selectedBlueprintPreview ? (
+              selectedBlueprintPreviewUrl && !blueprintPreviewErrors[selectedBlueprintPreview.id] ? (
+                <img
+                  src={selectedBlueprintPreviewUrl}
+                  alt={selectedBlueprintPreview.title}
+                  className="mt-2 h-52 w-full rounded border border-slate-200 bg-slate-50 object-contain"
+                  onError={() => markBlueprintPreviewError(selectedBlueprintPreview.id)}
+                />
+              ) : (
+                <div className="mt-2 flex h-52 flex-col items-center justify-center gap-2 rounded border border-dashed border-slate-300 bg-slate-50 px-4 text-center text-xs text-slate-500">
+                  <p>{getBlueprintPreviewFallbackMessage(selectedBlueprintPreview.svg_path)}</p>
+                  {isMobileBlueprintReference(selectedBlueprintPreview.svg_path) ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate("/admin/conteudo/importar-telas")}
+                      className="border border-slate-300 bg-white px-3 py-1 text-[11px] font-semibold text-slate-700"
+                    >
+                      Importar tela com preview
+                    </button>
+                  ) : null}
+                </div>
+              )
             ) : (
               <div className="mt-2 flex h-52 items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 text-xs text-slate-500">
                 Selecione uma tela para ver o preview ampliado.
@@ -2501,7 +3110,7 @@ export default function ConteudoNovaAulaPage() {
         <div className="space-y-4">
           <h2 className="text-4xl font-semibold text-slate-900">Orientacoes</h2>
           <p className="text-sm text-slate-600">
-            Defina textos de apoio e o modelo da tela (padrao, RN121, RN123 ou bloqueada).
+            Defina textos de apoio e o modelo da tela (padrao, marcar letra, marcar imagens ou bloqueada).
           </p>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -2540,7 +3149,7 @@ export default function ConteudoNovaAulaPage() {
                     : "border-slate-300 bg-white text-slate-700"
                 }`}
               >
-                Padrao
+                Padrao (texto e midia)
               </button>
               <button
                 type="button"
@@ -2551,7 +3160,7 @@ export default function ConteudoNovaAulaPage() {
                     : "border-slate-300 bg-white text-slate-700"
                 }`}
               >
-                RN121 - Letra
+                Marcar letra correta
               </button>
               <button
                 type="button"
@@ -2562,7 +3171,7 @@ export default function ConteudoNovaAulaPage() {
                     : "border-slate-300 bg-white text-slate-700"
                 }`}
               >
-                RN123 - Caixas
+                Marcar imagens corretas
               </button>
               <button
                 type="button"
@@ -2573,7 +3182,7 @@ export default function ConteudoNovaAulaPage() {
                     : "border-red-200 bg-white text-red-700"
                 }`}
               >
-                RN119/120 - Bloqueada
+                Tela bloqueada
               </button>
             </div>
           </div>
@@ -2602,12 +3211,30 @@ export default function ConteudoNovaAulaPage() {
                 <option value="rascunho">Rascunho</option>
                 <option value="arquivado">Arquivado</option>
               </select>
-              <div className="flex items-center gap-2 border border-slate-300 bg-white px-3 py-2 md:col-span-2">
+              <div className="flex flex-wrap items-center gap-2 border border-slate-300 bg-white px-3 py-2 md:col-span-2">
                 <label className="cursor-pointer border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
-                  Escolher arquivo
+                  Imagem
                   <input
                     type="file"
-                    accept="image/*,audio/*,video/*"
+                    accept="image/*"
+                    onChange={(event) => setAssetFile(event.target.files?.[0] ?? null)}
+                    className="sr-only"
+                  />
+                </label>
+                <label className="cursor-pointer border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800">
+                  Audio
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={(event) => setAssetFile(event.target.files?.[0] ?? null)}
+                    className="sr-only"
+                  />
+                </label>
+                <label className="cursor-pointer border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800">
+                  Video
+                  <input
+                    type="file"
+                    accept="video/*"
                     onChange={(event) => setAssetFile(event.target.files?.[0] ?? null)}
                     className="sr-only"
                   />
@@ -2631,10 +3258,45 @@ export default function ConteudoNovaAulaPage() {
               className="w-full border border-slate-300 px-3 py-2 text-sm"
             />
             {assetFile ? (
-              <p className="text-xs text-slate-500">
-                Arquivo: {assetFile.name} ({formatBytes(assetFile.size)}) • Tipo detectado:{" "}
-                {inferAssetKindFromFile(assetFile) ?? "nao identificado"}
-              </p>
+              <div className="flex items-start gap-3 rounded border border-slate-200 bg-slate-50 p-2">
+                {(() => {
+                  const previewKind = inferAssetKindFromFile(assetFile);
+                  if (!assetPreviewUrl) {
+                    return (
+                      <div className="flex h-20 w-20 items-center justify-center rounded border border-dashed border-slate-300 bg-white text-[10px] text-slate-500">
+                        {previewKind ?? "arquivo"}
+                      </div>
+                    );
+                  }
+                  if (assetFile.type.startsWith("image/")) {
+                    return (
+                      <img
+                        src={assetPreviewUrl}
+                        alt={assetFile.name}
+                        className="h-20 w-20 rounded border border-slate-200 object-cover"
+                      />
+                    );
+                  }
+                  if (previewKind === "mp4") {
+                    return <video src={assetPreviewUrl} className="h-20 w-32 rounded border border-slate-200 bg-black" muted />;
+                  }
+                  if (previewKind === "mp3") {
+                    return <audio src={assetPreviewUrl} controls className="w-48" />;
+                  }
+                  return (
+                    <div className="flex h-20 w-20 items-center justify-center rounded border border-dashed border-slate-300 bg-white text-[10px] text-slate-500">
+                      {previewKind ?? "arquivo"}
+                    </div>
+                  );
+                })()}
+                <div className="flex-1 text-xs text-slate-600">
+                  <p className="font-semibold text-slate-800">{assetFile.name}</p>
+                  <p>
+                    {formatBytes(assetFile.size)} • Tipo detectado:{" "}
+                    {inferAssetKindFromFile(assetFile) ?? "nao identificado"}
+                  </p>
+                </div>
+              </div>
             ) : (
               <p className="text-xs text-slate-500">
                 O tipo do arquivo e detectado automaticamente no upload. URL manual continua opcional.
@@ -2659,20 +3321,40 @@ export default function ConteudoNovaAulaPage() {
               {filteredAssetsLibrary.length === 0 ? (
                 <p className="text-xs text-slate-500">Nenhuma midia encontrada para o filtro.</p>
               ) : (
-                <div className="max-h-52 space-y-1 overflow-auto">
-                  {filteredAssetsLibrary.map((asset) => (
-                    <button
-                      key={`wizard-library-${asset.id}`}
-                      type="button"
-                      onClick={() => applyAssetToLessonMedia(asset.storage_path)}
-                      className="flex w-full items-center justify-between gap-3 border border-slate-200 bg-white px-2 py-2 text-left text-xs hover:bg-slate-50"
-                    >
-                      <span className="truncate text-slate-700">{asset.storage_path}</span>
-                      <span className="border border-slate-300 bg-slate-50 px-2 py-0.5 text-[10px] uppercase text-slate-600">
-                        {asset.kind}
-                      </span>
-                    </button>
-                  ))}
+                <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredAssetsLibrary.map((asset) => {
+                    const isImage = ["png", "webp", "svg"].includes(asset.kind);
+                    const isVideo = asset.kind === "mp4";
+                    const isAudio = asset.kind === "mp3";
+                    const displayName = getAssetDisplayName(asset.storage_path);
+                    return (
+                      <button
+                        key={`wizard-library-${asset.id}`}
+                        type="button"
+                        onClick={() => applyAssetToLessonMedia(asset.storage_path)}
+                        className="flex items-center gap-2 border border-slate-200 bg-white p-2 text-left text-xs hover:border-slate-400"
+                      >
+                        {isImage ? (
+                          <img
+                            src={resolveAssetImageUrl(asset.storage_path)}
+                            alt={displayName}
+                            className="h-12 w-12 shrink-0 rounded border border-slate-200 object-cover"
+                            onError={(event) => {
+                              event.currentTarget.style.visibility = "hidden";
+                            }}
+                          />
+                        ) : (
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-slate-200 bg-slate-50 text-[10px] uppercase text-slate-500">
+                            {isVideo ? "video" : isAudio ? "audio" : asset.kind}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium text-slate-800">{displayName}</p>
+                          <p className="truncate text-[10px] uppercase text-slate-500">{asset.kind}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -2685,7 +3367,7 @@ export default function ConteudoNovaAulaPage() {
       <div className="space-y-4">
         <h2 className="text-4xl font-semibold text-slate-900">Revisar e publicar</h2>
         <p className="text-sm text-slate-600">
-          Confira o resumo abaixo. Ao clicar em <strong>Criar aula</strong>, o conteúdo já fica disponível no app.
+          Confira o resumo abaixo. Ao clicar em <strong>{editingActivityId ? "Salvar alteracoes" : "Criar aula"}</strong>, o conteúdo {editingActivityId ? "atualizado" : "já"} fica disponível no app.
         </p>
 
         <div className="space-y-2 border border-slate-300 bg-white p-4 text-sm text-slate-700">
@@ -2702,7 +3384,7 @@ export default function ConteudoNovaAulaPage() {
             <strong>Tipo:</strong> {activityType}
           </p>
           <p>
-            <strong>Template:</strong> {screenTemplate}
+            <strong>Template:</strong> {SCREEN_TEMPLATE_LABELS[screenTemplate]}
           </p>
           <p>
             <strong>Telas selecionadas:</strong> {selectedBlueprintIds.length}
@@ -2771,37 +3453,41 @@ export default function ConteudoNovaAulaPage() {
             </span>
           </div>
 
-          <p className="text-[10px] font-semibold text-emerald-700">
+          <p className="text-[11px] font-semibold text-emerald-700">
             {exerciseInstructionText || "Marque a caixa da letra correta"}
           </p>
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {matchRowsPayload.slice(0, 4).map((row, index) => {
               const placeholders = Math.max(3, Math.min(6, (row.label || "").replace(/\s+/g, "").length || 3));
               const showOptions = index === 0;
               const rowLabel = row.label?.trim() || `Item ${index + 1}`;
-              const hasWordAudio = Boolean(row.wordAudioUrl || row.audioUrl);
-              const hasSpellingAudio = Boolean(row.spellingAudioUrl);
+              const hasWordAudio = Boolean(row.wordAudioUrl || row.audioUrl || row.audioText);
+              const hasSpellingAudio = Boolean(row.spellingAudioUrl || row.spellingText);
+              const rowImageUrl = row.imageUrl ? resolveAssetImageUrl(row.imageUrl) : "";
               return (
-                <div key={row.id} className="rounded border border-slate-200 bg-white p-1.5">
-                  <div className="grid grid-cols-[30px_1fr] items-center gap-1.5">
-                    {row.imageUrl ? (
+                <div key={row.id} className="rounded border border-slate-200 bg-white p-2">
+                  <div className="grid grid-cols-[36px_1fr] items-start gap-2">
+                    {rowImageUrl ? (
                       <img
-                        src={row.imageUrl}
+                        src={rowImageUrl}
                         alt={rowLabel}
-                        className="h-7 w-7 rounded border border-slate-200 object-cover"
+                        className="h-9 w-9 rounded border border-slate-200 object-cover"
+                        onError={(event) => {
+                          event.currentTarget.style.visibility = "hidden";
+                        }}
                       />
                     ) : (
-                      <div className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-slate-100 text-[8px] text-slate-500">
+                      <div className="flex h-9 w-9 items-center justify-center rounded border border-slate-200 bg-slate-100 text-[9px] text-slate-500">
                         IMG
                       </div>
                     )}
 
                     <div className="space-y-1">
-                      <div className="flex items-center justify-between gap-1">
-                        <p className="truncate text-[10px] font-semibold text-slate-800">{rowLabel}</p>
+                      <div className="flex items-start justify-between gap-1">
+                        <p className="break-words text-[11px] font-semibold text-slate-800">{rowLabel}</p>
                         {hasWordAudio || hasSpellingAudio ? (
-                          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 text-emerald-600">
+                          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 text-emerald-600">
                             <Volume2 className="h-2.5 w-2.5" />
                           </span>
                         ) : null}
@@ -2812,7 +3498,7 @@ export default function ConteudoNovaAulaPage() {
                           {(row.options || []).slice(0, 5).map((option) => (
                             <span
                               key={`${row.id}-${option}`}
-                              className={`inline-flex h-4 min-w-4 items-center justify-center border px-1 text-[9px] ${
+                              className={`inline-flex h-5 min-w-5 items-center justify-center border px-1 text-[10px] font-semibold ${
                                 row.correctOptions?.includes(option)
                                   ? "border-emerald-500 bg-emerald-100 text-emerald-700"
                                   : "border-slate-300 bg-white text-slate-600"
@@ -2821,8 +3507,8 @@ export default function ConteudoNovaAulaPage() {
                               {option}
                             </span>
                           ))}
-                          <span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-emerald-500 bg-emerald-500 text-white">
-                            <Check className="h-2.5 w-2.5" />
+                          <span className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-emerald-500 bg-emerald-500 text-white">
+                            <Check className="h-3 w-3" />
                           </span>
                         </div>
                       ) : (
@@ -2830,13 +3516,17 @@ export default function ConteudoNovaAulaPage() {
                           {Array.from({ length: placeholders }).map((_, slot) => (
                             <span
                               key={`${row.id}-placeholder-${slot}`}
-                              className="inline-flex h-4 min-w-4 items-center justify-center border border-slate-300 bg-white px-1 text-[9px] text-slate-400"
+                              className="inline-flex h-5 min-w-5 items-center justify-center border border-slate-300 bg-white px-1 text-[10px] text-slate-400"
                             >
                               &nbsp;
                             </span>
                           ))}
                         </div>
                       )}
+
+                      {row.notes ? (
+                        <p className="break-words text-[10px] italic text-slate-500">{row.notes}</p>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -2844,9 +3534,9 @@ export default function ConteudoNovaAulaPage() {
             })}
           </div>
 
-          <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[9px] text-amber-700">
+          <div className="rounded border border-sky-300 bg-sky-50 p-2 text-[10px] text-sky-700">
             <p className="font-semibold">Reforco no erro</p>
-            <p>{reinforcementText || "Sem texto de reforco."}</p>
+            <p className="break-words">{reinforcementText || "Sem texto de reforco."}</p>
             <p>Retorno: {reinforcementAutoReturnValue}ms</p>
           </div>
         </div>
@@ -2862,11 +3552,11 @@ export default function ConteudoNovaAulaPage() {
             </p>
             {exerciseInstructionAudioUrl ? <Volume2 className="h-3.5 w-3.5 text-slate-500" /> : null}
           </div>
-          <div className="grid grid-cols-2 gap-1">
+          <div className="grid grid-cols-2 gap-1.5">
             {markRowsPayload.slice(0, 6).map((row) => (
               <div
                 key={row.id}
-                className={`rounded border px-1 py-2 text-center text-[10px] ${
+                className={`rounded border px-1.5 py-2 text-center text-[11px] ${
                   row.isCorrectTarget
                     ? "border-emerald-500 bg-emerald-100 text-emerald-800"
                     : "border-slate-300 bg-white text-slate-600"
@@ -2874,16 +3564,22 @@ export default function ConteudoNovaAulaPage() {
               >
                 {row.imageUrl ? (
                   <img
-                    src={row.imageUrl}
+                    src={resolveAssetImageUrl(row.imageUrl)}
                     alt={row.label}
-                    className="mx-auto mb-1 h-9 w-9 rounded border border-slate-200 object-cover"
+                    className="mx-auto mb-1 h-10 w-10 rounded border border-slate-200 object-cover"
+                    onError={(event) => {
+                      event.currentTarget.style.visibility = "hidden";
+                    }}
                   />
                 ) : (
-                  <div className="mx-auto mb-1 flex h-9 w-9 items-center justify-center rounded border border-slate-200 bg-slate-100 text-[9px] text-slate-500">
+                  <div className="mx-auto mb-1 flex h-10 w-10 items-center justify-center rounded border border-slate-200 bg-slate-100 text-[10px] text-slate-500">
                     IMG
                   </div>
                 )}
-                <p className="truncate">{row.label}</p>
+                <p className="break-words">{row.label}</p>
+                {row.notes ? (
+                  <p className="mt-1 text-[10px] italic text-slate-500">{row.notes}</p>
+                ) : null}
               </div>
             ))}
           </div>
@@ -2921,6 +3617,21 @@ export default function ConteudoNovaAulaPage() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-6">
+      {editingActivityId ? (
+        <div className="flex items-center justify-between border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+          <span>
+            <strong className="mr-1">Editando aula:</strong>
+            {lessonTitle || editingActivityId}
+          </span>
+          <button
+            type="button"
+            onClick={() => navigate("/admin/conteudo")}
+            className="border border-emerald-600 bg-white px-3 py-1 text-xs font-semibold text-emerald-700"
+          >
+            Sair do modo edicao
+          </button>
+        </div>
+      ) : null}
       <div className="flex items-start justify-between">
         <button
           type="button"
@@ -2935,7 +3646,7 @@ export default function ConteudoNovaAulaPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[1fr_360px]">
         <section className="space-y-6 border border-slate-300 bg-slate-50 p-6">
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -2987,21 +3698,21 @@ export default function ConteudoNovaAulaPage() {
           ) : null}
 
           {pendingDraft && !draftGateReleased ? (
-            <div className="space-y-2 border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <p className="font-semibold">Rascunho encontrado</p>
+            <div className="space-y-2 border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">Rascunho encontrado</p>
               <p>Existe um preenchimento anterior salvo neste navegador. Voce quer restaurar?</p>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={restorePendingDraft}
-                  className="border border-amber-500 bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white"
+                  className="border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
                 >
                   Restaurar rascunho
                 </button>
                 <button
                   type="button"
                   onClick={discardPendingDraft}
-                  className="border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700"
+                  className="border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
                 >
                   Descartar rascunho
                 </button>
@@ -3079,7 +3790,13 @@ export default function ConteudoNovaAulaPage() {
                     disabled={submitting || Boolean(busy)}
                     className="inline-flex items-center gap-2 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
                   >
-                    {submitting ? "Publicando..." : "Criar aula"}
+                    {submitting
+                      ? editingActivityId
+                        ? "Salvando..."
+                        : "Publicando..."
+                      : editingActivityId
+                        ? "Salvar alteracoes"
+                        : "Criar aula"}
                   </button>
                 )}
               </div>
@@ -3098,7 +3815,7 @@ export default function ConteudoNovaAulaPage() {
             </span>
           </div>
 
-          <div className="mx-auto w-[255px] rounded-[30px] border-[6px] border-slate-900 bg-white px-3 pb-4 pt-5">
+          <div className="mx-auto w-[280px] rounded-[30px] border-[6px] border-slate-900 bg-white px-3 pb-4 pt-5">
             {isMatchLetterPreview ? (
               <div className="space-y-2 rounded border border-slate-200 bg-white p-2.5">
                 {renderPreviewBody()}
@@ -3135,7 +3852,7 @@ export default function ConteudoNovaAulaPage() {
                     </div>
                     <div>
                       <p className="text-[11px] text-slate-500">Template</p>
-                      <p className="text-xs text-slate-800">{screenTemplate}</p>
+                      <p className="text-xs text-slate-800">{SCREEN_TEMPLATE_LABELS[screenTemplate]}</p>
                     </div>
                   </div>
 
@@ -3153,7 +3870,7 @@ export default function ConteudoNovaAulaPage() {
                         />
                       ) : (
                         <p className="mt-1 text-[11px] text-slate-600">
-                          Preview nao disponivel para a tela selecionada.
+                          {getBlueprintPreviewFallbackMessage(selectedBlueprintPreview?.svg_path || "")}
                         </p>
                       )}
                       <p className="mt-1 text-[11px] text-slate-700">

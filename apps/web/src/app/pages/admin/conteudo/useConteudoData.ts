@@ -660,7 +660,7 @@ export function useConteudoData() {
           title: input.title,
           type: input.type,
           instructions: input.instructions,
-          sortOrder: toInt(input.sortOrder ?? 0, 0),
+          sortOrder: input.sortOrder === undefined ? undefined : toInt(input.sortOrder, 0),
           isPublished: input.isPublished,
         });
         await loadData();
