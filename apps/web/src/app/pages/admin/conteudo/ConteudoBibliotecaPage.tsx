@@ -1,4 +1,4 @@
-﻿import { FormEvent, useMemo, useState } from "react";
+﻿import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   ChevronRight,
   FileAudio2,
@@ -441,6 +441,34 @@ export default function ConteudoBibliotecaPage() {
     setEditActivitySortOrder(activity.sort_order ?? 0);
     setEditActivityPublished(Boolean(activity.is_published));
   };
+
+  useEffect(() => {
+    if (loading || cmsActivities.length === 0) {
+      return;
+    }
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    const match = /^#activity-([0-9a-f-]+)$/i.exec(hash);
+    if (!match) {
+      return;
+    }
+    const activityId = match[1];
+    const activity = cmsActivities.find((item) => item.id === activityId);
+    if (!activity) {
+      return;
+    }
+    if (editingActivityId !== activityId) {
+      startEditActivity(activityId);
+    }
+    const timer = window.setTimeout(() => {
+      const node = document.getElementById(`activity-row-${activityId}`);
+      if (node) {
+        node.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 120);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [loading, cmsActivities, editingActivityId]);
 
   const cancelEditActivity = () => {
     setEditingActivityId(null);
@@ -914,7 +942,13 @@ export default function ConteudoBibliotecaPage() {
               const busyEditingActivity = busy === `activity-update-${activity.id}`;
 
               return (
-                <div key={activity.id} className="border-b border-slate-200 px-4 py-3 last:border-b-0">
+                <div
+                  key={activity.id}
+                  id={`activity-row-${activity.id}`}
+                  className={`border-b border-slate-200 px-4 py-3 last:border-b-0 ${
+                    isEditingActivity ? "bg-emerald-50/60" : ""
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-medium text-slate-900">{activity.title}</p>

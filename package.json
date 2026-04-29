@@ -7,14 +7,16 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently -k -n web,api -c cyan,magenta \"npm run dev:web\" \"npm run dev:api\"",
-    "dev:web": "npm run dev --workspace @letras/web --",
-    "dev:front": "npm run dev:web --",
-    "dev:api": "npm run dev --workspace @letras/api --",
-    "build": "npm run build --workspace @letras/web",
-    "build:web": "npm run build --workspace @letras/web",
-    "build:front": "npm run build:web",
-    "mobile:manifest": "node tools/scripts/generate-mobile-screen-manifest.mjs"
+    "dev": "concurrently -k -n web,api -c cyan,magenta \"pnpm --filter @letras/web dev\" \"pnpm --filter @letras/api dev\"",
+    "dev:local": "pnpm dev",
+    "dev:web": "pnpm --filter @letras/web dev",
+    "dev:front": "pnpm run dev:web",
+    "dev:api": "pnpm --filter @letras/api dev",
+    "build": "pnpm --filter @letras/web build",
+    "build:web": "pnpm --filter @letras/web build",
+    "build:front": "pnpm run build:web",
+    "mobile:manifest": "node tools/scripts/generate-mobile-screen-manifest.mjs",
+    "conteudo:importar-video-aula": "node tools/scripts/import-video-aula-real.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

@@ -106,6 +106,7 @@ export default function MobileModulos() {
   const [error, setError] = useState("");
   const [expandedThemeId, setExpandedThemeId] = useState<string | null>(null);
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
+  const [highlightedActivityId, setHighlightedActivityId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -197,6 +198,38 @@ export default function MobileModulos() {
     return [...data.themes].sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
   }, [data.themes]);
 
+  useEffect(() => {
+    if (loading || data.activities.length === 0) {
+      return;
+    }
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    const match = /^#activity-([0-9a-f-]+)$/i.exec(hash);
+    if (!match) {
+      return;
+    }
+    const activityId = match[1];
+    const activity = data.activities.find((item) => item.id === activityId);
+    if (!activity) {
+      return;
+    }
+    const moduleItem = data.modules.find((item) => item.id === activity.module_id);
+    if (!moduleItem) {
+      return;
+    }
+    setExpandedThemeId(moduleItem.theme_id);
+    setExpandedModuleId(moduleItem.id);
+    setHighlightedActivityId(activityId);
+    const timer = window.setTimeout(() => {
+      const node = document.getElementById(`activity-${activityId}`);
+      if (node) {
+        node.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 120);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [loading, data.activities, data.modules]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -265,8 +298,17 @@ export default function MobileModulos() {
                                   {activities.map((activity) => {
                                     const assets = assetsByActivityId.get(activity.id) ?? [];
                                     const instructionPreview = summarizeInstruction(activity.instructions);
+                                    const isHighlighted = highlightedActivityId === activity.id;
                                     return (
-                                      <li key={activity.id} className="border border-gray-200 bg-gray-50 px-3 py-3">
+                                      <li
+                                        key={activity.id}
+                                        id={`activity-${activity.id}`}
+                                        className={`border px-3 py-3 ${
+                                          isHighlighted
+                                            ? "border-emerald-400 bg-emerald-50"
+                                            : "border-gray-200 bg-gray-50"
+                                        }`}
+                                      >
                                         <p className="font-medium text-gray-900">{activity.title}</p>
                                         <p className="text-xs text-gray-600 mt-1">Tipo: {activity.type}</p>
                                         <p className="text-sm text-gray-700 mt-1">{instructionPreview.text}</p>

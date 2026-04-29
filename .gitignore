@@ -17,6 +17,8 @@ pnpm-debug.log*
 .tmp_*/
 .run-logs/
 infra/supabase/.temp/
+.playwright-cli/
+artifacts/
 
 # Editor / OS files
 .DS_Store
