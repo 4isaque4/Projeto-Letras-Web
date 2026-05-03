@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useConfirm } from "../../components/ConfirmDialog";
 import StateDisplay from "../../components/StateDisplay";
 import { apiDelete, apiGet, apiPatch, apiPost } from "../../core/api/client";
 
@@ -46,6 +47,7 @@ export default function Alfabetizadores() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const confirm = useConfirm();
   const [deletingId, setDeletingId] = useState("");
   const [createForm, setCreateForm] = useState<TutorCreateForm>(EMPTY_CREATE_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -146,7 +148,12 @@ export default function Alfabetizadores() {
   };
 
   const onDelete = async (item: TutorItem) => {
-    const confirmed = window.confirm(`Deseja realmente excluir o alfabetizador '${item.nome}'?`);
+    const confirmed = await confirm({
+      title: "Excluir alfabetizador",
+      message: `Excluir "${item.nome}"? Esta ação não pode ser desfeita.`,
+      confirmLabel: "Excluir",
+      variant: "danger",
+    });
     if (!confirmed) {
       return;
     }

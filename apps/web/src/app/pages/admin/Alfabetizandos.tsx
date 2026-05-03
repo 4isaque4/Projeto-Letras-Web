@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
+import { useConfirm } from "../../components/ConfirmDialog";
 import StateDisplay from "../../components/StateDisplay";
 import { apiDelete, apiGet, apiPatch, apiPost } from "../../core/api/client";
 
@@ -50,6 +51,7 @@ export default function Alfabetizandos() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const confirm = useConfirm();
   const [deletingId, setDeletingId] = useState("");
   const [createForm, setCreateForm] = useState<StudentCreateForm>(EMPTY_CREATE_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -150,7 +152,12 @@ export default function Alfabetizandos() {
   };
 
   const onDelete = async (item: StudentItem) => {
-    const confirmed = window.confirm(`Deseja realmente excluir o alfabetizando '${item.nome}'?`);
+    const confirmed = await confirm({
+      title: "Excluir alfabetizando",
+      message: `Excluir "${item.nome}"? Esta ação não pode ser desfeita.`,
+      confirmLabel: "Excluir",
+      variant: "danger",
+    });
     if (!confirmed) {
       return;
     }

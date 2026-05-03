@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router";
 import { useAuth } from "../core/auth/AuthProvider";
+import { ConfirmProvider } from "./ConfirmDialog";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 
@@ -34,14 +35,16 @@ export default function Layout() {
   const userRole = user.role === "tutor" ? "tutor" : "admin";
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white">
-      <Sidebar userRole={userRole} />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Topbar />
-        <main className="flex-1 overflow-auto p-6 bg-gray-100">
-          <Outlet />
-        </main>
+    <ConfirmProvider>
+      <div className="flex h-screen overflow-hidden bg-white">
+        <Sidebar userRole={userRole} />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Topbar />
+          <main className="flex-1 overflow-auto p-6 bg-gray-100">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </ConfirmProvider>
   );
 }

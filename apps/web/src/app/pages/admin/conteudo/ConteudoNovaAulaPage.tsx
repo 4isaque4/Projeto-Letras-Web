@@ -10,6 +10,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
+import { useConfirm } from "../../../components/ConfirmDialog";
 import StateDisplay from "../../../components/StateDisplay";
 import { apiGet } from "../../../core/api/client";
 import { useAuth } from "../../../core/auth/AuthProvider";
@@ -470,7 +471,7 @@ interface BuildInstructionsInput {
 type ThemeEntryMode = "existing" | "new";
 type AudioFieldTarget = "lock" | "exercise" | "reinforcement";
 
-interface WizardDraftPayload {
+interface EditorDraftPayload {
   step: number;
   themeEntryMode: ThemeEntryMode;
   themeId: string;
@@ -579,8 +580,8 @@ function buildInstructionsPayload(input: BuildInstructionsInput) {
 function buildDraftFromActivity(
   activity: { id: string; module_id: string; title: string; type: ActivityType; instructions?: string | null; is_published?: boolean },
   moduleItem: { id: string; theme_id: string; title: string; stage_number: number; description?: string | null } | null,
-): WizardDraftPayload {
-  const fallback: WizardDraftPayload = {
+): EditorDraftPayload {
+  const fallback: EditorDraftPayload = {
     step: 0,
     themeEntryMode: "existing",
     themeId: moduleItem?.theme_id || "",
@@ -648,7 +649,7 @@ function buildDraftFromActivity(
   const lockMessage = typeof parsed.lockMessage === "string" ? parsed.lockMessage : "";
   const lockAudioUrl = typeof parsed.lockAudioUrl === "string" ? parsed.lockAudioUrl : "";
 
-  const draft: WizardDraftPayload = {
+  const draft: EditorDraftPayload = {
     ...fallback,
     screenTemplate,
     orientationTutor: educatorGuidance,
@@ -757,6 +758,8 @@ export default function ConteudoNovaAulaPage() {
     cmsModules,
   } = useConteudoData();
 
+  const confirm = useConfirm();
+
   const [step, setStep] = useState(0);
   const [themeEntryMode, setThemeEntryMode] = useState<ThemeEntryMode>("existing");
   const [themeId, setThemeId] = useState("");
@@ -802,10 +805,10 @@ export default function ConteudoNovaAulaPage() {
   const [assetSearch, setAssetSearch] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState("");
-  const [wizardDone, setWizardDone] = useState(false);
+  const [editorDone, setEditorDone] = useState(false);
   const [assetPreviewUrl, setAssetPreviewUrl] = useState("");
   const [blueprintPreviewErrors, setBlueprintPreviewErrors] = useState<Record<string, true>>({});
-  const [pendingDraft, setPendingDraft] = useState<WizardDraftPayload | null>(null);
+  const [pendingDraft, setPendingDraft] = useState<EditorDraftPayload | null>(null);
   const [draftGateReleased, setDraftGateReleased] = useState(false);
   const [pendingTemplateUploads, setPendingTemplateUploads] = useState<Record<string, File>>({});
   const pendingTemplateUploadsRef = useRef<Record<string, File>>({});
@@ -818,7 +821,7 @@ export default function ConteudoNovaAulaPage() {
     }
   };
 
-  const applyDraftPayload = (draft: WizardDraftPayload) => {
+  const applyDraftPayload = (draft: EditorDraftPayload) => {
     setStep(Math.max(0, Math.min(draft.step ?? 0, STEPS.length - 1)));
     setThemeEntryMode(draft.themeEntryMode === "new" ? "new" : "existing");
     setThemeId(draft.themeId || "");
@@ -885,6 +888,10 @@ export default function ConteudoNovaAulaPage() {
   }, [cmsThemes.length, newThemeName, themeEntryMode, themeId]);
 
   useEffect(() => {
+    setEditorDone(false);
+  }, [editingActivityId]);
+
+  useEffect(() => {
     if (editingActivityId) {
       setDraftGateReleased(true);
       setPendingDraft(null);
@@ -897,7 +904,7 @@ export default function ConteudoNovaAulaPage() {
         return;
       }
 
-      const parsed = JSON.parse(raw) as { payload?: WizardDraftPayload };
+      const parsed = JSON.parse(raw) as { payload?: EditorDraftPayload };
       if (!parsed?.payload) {
         setDraftGateReleased(true);
         return;
@@ -911,6 +918,9 @@ export default function ConteudoNovaAulaPage() {
   }, [editingActivityId]);
 
   const [editHydrated, setEditHydrated] = useState(false);
+  useEffect(() => {
+    setEditHydrated(false);
+  }, [editingActivityId]);
   useEffect(() => {
     if (!editingActivityId || editHydrated || loading) {
       return;
@@ -1228,7 +1238,7 @@ export default function ConteudoNovaAulaPage() {
     ],
   );
 
-  const draftPayload = useMemo<WizardDraftPayload>(
+  const draftPayload = useMemo<EditorDraftPayload>(
     () => ({
       step,
       themeEntryMode,
@@ -1309,7 +1319,7 @@ export default function ConteudoNovaAulaPage() {
     ],
   );
 
-  const hasWizardProgress = useMemo(() => {
+  const hasEditorProgress = useMemo(() => {
     return (
       step > 0 ||
       Boolean(themeId) ||
@@ -1352,7 +1362,7 @@ export default function ConteudoNovaAulaPage() {
   ]);
 
   useEffect(() => {
-    if (!draftGateReleased || wizardDone || editingActivityId) {
+    if (!draftGateReleased || editorDone || editingActivityId) {
       return;
     }
 
@@ -1373,23 +1383,8 @@ export default function ConteudoNovaAulaPage() {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [draftGateReleased, draftPayload, wizardDone]);
+  }, [draftGateReleased, draftPayload, editorDone]);
 
-  useEffect(() => {
-    if (!hasWizardProgress || wizardDone) {
-      return;
-    }
-
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => {
-      window.removeEventListener("beforeunload", onBeforeUnload);
-    };
-  }, [hasWizardProgress, wizardDone]);
 
   useEffect(() => {
     if (!assetFile) {
@@ -1578,11 +1573,14 @@ export default function ConteudoNovaAulaPage() {
     setDraftGateReleased(true);
   };
 
-  const handleCancelWizard = () => {
-    if (hasWizardProgress && !wizardDone) {
-      const confirmed = window.confirm(
-        "Voce tem alteracoes em andamento. Deseja realmente sair da criacao da aula?",
-      );
+  const handleCancelEditor = async () => {
+    if (hasEditorProgress && !editorDone) {
+      const confirmed = await confirm({
+        title: "Sair da edição",
+        message: "Você tem alterações em andamento. Deseja sair sem salvar?",
+        confirmLabel: "Sair sem salvar",
+        variant: "danger",
+      });
       if (!confirmed) {
         return;
       }
@@ -1946,7 +1944,7 @@ export default function ConteudoNovaAulaPage() {
             title: pendingFile.name.replace(/\.[^/.]+$/, ""),
             folder: selectedThemeFolder,
             metadata: {
-              source: "wizard-template-upload-on-submit",
+              source: "editor-template-upload-on-submit",
               screenTemplate,
               ...selectedThemeMetadata,
               ...metadata,
@@ -2081,7 +2079,7 @@ export default function ConteudoNovaAulaPage() {
           kind: guessedKind,
           status: assetStatus,
           folder: selectedThemeFolder,
-          metadata: { source: "wizard-step4-upload", screenTemplate, ...selectedThemeMetadata },
+          metadata: { source: "editor-step4-upload", screenTemplate, ...selectedThemeMetadata },
         });
       } else if (assetLink.trim()) {
         const inferredKind = inferAssetKindFromPath(assetLink.trim()) ?? assetKind;
@@ -2098,13 +2096,13 @@ export default function ConteudoNovaAulaPage() {
                 : inferredKind === "png"
                   ? "image/png"
                   : "image/jpeg",
-          metadata: { source: "wizard-link", screenTemplate, ...selectedThemeMetadata },
+          metadata: { source: "editor-link", screenTemplate, ...selectedThemeMetadata },
         });
       }
 
       clearSavedDraft();
       clearPendingTemplateUploads();
-      setWizardDone(true);
+      setEditorDone(true);
     } catch (submitError) {
       const message =
         submitError instanceof Error ? submitError.message : "Falha ao salvar a aula. Tente novamente.";
@@ -2984,7 +2982,7 @@ export default function ConteudoNovaAulaPage() {
             </div>
             <div className="border border-slate-300 bg-white p-3 text-sm text-slate-700">
               <p className="font-semibold text-slate-900">Nao encontrou uma tela pronta?</p>
-              <p className="mt-1">Importe telas criadas pelo alfabetizador em arquivos de imagem/SVG e reutilize no wizard.</p>
+              <p className="mt-1">Importe telas criadas pelo alfabetizador em arquivos de imagem/SVG e reutilize neste editor.</p>
               <button
                 type="button"
                 onClick={() => navigate("/admin/conteudo/importar-telas")}
@@ -3329,7 +3327,7 @@ export default function ConteudoNovaAulaPage() {
                     const displayName = getAssetDisplayName(asset.storage_path);
                     return (
                       <button
-                        key={`wizard-library-${asset.id}`}
+                        key={`library-${asset.id}`}
                         type="button"
                         onClick={() => applyAssetToLessonMedia(asset.storage_path)}
                         className="flex items-center gap-2 border border-slate-200 bg-white p-2 text-left text-xs hover:border-slate-400"
@@ -3635,7 +3633,7 @@ export default function ConteudoNovaAulaPage() {
       <div className="flex items-start justify-between">
         <button
           type="button"
-          onClick={handleCancelWizard}
+          onClick={handleCancelEditor}
           className="text-sm text-slate-700 hover:underline"
         >
           Cancelar
@@ -3720,7 +3718,7 @@ export default function ConteudoNovaAulaPage() {
             </div>
           ) : null}
 
-          {STEP_HELPERS[step] && !wizardDone ? (
+          {STEP_HELPERS[step] && !editorDone ? (
             <div className="border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
               <strong className="mr-1 text-slate-900">Este passo:</strong>
               {STEP_HELPERS[step]}
@@ -3737,7 +3735,7 @@ export default function ConteudoNovaAulaPage() {
             </div>
           ) : null}
 
-          {wizardDone ? (
+          {editorDone ? (
             <div className="space-y-4 border border-emerald-300 bg-emerald-50 p-4 text-emerald-800">
               <p className="text-lg font-semibold">Aula criada com sucesso!</p>
               <p className="text-sm">
