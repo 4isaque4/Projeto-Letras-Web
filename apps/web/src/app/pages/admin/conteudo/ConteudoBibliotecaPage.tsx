@@ -1,33 +1,25 @@
-﻿import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 import {
-  ChevronRight,
-  FileAudio2,
-  FileImage,
-  FileVideo,
-  FolderPlus,
+  FolderOpen,
+  Pause,
   Pencil,
+  Play,
   Save,
   Trash2,
   Upload,
+  Video,
+  Volume2,
   X,
+  Image as ImageIcon,
 } from "lucide-react";
+import { useConfirm } from "../../../components/ConfirmDialog";
 import StateDisplay from "../../../components/StateDisplay";
-import {
-  assetKindLabel,
-  assetStatusLabel,
-  formatDate,
-  formatBytes,
-  inferAssetKindFromFile,
-  inferAssetKindFromPath,
-} from "./cmsUtils";
-import { ActivityType, AssetKind, AssetStatus, Theme } from "./cmsTypes";
+import { env } from "../../../core/config/env";
+import { Asset, AssetKind, AssetStatus } from "./cmsTypes";
 import { useConteudoData } from "./useConteudoData";
+import { getAssetDisplayName, inferAssetKindFromFile, resolvePublicAssetUrl } from "./cmsUtils";
 
-function assetIcon(kind: AssetKind) {
-  if (kind === "mp4") return <FileVideo className="h-5 w-5 text-slate-600" />;
-  if (kind === "mp3") return <FileAudio2 className="h-5 w-5 text-slate-600" />;
-  return <FileImage className="h-5 w-5 text-slate-600" />;
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const MIME_BY_KIND: Record<AssetKind, string> = {
   mp4: "video/mp4",
@@ -36,39 +28,200 @@ const MIME_BY_KIND: Record<AssetKind, string> = {
   jpg: "image/jpeg",
 };
 
-const DEFAULT_STAGE_TWO_DIRECTORY = "C:\\Projetos\\letras-mobile-ref\\docs\\Conteudos das telas";
+type FilterType = "all" | "imagem" | "mp3" | "mp4";
 
-function normalizeThemeSlug(value: string) {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
+function isImage(kind: AssetKind) { return kind === "png" || kind === "jpg"; }
+function isAudio(kind: AssetKind) { return kind === "mp3"; }
+function isVideo(kind: AssetKind) { return kind === "mp4"; }
+
+function assetUrl(storagePath: string) {
+  return resolvePublicAssetUrl(storagePath, env.supabaseUrl ?? "");
 }
 
-function resolveThemeUploadContext(themeId: string, themes: Theme[]) {
-  const resolvedTheme = themes.find((item) => item.id === themeId) ?? null;
-  const themeSlug = resolvedTheme?.slug?.trim() || normalizeThemeSlug(resolvedTheme?.title || "");
+function cleanFileName(storagePath: string): string {
+  const full = getAssetDisplayName(storagePath);
+  const withoutUuid = full.replace(
+    /-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.[^.]+)?$/i,
+    "$1",
+  );
+  return withoutUuid || full;
+}
 
-  if (!resolvedTheme || !themeSlug) {
-    return {
-      folder: "acervo",
-      metadata: { source: "biblioteca-tema" } as Record<string, unknown>,
-    };
+// ─── Audio Card ───────────────────────────────────────────────────────────────
+
+function AudioCard({
+  asset,
+  onDelete,
+  onStatusChange,
+}: {
+  asset: Asset;
+  onDelete: () => void;
+  onStatusChange: (s: AssetStatus) => void;
+}) {
+  const ref = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const url = assetUrl(asset.storage_path);
+  const name = cleanFileName(asset.storage_path);
+
+  function toggle() {
+    if (!ref.current) return;
+    if (playing) {
+      ref.current.pause();
+      setPlaying(false);
+    } else {
+      void ref.current.play().then(() => setPlaying(true));
+    }
   }
 
-  return {
-    folder: `acervo/${themeSlug}`,
-    metadata: {
-      source: "biblioteca-tema",
-      themeId: resolvedTheme.id,
-      themeTitle: resolvedTheme.title,
-      themeSlug,
-    } as Record<string, unknown>,
-  };
+  return (
+    <div className="group flex flex-col">
+      <div className="relative aspect-square overflow-hidden rounded border border-slate-200 bg-gradient-to-br from-slate-700 to-slate-900">
+        <button
+          type="button"
+          onClick={toggle}
+          className="flex h-full w-full flex-col items-center justify-center gap-3 px-4"
+        >
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/35">
+            {playing ? (
+              <Pause className="h-5 w-5 fill-white text-white" />
+            ) : (
+              <Play className="h-5 w-5 fill-white text-white" />
+            )}
+          </div>
+          <div className="flex max-w-full items-center gap-1.5 px-2">
+            <Volume2 className="h-3.5 w-3.5 shrink-0 text-white/50" />
+            <span className="truncate text-xs text-white/80">{name}</span>
+          </div>
+        </button>
+        <audio ref={ref} src={url} onEnded={() => setPlaying(false)} className="sr-only" />
+
+        {/* Hover overlay — mesma estrutura do VisualCard */}
+        <div className="pointer-events-none absolute inset-0 flex items-end justify-between bg-black/30 p-2 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onStatusChange(asset.status === "publicado" ? "rascunho" : "publicado"); }}
+            className={`border px-2 py-0.5 text-xs font-medium backdrop-blur-sm ${
+              asset.status === "publicado"
+                ? "border-emerald-400 bg-emerald-500/80 text-white"
+                : "border-slate-400 bg-slate-700/80 text-white"
+            }`}
+          >
+            {asset.status === "publicado" ? "Publicado" : "Rascunho"}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="flex h-7 w-7 items-center justify-center border border-red-400 bg-red-600/80 text-white backdrop-blur-sm hover:bg-red-700"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+      <p className="mt-1 truncate text-xs text-slate-500" title={name}>{name}</p>
+    </div>
+  );
 }
+
+// ─── Image / Video Card ───────────────────────────────────────────────────────
+
+function VisualCard({
+  asset,
+  onDelete,
+  onStatusChange,
+}: {
+  asset: Asset;
+  onDelete: () => void;
+  onStatusChange: (s: AssetStatus) => void;
+}) {
+  const url = assetUrl(asset.storage_path);
+  const name = cleanFileName(asset.storage_path);
+
+  return (
+    <div className="group flex flex-col">
+      <div className="relative aspect-square overflow-hidden rounded border border-slate-200 bg-slate-100">
+        {isImage(asset.kind) && url ? (
+          <img
+            src={url}
+            alt={name}
+            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+            onError={(e) => {
+              e.currentTarget.style.visibility = "hidden";
+            }}
+          />
+        ) : isVideo(asset.kind) && url ? (
+          <>
+            <video
+              src={url}
+              preload="metadata"
+              muted
+              className="h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/40 group-hover:bg-black/60">
+                <Play className="h-4 w-4 fill-white text-white" />
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-slate-200">
+            {isVideo(asset.kind) ? (
+              <Video className="h-8 w-8 text-slate-400" />
+            ) : (
+              <ImageIcon className="h-8 w-8 text-slate-400" />
+            )}
+          </div>
+        )}
+
+        {/* Hover overlay */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between p-2">
+            <button
+              type="button"
+              onClick={() => onStatusChange(asset.status === "publicado" ? "rascunho" : "publicado")}
+              className={`border px-2 py-0.5 text-xs font-medium backdrop-blur-sm transition-colors ${
+                asset.status === "publicado"
+                  ? "border-emerald-400 bg-emerald-500/80 text-white hover:bg-emerald-600/80"
+                  : "border-slate-400 bg-slate-700/80 text-white hover:bg-slate-800/80"
+              }`}
+            >
+              {asset.status === "publicado" ? "Publicado" : "Rascunho"}
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              className="flex h-7 w-7 items-center justify-center border border-red-400 bg-red-600/80 text-white backdrop-blur-sm hover:bg-red-700"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-1 truncate text-xs text-slate-500" title={name}>
+        {name}
+      </p>
+    </div>
+  );
+}
+
+// ─── Media Card dispatcher ────────────────────────────────────────────────────
+
+function MediaCard({
+  asset,
+  onDelete,
+  onStatusChange,
+}: {
+  asset: Asset;
+  onDelete: () => void;
+  onStatusChange: (s: AssetStatus) => void;
+}) {
+  if (isAudio(asset.kind)) {
+    return <AudioCard asset={asset} onDelete={onDelete} onStatusChange={onStatusChange} />;
+  }
+  return <VisualCard asset={asset} onDelete={onDelete} onStatusChange={onStatusChange} />;
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ConteudoBibliotecaPage() {
   const {
@@ -79,1232 +232,457 @@ export default function ConteudoBibliotecaPage() {
     feedback,
     setFeedback,
     createTheme,
-    createActivity,
     updateTheme,
     deleteTheme,
-    updateModule,
-    deleteModule,
-    updateActivity,
-    deleteActivity,
     uploadAsset,
-    importAssetDirectory,
-    saveAssetLink,
     updateAsset,
     deleteAsset,
-    resetCmsContent,
     cmsThemes,
-    cmsModules,
-    cmsActivities,
     modulesById,
     themesById,
   } = useConteudoData();
 
-  const [filterKind, setFilterKind] = useState<"all" | AssetKind>("all");
-  const [newFolder, setNewFolder] = useState("");
+  const confirm = useConfirm();
+
+  // Upload
   const [uploadThemeId, setUploadThemeId] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [manualUrl, setManualUrl] = useState("");
-  const [status, setStatus] = useState<AssetStatus>("rascunho");
-  const [importDirectoryPath, setImportDirectoryPath] = useState(DEFAULT_STAGE_TWO_DIRECTORY);
-  const [importDirectoryThemeId, setImportDirectoryThemeId] = useState("");
-  const [importDirectoryStatus, setImportDirectoryStatus] = useState<AssetStatus>("rascunho");
-  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
-  const [editAssetActivityId, setEditAssetActivityId] = useState("");
-  const [editKind, setEditKind] = useState<AssetKind>("mp4");
-  const [editStatus, setEditStatus] = useState<AssetStatus>("rascunho");
-  const [editStoragePath, setEditStoragePath] = useState("");
+  const [uploadStatus, setUploadStatus] = useState<AssetStatus>("publicado");
+  const [files, setFiles] = useState<File[]>([]);
+
+  // Theme management
+  const [newThemeTitle, setNewThemeTitle] = useState("");
   const [editingThemeId, setEditingThemeId] = useState<string | null>(null);
   const [editThemeTitle, setEditThemeTitle] = useState("");
-  const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
-  const [editModuleThemeId, setEditModuleThemeId] = useState("");
-  const [editModuleTitle, setEditModuleTitle] = useState("");
-  const [editModuleDescription, setEditModuleDescription] = useState("");
-  const [editModuleStageNumber, setEditModuleStageNumber] = useState(1);
-  const [editModuleSortOrder, setEditModuleSortOrder] = useState(0);
-  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
-  const [editActivityModuleId, setEditActivityModuleId] = useState("");
-  const [editActivityTitle, setEditActivityTitle] = useState("");
-  const [editActivityType, setEditActivityType] = useState<ActivityType>("video");
-  const [editActivityInstructions, setEditActivityInstructions] = useState("");
-  const [editActivitySortOrder, setEditActivitySortOrder] = useState(0);
-  const [editActivityPublished, setEditActivityPublished] = useState(false);
-  const [newActivityModuleId, setNewActivityModuleId] = useState("");
-  const [newActivityTitle, setNewActivityTitle] = useState("");
-  const [newActivityType, setNewActivityType] = useState<ActivityType>("video");
-  const [newActivityInstructions, setNewActivityInstructions] = useState("");
-  const [newActivitySortOrder, setNewActivitySortOrder] = useState(0);
-  const [newActivityPublished, setNewActivityPublished] = useState(false);
 
-  const filteredAssets = useMemo(() => {
-    if (filterKind === "all") {
-      return data.assets;
-    }
-    return data.assets.filter((item) => item.kind === filterKind);
-  }, [data.assets, filterKind]);
+  // Filter
+  const [filterKind, setFilterKind] = useState<FilterType>("all");
+  const [filterThemeId, setFilterThemeId] = useState<string | null>(null);
 
-  const folders = useMemo(() => {
-    const map = new Map<string, { title: string; count: number }>();
+  // ── Derived data ────────────────────────────────────────────────────────────
 
+  // Map themeId → assets belonging to that theme
+  const assetsByTheme = useMemo(() => {
+    const map = new Map<string, Asset[]>();
     for (const asset of data.assets) {
-      const activity = data.activities.find((item) => item.id === asset.activity_id);
+      const activity = asset.activity_id
+        ? data.activities.find((a) => a.id === asset.activity_id)
+        : null;
       const moduleItem = activity ? modulesById.get(activity.module_id) : null;
-      const theme = moduleItem ? themesById.get(moduleItem.theme_id) : null;
+      const themeFromActivity = moduleItem ? themesById.get(moduleItem.theme_id) : null;
       const metadata =
         asset.metadata && typeof asset.metadata === "object" && !Array.isArray(asset.metadata)
           ? (asset.metadata as Record<string, unknown>)
           : null;
       const metadataThemeId =
-        metadata && typeof metadata.themeId === "string" ? metadata.themeId.trim() : "";
-      const metadataThemeTitle =
-        metadata && typeof metadata.themeTitle === "string" ? metadata.themeTitle.trim() : "";
-      const key = theme?.id || metadataThemeId || "sem-tema";
-      const title = theme?.title || metadataThemeTitle || "Acervo geral";
-      const current = map.get(key) ?? { title, count: 0 };
-      current.count += 1;
-      map.set(key, current);
+        typeof metadata?.themeId === "string" ? metadata.themeId : "";
+      const themeId = themeFromActivity?.id ?? metadataThemeId ?? "";
+      const existing = map.get(themeId) ?? [];
+      existing.push(asset);
+      map.set(themeId, existing);
     }
+    return map;
+  }, [data.assets, data.activities, modulesById, themesById]);
 
-    return [...map.entries()].map(([id, item]) => ({ id, ...item }));
-  }, [data.activities, data.assets, modulesById, themesById]);
-
-  const activityRows = useMemo(() => {
-    return cmsActivities.map((activity) => {
-      const moduleItem = modulesById.get(activity.module_id);
-      const theme = moduleItem ? themesById.get(moduleItem.theme_id) : null;
-      const assetsCount = data.assets.filter((asset) => asset.activity_id === activity.id).length;
-
-      return {
-        activity,
-        moduleTitle: moduleItem?.title ?? "Modulo removido",
-        themeTitle: theme?.title ?? "Tema removido",
-        assetsCount,
-      };
-    });
-  }, [cmsActivities, data.assets, modulesById, themesById]);
-
-  const moduleRows = useMemo(() => {
-    return cmsModules.map((moduleItem) => {
-      const theme = themesById.get(moduleItem.theme_id);
-      const activitiesCount = cmsActivities.filter((activity) => activity.module_id === moduleItem.id).length;
-
-      return {
-        moduleItem,
-        themeTitle: theme?.title ?? "Tema removido",
-        activitiesCount,
-      };
-    });
-  }, [cmsActivities, cmsModules, themesById]);
-
-  const onCreateFolder = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const title = newFolder.trim();
-    if (!title) {
-      setFeedback({ type: "error", text: "Dê um nome ao tema antes de salvar (ex.: Animais, Comida, Profissões)." });
-      return;
+  const filteredAssets = useMemo(() => {
+    let result = data.assets;
+    if (filterThemeId !== null) {
+      const ids = new Set((assetsByTheme.get(filterThemeId) ?? []).map((a) => a.id));
+      result = result.filter((a) => ids.has(a.id));
     }
-    const created = await createTheme({ title });
-    if (created) {
-      setNewFolder("");
-    }
-  };
+    if (filterKind === "imagem") result = result.filter((a) => isImage(a.kind));
+    else if (filterKind !== "all") result = result.filter((a) => a.kind === filterKind);
+    return result;
+  }, [data.assets, filterKind, filterThemeId, assetsByTheme]);
 
-  const onSendFile = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const uploadContext = resolveThemeUploadContext(uploadThemeId, cmsThemes);
-
-    if (file) {
-      const guessedKind = inferAssetKindFromFile(file) ?? "png";
-      const uploaded = await uploadAsset({
-        file,
-        kind: guessedKind,
-        status,
-        folder: uploadContext.folder,
-        metadata: {
-          ...uploadContext.metadata,
-          uploadMode: "file",
-        },
-      });
-      if (uploaded) {
-        setFile(null);
-        setManualUrl("");
-      }
-      return;
-    }
-
-    const url = manualUrl.trim();
-    if (!url) {
-      setFeedback({ type: "error", text: "Informe um arquivo ou uma URL para enviar." });
-      return;
-    }
-
-    const inferredKind = inferAssetKindFromPath(url);
-    if (!inferredKind) {
-      setFeedback({
-        type: "error",
-        text: "Nao foi possivel detectar o tipo da URL. Use um link terminado em .png, .jpg, .mp3 ou .mp4.",
-      });
-      return;
-    }
-
-    const saved = await saveAssetLink({
-      activityId: null,
-      kind: inferredKind,
-      status,
-      storagePath: url,
-      mimeType: MIME_BY_KIND[inferredKind],
-      metadata: {
-        ...uploadContext.metadata,
-        source: "manual-link",
-        uploadMode: "url",
-      },
-    });
-
-    if (saved) {
-      setManualUrl("");
-    }
-  };
-
-  const startEditTheme = (themeId: string, title: string) => {
-    setEditingThemeId(themeId);
-    setEditThemeTitle(title);
-  };
-
-  const cancelEditTheme = () => {
-    setEditingThemeId(null);
-    setEditThemeTitle("");
-  };
-
-  const onSaveTheme = async (themeId: string) => {
-    const nextTitle = editThemeTitle.trim();
-    if (!nextTitle) {
-      setFeedback({ type: "error", text: "Informe um nome valido para a pasta/tema." });
-      return;
-    }
-
-    const saved = await updateTheme(themeId, { title: nextTitle });
-    if (saved) {
-      cancelEditTheme();
-    }
-  };
-
-  const onDeleteTheme = async (themeId: string, title: string) => {
-    const confirmed = window.confirm(
-      `Deseja realmente excluir o tema '${title}'? Essa acao remove tambem modulos, atividades e midias vinculadas.`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    const deleted = await deleteTheme(themeId);
-    if (deleted && editingThemeId === themeId) {
-      cancelEditTheme();
-    }
-  };
-
-  const startEditModule = (moduleId: string) => {
-    const moduleItem = cmsModules.find((item) => item.id === moduleId);
-    if (!moduleItem) {
-      return;
-    }
-
-    setEditingModuleId(moduleItem.id);
-    setEditModuleThemeId(moduleItem.theme_id);
-    setEditModuleTitle(moduleItem.title);
-    setEditModuleDescription(moduleItem.description ?? "");
-    setEditModuleStageNumber(moduleItem.stage_number ?? 1);
-    setEditModuleSortOrder(moduleItem.sort_order ?? 0);
-  };
-
-  const cancelEditModule = () => {
-    setEditingModuleId(null);
-    setEditModuleThemeId("");
-    setEditModuleTitle("");
-    setEditModuleDescription("");
-    setEditModuleStageNumber(1);
-    setEditModuleSortOrder(0);
-  };
-
-  const onSaveModule = async (moduleId: string) => {
-    if (!editModuleThemeId) {
-      setFeedback({ type: "error", text: "Selecione um tema para o modulo." });
-      return;
-    }
-
-    if (!editModuleTitle.trim()) {
-      setFeedback({ type: "error", text: "Informe um titulo para o modulo." });
-      return;
-    }
-
-    const saved = await updateModule({
-      moduleId,
-      themeId: editModuleThemeId,
-      title: editModuleTitle.trim(),
-      description: editModuleDescription.trim() || undefined,
-      stageNumber: editModuleStageNumber,
-      sortOrder: editModuleSortOrder,
-    });
-
-    if (saved) {
-      cancelEditModule();
-    }
-  };
-
-  const onDeleteModule = async (moduleId: string, title: string, activitiesCount: number) => {
-    const message =
-      activitiesCount > 0
-        ? `O modulo '${title}' possui ${activitiesCount} atividade(s). Excluir agora remove tambem aulas e midias vinculadas. Deseja continuar?`
-        : `Deseja realmente excluir o modulo '${title}'?`;
-    const confirmed = window.confirm(message);
-    if (!confirmed) {
-      return;
-    }
-
-    const deleted = await deleteModule(moduleId);
-    if (deleted && editingModuleId === moduleId) {
-      cancelEditModule();
-    }
-  };
-
-  const startEditAsset = (assetId: string) => {
-    const asset = data.assets.find((item) => item.id === assetId);
-    if (!asset) return;
-    setEditingAssetId(asset.id);
-    setEditAssetActivityId(asset.activity_id ?? "");
-    setEditKind(asset.kind);
-    setEditStatus(asset.status);
-    setEditStoragePath(asset.storage_path);
-  };
-
-  const cancelEditAsset = () => {
-    setEditingAssetId(null);
-    setEditAssetActivityId("");
-    setEditKind("mp4");
-    setEditStatus("rascunho");
-    setEditStoragePath("");
-  };
-
-  const onSaveAsset = async (assetId: string) => {
-    const saved = await updateAsset({
-      assetId,
-      activityId: editAssetActivityId.trim() || null,
-      kind: editKind,
-      status: editStatus,
-      storagePath: editStoragePath.trim(),
-      mimeType: MIME_BY_KIND[editKind],
-      metadata: { source: "biblioteca-edit" },
-    });
-    if (saved) {
-      cancelEditAsset();
-    }
-  };
-
-  const onImportDirectory = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const importContext = resolveThemeUploadContext(importDirectoryThemeId, cmsThemes);
-    const imported = await importAssetDirectory({
-      directoryPath: importDirectoryPath,
-      activityId: null,
-      status: importDirectoryStatus,
-      folder: importContext.folder || "conteudo/importados-etapa-2",
-      metadata: {
-        ...importContext.metadata,
-        source: "directory-import-stage2",
-        uploadMode: "directory",
-      },
-    });
-
-    if (imported) {
-      setImportDirectoryThemeId("");
-    }
-  };
-
-  const onDeleteAsset = async (assetId: string) => {
-    const confirmed = window.confirm("Deseja realmente excluir esta midia? Essa acao nao pode ser desfeita.");
-    if (!confirmed) return;
-    await deleteAsset(assetId);
-    if (editingAssetId === assetId) {
-      cancelEditAsset();
-    }
-  };
-
-  const startEditActivity = (activityId: string) => {
-    const activity = cmsActivities.find((item) => item.id === activityId);
-    if (!activity) {
-      return;
-    }
-
-    setEditingActivityId(activity.id);
-    setEditActivityModuleId(activity.module_id);
-    setEditActivityTitle(activity.title);
-    setEditActivityType(activity.type);
-    setEditActivityInstructions(activity.instructions ?? "");
-    setEditActivitySortOrder(activity.sort_order ?? 0);
-    setEditActivityPublished(Boolean(activity.is_published));
-  };
-
-  useEffect(() => {
-    if (loading || cmsActivities.length === 0) {
-      return;
-    }
-    const hash = typeof window !== "undefined" ? window.location.hash : "";
-    const match = /^#activity-([0-9a-f-]+)$/i.exec(hash);
-    if (!match) {
-      return;
-    }
-    const activityId = match[1];
-    const activity = cmsActivities.find((item) => item.id === activityId);
-    if (!activity) {
-      return;
-    }
-    if (editingActivityId !== activityId) {
-      startEditActivity(activityId);
-    }
-    const timer = window.setTimeout(() => {
-      const node = document.getElementById(`activity-row-${activityId}`);
-      if (node) {
-        node.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }, 120);
-    return () => {
-      window.clearTimeout(timer);
+  const counts = useMemo(() => {
+    const base = filterThemeId !== null
+      ? (assetsByTheme.get(filterThemeId) ?? [])
+      : data.assets;
+    return {
+      all:    base.length,
+      imagem: base.filter((a) => isImage(a.kind)).length,
+      mp3:    base.filter((a) => a.kind === "mp3").length,
+      mp4:    base.filter((a) => a.kind === "mp4").length,
     };
-  }, [loading, cmsActivities, editingActivityId]);
+  }, [data.assets, filterThemeId, assetsByTheme]);
 
-  const cancelEditActivity = () => {
-    setEditingActivityId(null);
-    setEditActivityModuleId("");
-    setEditActivityTitle("");
-    setEditActivityType("video");
-    setEditActivityInstructions("");
-    setEditActivitySortOrder(0);
-    setEditActivityPublished(false);
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  const handleUpload = async (e: FormEvent) => {
+    e.preventDefault();
+    if (files.length === 0) return;
+    const theme = cmsThemes.find((t) => t.id === uploadThemeId) ?? null;
+    const folder = theme ? `acervo/${theme.slug || theme.id}` : "acervo";
+    const metadata: Record<string, unknown> = theme
+      ? { themeId: theme.id, themeTitle: theme.title, themeSlug: theme.slug }
+      : {};
+    for (const file of files) {
+      await uploadAsset({
+        file,
+        kind: inferAssetKindFromFile(file) ?? "png",
+        status: uploadStatus,
+        folder,
+        metadata,
+      });
+    }
+    setFiles([]);
   };
 
-  const onSaveActivity = async (activityId: string) => {
-    if (!editActivityModuleId) {
-      setFeedback({ type: "error", text: "Selecione um modulo para a atividade." });
-      return;
-    }
+  const handleCreateTheme = async (e: FormEvent) => {
+    e.preventDefault();
+    const title = newThemeTitle.trim();
+    if (!title) return;
+    const created = await createTheme({ title });
+    if (created) setNewThemeTitle("");
+  };
 
-    if (!editActivityTitle.trim()) {
-      setFeedback({ type: "error", text: "Informe um titulo para a atividade." });
-      return;
-    }
+  const handleSaveTheme = async (themeId: string) => {
+    const title = editThemeTitle.trim();
+    if (!title) return;
+    const saved = await updateTheme(themeId, { title });
+    if (saved) setEditingThemeId(null);
+  };
 
-    const saved = await updateActivity({
-      activityId,
-      moduleId: editActivityModuleId,
-      title: editActivityTitle.trim(),
-      type: editActivityType,
-      instructions: editActivityInstructions.trim() || undefined,
-      sortOrder: editActivitySortOrder,
-      isPublished: editActivityPublished,
+  const handleDeleteTheme = async (themeId: string, title: string) => {
+    const ok = await confirm({
+      title: "Excluir tema",
+      message: `Excluir "${title}"? Todos os módulos, aulas e mídias vinculadas serão removidos.`,
+      confirmLabel: "Excluir tema",
+      variant: "danger",
     });
-
-    if (saved) {
-      cancelEditActivity();
-    }
+    if (!ok) return;
+    await deleteTheme(themeId);
+    if (editingThemeId === themeId) setEditingThemeId(null);
   };
 
-  const onDeleteActivity = async (activityId: string, title: string, assetsCount: number) => {
-    const message =
-      assetsCount > 0
-        ? `A atividade '${title}' possui ${assetsCount} midia(s) vinculada(s). Excluir agora pode ocultar conteudo do mobile. Deseja continuar?`
-        : `Deseja realmente excluir a atividade '${title}'?`;
-    const confirmed = window.confirm(message);
-    if (!confirmed) {
-      return;
-    }
-
-    const deleted = await deleteActivity(activityId);
-    if (deleted && editingActivityId === activityId) {
-      cancelEditActivity();
-    }
-  };
-
-  const onCreateActivity = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!newActivityModuleId) {
-      setFeedback({ type: "error", text: "Selecione um modulo para criar a nova tela." });
-      return;
-    }
-
-    if (!newActivityTitle.trim()) {
-      setFeedback({ type: "error", text: "Informe um titulo para a nova tela." });
-      return;
-    }
-
-    const created = await createActivity({
-      moduleId: newActivityModuleId,
-      title: newActivityTitle.trim(),
-      type: newActivityType,
-      instructions: newActivityInstructions.trim() || undefined,
-      sortOrder: newActivitySortOrder,
-      isPublished: newActivityPublished,
+  const handleDeleteAsset = async (assetId: string) => {
+    const ok = await confirm({
+      title: "Excluir mídia",
+      message: "Excluir esta mídia permanentemente? Esta ação não pode ser desfeita.",
+      confirmLabel: "Excluir",
+      variant: "danger",
     });
-
-    if (!created) {
-      return;
-    }
-
-    setNewActivityTitle("");
-    setNewActivityType("video");
-    setNewActivityInstructions("");
-    setNewActivitySortOrder(0);
-    setNewActivityPublished(false);
+    if (!ok) return;
+    await deleteAsset(assetId);
   };
 
-  const onResetCms = async () => {
-    const confirmed = window.confirm(
-      "Tem certeza que deseja apagar TODAS as aulas, módulos e mídias? Isso é irreversível. As telas-base (blueprints) serão preservadas.",
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    const response = await resetCmsContent(false);
-    if (!response) {
-      return;
-    }
-
-    cancelEditTheme();
-    cancelEditModule();
-    cancelEditActivity();
-    cancelEditAsset();
-    setUploadThemeId("");
-    setImportDirectoryThemeId("");
+  const handleStatusChange = async (asset: Asset, newStatus: AssetStatus) => {
+    await updateAsset({
+      assetId: asset.id,
+      activityId: asset.activity_id ?? null,
+      kind: asset.kind,
+      status: newStatus,
+      storagePath: asset.storage_path,
+      mimeType: MIME_BY_KIND[asset.kind],
+    });
   };
 
-  if (loading) {
-    return <StateDisplay type="loading" />;
-  }
+  // ── Render ──────────────────────────────────────────────────────────────────
 
-  if (error) {
-    return <StateDisplay type="error" message={error} />;
-  }
+  if (loading) return <StateDisplay type="loading" />;
+  if (error) return <StateDisplay type="error" message={error} />;
+
+  const filterTabs: { value: FilterType; label: string }[] = [
+    { value: "all",    label: `Todos (${counts.all})`       },
+    { value: "imagem", label: `Imagens (${counts.imagem})`  },
+    { value: "mp3",    label: `Áudios (${counts.mp3})`      },
+    { value: "mp4",    label: `Vídeos (${counts.mp4})`      },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h1 className="text-4xl font-semibold tracking-tight text-slate-900">Biblioteca de Mídias</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Crie <strong>temas</strong> com base nos interesses do alfabetizando (animais, comida, profissões) e envie as mídias que serão usadas nas aulas.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            form="upload-midias-form"
-            className="inline-flex items-center gap-2 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-          >
-            <Upload className="h-4 w-4" />
-            Enviar arquivo
-          </button>
-        </div>
+    <div className="space-y-8">
+
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <div>
+        <h1 className="text-2xl font-semibold text-slate-900">Biblioteca de Mídias</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Imagens, áudios e vídeos usados nas aulas do aplicativo.
+        </p>
       </div>
 
-      {feedback ? (
-        <div className={`border px-4 py-3 text-sm ${feedback.type === "ok" ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-red-300 bg-red-50 text-red-700"}`}>
-          {feedback.text}
+      {/* ── Feedback ───────────────────────────────────────────────────────── */}
+      {feedback && (
+        <div
+          className={`flex items-center justify-between border px-4 py-3 text-sm ${
+            feedback.type === "ok"
+              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+              : "border-red-300 bg-red-50 text-red-700"
+          }`}
+        >
+          <span>{feedback.text}</span>
+          <button type="button" onClick={() => setFeedback(null)} className="ml-3 opacity-60 hover:opacity-100">
+            <X className="h-4 w-4" />
+          </button>
         </div>
-      ) : null}
+      )}
 
-      <section className="border border-slate-300 bg-white p-4">
-        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 items-center justify-center border border-slate-300 bg-slate-100">
-              <FolderPlus className="h-5 w-5 text-slate-700" />
-            </div>
-            <div>
-              <p className="text-lg font-semibold text-slate-900">Criar novo tema</p>
-              <p className="text-sm text-slate-600">
-                Um tema é o <strong>universo de interesse do alfabetizando</strong> — algo que ele goste ou conheça. Ex.: <em>Animais</em>, <em>Comida</em>, <em>Profissões</em>, <em>Zona rural</em>, <em>Esportes</em>.
-              </p>
-            </div>
-          </div>
-          <form onSubmit={onCreateFolder} className="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
+      {/* ── Temas ──────────────────────────────────────────────────────────── */}
+      <section className="space-y-3">
+        <h2 className="font-semibold text-slate-900">Temas</h2>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+          {cmsThemes.map((theme) => {
+            const themeAssets = assetsByTheme.get(theme.id) ?? [];
+            const previews = themeAssets.filter((a) => isImage(a.kind)).slice(0, 3);
+            const isEditingThis = editingThemeId === theme.id;
+
+            const isActive = filterThemeId === theme.id;
+
+            return (
+              <div
+                key={theme.id}
+                className={`overflow-hidden rounded border bg-white transition-shadow ${
+                  isActive
+                    ? "border-slate-900 shadow-md"
+                    : "border-slate-200 hover:border-slate-400"
+                }`}
+              >
+                {/* Preview thumbnails — clicável para filtrar */}
+                <button
+                  type="button"
+                  onClick={() => setFilterThemeId(isActive ? null : theme.id)}
+                  className="relative w-full"
+                  title={isActive ? "Remover filtro" : `Ver mídias de "${theme.title}"`}
+                >
+                  <div className={`grid gap-px bg-slate-200 ${previews.length > 1 ? "grid-cols-3" : "grid-cols-1"} h-20`}>
+                    {previews.length > 0 ? (
+                      previews.map((a) => (
+                        <img
+                          key={a.id}
+                          src={assetUrl(a.storage_path)}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}
+                        />
+                      ))
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-slate-50">
+                        <FolderOpen className="h-7 w-7 text-slate-300" />
+                      </div>
+                    )}
+                  </div>
+                  {isActive && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-slate-900/20">
+                      <span className="border border-white bg-slate-900 px-2 py-0.5 text-xs font-semibold text-white">
+                        Filtrando
+                      </span>
+                    </div>
+                  )}
+                </button>
+
+                {/* Title + actions */}
+                <div className="px-3 py-2.5">
+                  {isEditingThis ? (
+                    <div className="flex gap-1">
+                      <input
+                        value={editThemeTitle}
+                        onChange={(e) => setEditThemeTitle(e.target.value)}
+                        autoFocus
+                        onKeyDown={(e) => e.key === "Enter" && void handleSaveTheme(theme.id)}
+                        className="min-w-0 flex-1 border border-slate-300 px-2 py-1 text-sm outline-none focus:border-slate-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveTheme(theme.id)}
+                        className="border border-slate-900 bg-slate-900 px-2 py-1 text-white hover:bg-slate-700"
+                      >
+                        <Save className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingThemeId(null)}
+                        className="border border-slate-200 px-2 py-1 text-slate-500 hover:bg-slate-50"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFilterThemeId(isActive ? null : theme.id)}
+                        className="min-w-0 text-left"
+                      >
+                        <p className={`truncate text-sm font-medium ${isActive ? "text-slate-900" : "text-slate-700"}`}>
+                          {theme.title}
+                        </p>
+                        <p className="text-xs text-slate-400">{themeAssets.length} arquivo(s)</p>
+                      </button>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setEditingThemeId(theme.id); setEditThemeTitle(theme.title); }}
+                          className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          title="Renomear tema"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); void handleDeleteTheme(theme.id, theme.title); }}
+                          className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                          title="Excluir tema"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* New theme card */}
+          <form
+            onSubmit={(e) => void handleCreateTheme(e)}
+            className="flex flex-col items-center justify-center gap-2 rounded border-2 border-dashed border-slate-200 bg-white p-4 transition-colors hover:border-slate-300"
+          >
+            <FolderOpen className="h-6 w-6 text-slate-300" />
             <input
-              value={newFolder}
-              onChange={(event) => setNewFolder(event.target.value)}
-              placeholder="Nome do novo tema"
-              className="min-w-[240px] border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-900"
+              value={newThemeTitle}
+              onChange={(e) => setNewThemeTitle(e.target.value)}
+              placeholder="Nome do tema..."
+              className="w-full border border-slate-300 px-2 py-1.5 text-center text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-900"
             />
             <button
               type="submit"
-              disabled={busy === "theme"}
-              className="inline-flex items-center justify-center gap-2 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              disabled={!newThemeTitle.trim() || busy === "theme"}
+              className="w-full border border-slate-900 bg-slate-900 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 disabled:opacity-40"
             >
-              <FolderPlus className="h-4 w-4" />
               {busy === "theme" ? "Criando..." : "Criar tema"}
             </button>
           </form>
         </div>
       </section>
 
-      <section className="space-y-3 border border-red-200 bg-red-50 p-4">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-lg font-semibold text-red-900">Apagar todas as aulas e mídias</p>
-            <p className="text-sm text-red-800">
-              Remove temas, módulos, atividades e mídias do painel. As telas-base (blueprints) permanecem para você montar aulas novamente.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void onResetCms()}
-            disabled={busy === "cms-reset"}
-            className="inline-flex items-center gap-2 border border-red-700 bg-red-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            <Trash2 className="h-4 w-4" />
-            {busy === "cms-reset" ? "Apagando..." : "Apagar tudo"}
-          </button>
-        </div>
-      </section>
+      {/* ── Upload ─────────────────────────────────────────────────────────── */}
+      <section className="border border-slate-300 bg-white p-5">
+        <p className="mb-4 font-semibold text-slate-900">Enviar mídias</p>
 
-      <section className="space-y-3">
-        <p className="text-xl font-semibold text-slate-900">Temas</p>
-        {folders.length === 0 ? (
-          <StateDisplay type="empty" message="Nenhum tema criado ainda. Use o bloco acima para criar o primeiro." />
-        ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            {folders.map((folder) => (
-              <div key={folder.id} className="flex items-center justify-between border border-slate-300 bg-white p-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center border border-slate-300 bg-slate-100">
-                    <FolderPlus className="h-5 w-5 text-slate-600" />
-                  </div>
-                  <div>
-                    {editingThemeId === folder.id ? (
-                      <input
-                        value={editThemeTitle}
-                        onChange={(event) => setEditThemeTitle(event.target.value)}
-                        className="border border-slate-300 px-2 py-1 text-sm"
-                      />
-                    ) : (
-                      <p className="font-semibold text-slate-900">{folder.title}</p>
-                    )}
-                    <p className="text-sm text-slate-600">{folder.count} arquivo(s)</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {folder.id !== "sem-tema" ? (
-                    editingThemeId === folder.id ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => onSaveTheme(folder.id)}
-                          className="inline-flex items-center gap-1 border border-slate-900 bg-slate-900 px-2 py-1 text-xs font-semibold text-white"
-                        >
-                          <Save className="h-3.5 w-3.5" />
-                          Salvar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelEditTheme}
-                          className="inline-flex items-center gap-1 border border-slate-300 bg-white px-2 py-1 text-xs"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                          Cancelar
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => startEditTheme(folder.id, folder.title)}
-                          className="inline-flex items-center gap-1 border border-slate-300 bg-white px-2 py-1 text-xs"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDeleteTheme(folder.id, folder.title)}
-                          className="inline-flex items-center gap-1 border border-rose-300 bg-rose-50 px-2 py-1 text-xs text-rose-700"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Excluir
-                        </button>
-                      </>
-                    )
-                  ) : null}
-                  <ChevronRight className="h-4 w-4 text-slate-400" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xl font-semibold text-slate-900">Modulos ({moduleRows.length})</p>
-        </div>
-
-        {moduleRows.length === 0 ? (
-          <StateDisplay type="empty" message="Nenhum modulo cadastrado ainda." />
-        ) : (
-          <div className="overflow-hidden border border-slate-300 bg-white">
-            {moduleRows.map(({ moduleItem, themeTitle, activitiesCount }) => {
-              const isEditingModule = editingModuleId === moduleItem.id;
-              const busyEditingModule = busy === `module-update-${moduleItem.id}`;
-
-              return (
-                <div key={moduleItem.id} className="border-b border-slate-200 px-4 py-3 last:border-b-0">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-slate-900">{moduleItem.title}</p>
-                      <p className="text-sm text-slate-600">
-                        {themeTitle} • etapa {moduleItem.stage_number} • ordem {moduleItem.sort_order ?? 0}
-                      </p>
-                      <p className="text-xs text-slate-500">{activitiesCount} atividade(s)</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => startEditModule(moduleItem.id)}
-                        className="inline-flex items-center gap-1 border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void onDeleteModule(moduleItem.id, moduleItem.title, activitiesCount)}
-                        className="inline-flex items-center gap-1 border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Excluir
-                      </button>
-                    </div>
-                  </div>
-
-                  {isEditingModule ? (
-                    <div className="mt-3 grid grid-cols-1 gap-2 border border-slate-200 bg-slate-50 p-3 md:grid-cols-4">
-                      <select
-                        value={editModuleThemeId}
-                        onChange={(event) => setEditModuleThemeId(event.target.value)}
-                        className="border border-slate-300 px-2 py-2 text-xs"
-                      >
-                        <option value="">Selecione o tema</option>
-                        {cmsThemes.map((theme) => (
-                          <option key={theme.id} value={theme.id}>
-                            {theme.title}
-                          </option>
-                        ))}
-                      </select>
-
-                      <input
-                        value={editModuleTitle}
-                        onChange={(event) => setEditModuleTitle(event.target.value)}
-                        className="border border-slate-300 px-2 py-2 text-xs"
-                        placeholder="Titulo do modulo"
-                      />
-
-                      <input
-                        type="number"
-                        min={1}
-                        value={editModuleStageNumber}
-                        onChange={(event) => setEditModuleStageNumber(Number(event.target.value) || 1)}
-                        className="border border-slate-300 px-2 py-2 text-xs"
-                        placeholder="Etapa"
-                      />
-
-                      <input
-                        type="number"
-                        value={editModuleSortOrder}
-                        onChange={(event) => setEditModuleSortOrder(Number(event.target.value) || 0)}
-                        className="border border-slate-300 px-2 py-2 text-xs"
-                        placeholder="Ordem"
-                      />
-
-                      <textarea
-                        value={editModuleDescription}
-                        onChange={(event) => setEditModuleDescription(event.target.value)}
-                        className="border border-slate-300 px-2 py-2 text-xs md:col-span-4"
-                        placeholder="Descricao do modulo"
-                        rows={2}
-                      />
-
-                      <div className="md:col-span-4 flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={cancelEditModule}
-                          className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                          Cancelar
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busyEditingModule}
-                          onClick={() => void onSaveModule(moduleItem.id)}
-                          className="inline-flex items-center gap-1 border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                        >
-                          <Save className="h-3.5 w-3.5" />
-                          Salvar
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xl font-semibold text-slate-900">Telas e atividades ({activityRows.length})</p>
-        </div>
-
-        <form onSubmit={onCreateActivity} className="grid grid-cols-1 gap-2 border border-slate-300 bg-slate-50 p-4 md:grid-cols-5">
-          <select
-            value={newActivityModuleId}
-            onChange={(event) => setNewActivityModuleId(event.target.value)}
-            className="border border-slate-300 bg-white px-3 py-2 text-sm"
-          >
-            <option value="">Selecione o modulo</option>
-            {cmsModules.map((moduleItem) => (
-              <option key={moduleItem.id} value={moduleItem.id}>
-                {moduleItem.title}
-              </option>
-            ))}
-          </select>
-
-          <input
-            value={newActivityTitle}
-            onChange={(event) => setNewActivityTitle(event.target.value)}
-            className="border border-slate-300 bg-white px-3 py-2 text-sm"
-            placeholder="Titulo da nova tela"
-          />
-
-          <select
-            value={newActivityType}
-            onChange={(event) => setNewActivityType(event.target.value as ActivityType)}
-            className="border border-slate-300 bg-white px-3 py-2 text-sm"
-          >
-            <option value="video">Video</option>
-            <option value="audio">Audio</option>
-            <option value="quiz">Quiz</option>
-            <option value="letra">Letra</option>
-          </select>
-
-          <input
-            type="number"
-            value={newActivitySortOrder}
-            onChange={(event) => setNewActivitySortOrder(Number(event.target.value) || 0)}
-            className="border border-slate-300 bg-white px-3 py-2 text-sm"
-            placeholder="Ordem"
-          />
-
-          <label className="flex items-center gap-2 border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={newActivityPublished}
-              onChange={(event) => setNewActivityPublished(event.target.checked)}
-            />
-            Publicar agora
-          </label>
-
-          <textarea
-            value={newActivityInstructions}
-            onChange={(event) => setNewActivityInstructions(event.target.value)}
-            className="border border-slate-300 bg-white px-3 py-2 text-xs md:col-span-4"
-            placeholder="Texto simples ou JSON do campo instructions. Para RN121/RN123, voce pode colar aqui o payload gerado no wizard Nova Aula."
-            rows={3}
-          />
-
-          <div className="flex items-end justify-between gap-3 md:col-span-1">
-            <p className="text-xs text-slate-500">
-              Crie varias telas no mesmo modulo sem recriar a aula inteira.
-            </p>
-            <button
-              type="submit"
-              disabled={busy === "activity"}
-              className="inline-flex items-center gap-1 border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {busy === "activity" ? "Criando..." : "Nova tela"}
-            </button>
-          </div>
-        </form>
-
-        {activityRows.length === 0 ? (
-          <StateDisplay type="empty" message="Nenhuma atividade cadastrada ainda." />
-        ) : (
-          <div className="overflow-hidden border border-slate-300 bg-white">
-            {activityRows.map(({ activity, moduleTitle, themeTitle, assetsCount }) => {
-              const isEditingActivity = editingActivityId === activity.id;
-              const busyEditingActivity = busy === `activity-update-${activity.id}`;
-
-              return (
-                <div
-                  key={activity.id}
-                  id={`activity-row-${activity.id}`}
-                  className={`border-b border-slate-200 px-4 py-3 last:border-b-0 ${
-                    isEditingActivity ? "bg-emerald-50/60" : ""
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-slate-900">{activity.title}</p>
-                      <p className="text-sm text-slate-600">
-                        {themeTitle} / {moduleTitle} • tipo {activity.type} • ordem {activity.sort_order}
-                      </p>
-                      <p className="text-xs text-slate-500">{assetsCount} midia(s) vinculada(s)</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`border px-2 py-1 text-xs ${
-                          activity.is_published
-                            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                            : "border-amber-300 bg-amber-50 text-amber-700"
-                        }`}
-                      >
-                        {activity.is_published ? "Publicado" : "Rascunho"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => startEditActivity(activity.id)}
-                        className="inline-flex items-center gap-1 border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void onDeleteActivity(activity.id, activity.title, assetsCount)}
-                        className="inline-flex items-center gap-1 border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Excluir
-                      </button>
-                    </div>
-                  </div>
-
-                  {isEditingActivity ? (
-                    <div className="mt-3 grid grid-cols-1 gap-2 border border-slate-200 bg-slate-50 p-3 md:grid-cols-4">
-                      <select
-                        value={editActivityModuleId}
-                        onChange={(event) => setEditActivityModuleId(event.target.value)}
-                        className="border border-slate-300 px-2 py-2 text-xs"
-                      >
-                        <option value="">Selecione o modulo</option>
-                        {cmsModules.map((moduleItem) => (
-                          <option key={moduleItem.id} value={moduleItem.id}>
-                            {moduleItem.title}
-                          </option>
-                        ))}
-                      </select>
-
-                      <input
-                        value={editActivityTitle}
-                        onChange={(event) => setEditActivityTitle(event.target.value)}
-                        className="border border-slate-300 px-2 py-2 text-xs"
-                        placeholder="Titulo da atividade"
-                      />
-
-                      <select
-                        value={editActivityType}
-                        onChange={(event) => setEditActivityType(event.target.value as ActivityType)}
-                        className="border border-slate-300 px-2 py-2 text-xs"
-                      >
-                        <option value="video">Video</option>
-                        <option value="audio">Audio</option>
-                        <option value="quiz">Quiz</option>
-                        <option value="letra">Letra</option>
-                      </select>
-
-                      <input
-                        type="number"
-                        value={editActivitySortOrder}
-                        onChange={(event) => setEditActivitySortOrder(Number(event.target.value) || 0)}
-                        className="border border-slate-300 px-2 py-2 text-xs"
-                        placeholder="Ordem"
-                      />
-
-                      <textarea
-                        value={editActivityInstructions}
-                        onChange={(event) => setEditActivityInstructions(event.target.value)}
-                        className="border border-slate-300 px-2 py-2 text-xs md:col-span-3"
-                        placeholder="Instrucoes para a tela/atividade"
-                        rows={2}
-                      />
-
-                      <label className="flex items-center gap-2 border border-slate-300 bg-white px-2 py-2 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={editActivityPublished}
-                          onChange={(event) => setEditActivityPublished(event.target.checked)}
-                        />
-                        Publicada
-                      </label>
-
-                      <div className="md:col-span-4 flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={cancelEditActivity}
-                          className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                          Cancelar
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busyEditingActivity}
-                          onClick={() => void onSaveActivity(activity.id)}
-                          className="inline-flex items-center gap-1 border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                        >
-                          <Save className="h-3.5 w-3.5" />
-                          Salvar
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      <form id="upload-midias-form" onSubmit={onSendFile} className="space-y-3 border border-slate-300 bg-white p-4">
-        <p className="text-lg font-semibold text-slate-900">Upload rapido</p>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-          <select
-            value={uploadThemeId}
-            onChange={(event) => setUploadThemeId(event.target.value)}
-            className="border border-slate-300 px-3 py-2 text-sm"
-          >
-            <option value="">Tema (opcional)</option>
-            {cmsThemes.map((theme) => (
-              <option key={theme.id} value={theme.id}>
-                {theme.title}
-              </option>
-            ))}
-          </select>
-          <select value={status} onChange={(event) => setStatus(event.target.value as AssetStatus)} className="border border-slate-300 px-3 py-2 text-sm">
-            <option value="rascunho">Rascunho</option>
-            <option value="publicado">Publicado</option>
-            <option value="arquivado">Arquivado</option>
-          </select>
-          <div className="flex items-center gap-2 border border-slate-300 px-3 py-2">
-            <label className="cursor-pointer border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-semibold text-white">
-              Escolher arquivo
+        <form onSubmit={(e) => void handleUpload(e)} className="flex flex-wrap items-end gap-3">
+          {/* File picker */}
+          <div className="flex-1" style={{ minWidth: 200 }}>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Arquivo(s)</label>
+            <label className="flex cursor-pointer items-center gap-2 border border-slate-300 bg-slate-50 px-3 py-2 transition-colors hover:bg-slate-100">
+              <Upload className="h-4 w-4 shrink-0 text-slate-500" />
+              <span className="truncate text-sm text-slate-600">
+                {files.length > 0 ? `${files.length} arquivo(s) selecionado(s)` : "Escolher arquivos..."}
+              </span>
               <input
                 type="file"
+                multiple
                 accept="image/*,audio/*,video/*"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
                 className="sr-only"
+                onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
               />
             </label>
-            <span className="max-w-[180px] truncate text-xs text-slate-600">
-              {file ? file.name : "Nenhum arquivo"}
-            </span>
           </div>
-        </div>
-        <input
-          value={manualUrl}
-          onChange={(event) => setManualUrl(event.target.value)}
-          placeholder="Opcional: URL manual para arquivo ja hospedado"
-          className="w-full border border-slate-300 px-3 py-2 text-sm"
-        />
-        {file ? (
-          <p className="text-xs text-slate-500">
-            Selecionado: {file.name} ({formatBytes(file.size)}) - tipo detectado automaticamente.
-          </p>
-        ) : null}
-        <p className="text-xs text-slate-500">
-          {busy === "asset-upload" || busy === "asset-link"
-            ? "Processando upload..."
-            : "As midias podem ser enviadas direto no acervo do tema, sem vincular a quiz/aula."}
-        </p>
-      </form>
 
-      <form onSubmit={onImportDirectory} className="space-y-3 border border-dashed border-slate-300 bg-slate-50 p-4">
-        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+          {/* Theme */}
           <div>
-            <p className="text-lg font-semibold text-slate-900">Importar pasta local da etapa 2</p>
-            <p className="text-sm text-slate-600">
-              Traga em lote os arquivos da pasta `Conteudos das telas` (no PC do admin) direto para o acervo.
-            </p>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Tema</label>
+            <select
+              value={uploadThemeId}
+              onChange={(e) => setUploadThemeId(e.target.value)}
+              className="border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+            >
+              <option value="">Sem tema</option>
+              {cmsThemes.map((t) => (
+                <option key={t.id} value={t.id}>{t.title}</option>
+              ))}
+            </select>
           </div>
+
+          {/* Status */}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Status</label>
+            <select
+              value={uploadStatus}
+              onChange={(e) => setUploadStatus(e.target.value as AssetStatus)}
+              className="border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+            >
+              <option value="publicado">Publicado</option>
+              <option value="rascunho">Rascunho</option>
+            </select>
+          </div>
+
           <button
             type="submit"
-            disabled={busy === "asset-import-directory"}
-            className="inline-flex items-center gap-2 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            disabled={files.length === 0 || busy === "asset-upload"}
+            className="border border-slate-900 bg-slate-900 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40"
           >
-            <Upload className="h-4 w-4" />
-            {busy === "asset-import-directory" ? "Importando..." : "Importar pasta"}
+            {busy === "asset-upload"
+              ? "Enviando..."
+              : files.length > 0
+                ? `Enviar (${files.length})`
+                : "Enviar"}
           </button>
-        </div>
+        </form>
 
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-          <input
-            value={importDirectoryPath}
-            onChange={(event) => setImportDirectoryPath(event.target.value)}
-            className="border border-slate-300 bg-white px-3 py-2 text-sm md:col-span-2"
-            placeholder={DEFAULT_STAGE_TWO_DIRECTORY}
-          />
-          <select
-            value={importDirectoryThemeId}
-            onChange={(event) => setImportDirectoryThemeId(event.target.value)}
-            className="border border-slate-300 bg-white px-3 py-2 text-sm"
-          >
-            <option value="">Acervo geral (sem tema)</option>
-            {cmsThemes.map((theme) => (
-              <option key={theme.id} value={theme.id}>
-                {theme.title}
-              </option>
+        {files.length > 0 && (
+          <ul className="mt-3 max-h-24 space-y-0.5 overflow-auto border border-slate-100 bg-slate-50 px-3 py-2">
+            {files.map((f) => (
+              <li key={`${f.name}-${f.size}`} className="truncate text-xs text-slate-500">
+                {f.name}
+              </li>
             ))}
-          </select>
+          </ul>
+        )}
+      </section>
+
+      {/* ── Grid de mídias ─────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        {/* Filter bar */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Tipo */}
+          {filterTabs.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => setFilterKind(tab.value)}
+              className={`border px-3 py-1.5 text-sm font-medium transition-colors ${
+                filterKind === tab.value
+                  ? "border-slate-900 bg-slate-900 text-white"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+
+          {/* Separador + tema ativo */}
+          {filterThemeId !== null && (
+            <>
+              <span className="text-slate-300">|</span>
+              <div className="flex items-center gap-1 border border-slate-900 bg-slate-900 px-3 py-1.5 text-sm font-medium text-white">
+                <span>{cmsThemes.find((t) => t.id === filterThemeId)?.title ?? "Tema"}</span>
+                <button
+                  type="button"
+                  onClick={() => setFilterThemeId(null)}
+                  className="ml-1 opacity-70 hover:opacity-100"
+                  title="Remover filtro de tema"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-[220px_1fr]">
-          <select
-            value={importDirectoryStatus}
-            onChange={(event) => setImportDirectoryStatus(event.target.value as AssetStatus)}
-            className="border border-slate-300 bg-white px-3 py-2 text-sm"
-          >
-            <option value="rascunho">Rascunho</option>
-            <option value="publicado">Publicado</option>
-            <option value="arquivado">Arquivado</option>
-          </select>
-          <p className="border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-            Imports repetidos ignoram arquivos ja cadastrados pela mesma origem local.
-          </p>
-        </div>
-      </form>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-xl font-semibold text-slate-900">Todos os arquivos ({filteredAssets.length})</p>
-          <select value={filterKind} onChange={(event) => setFilterKind(event.target.value as "all" | AssetKind)} className="border border-slate-300 px-3 py-2 text-sm bg-white">
-            <option value="all">Todos os tipos</option>
-            <option value="mp4">Videos</option>
-            <option value="mp3">Audios</option>
-            <option value="png">Imagem PNG</option>
-            <option value="jpg">Imagem JPG</option>
-          </select>
-        </div>
+        {/* Grid */}
         {filteredAssets.length === 0 ? (
-          <StateDisplay type="empty" message="Nenhum arquivo para o filtro selecionado." />
+          <StateDisplay type="empty" message="Nenhuma mídia para o filtro selecionado." />
         ) : (
-          <div className="overflow-hidden border border-slate-300 bg-white">
-            {filteredAssets.map((asset) => {
-              const isEditing = editingAssetId === asset.id;
-              const linkedActivity = asset.activity_id
-                ? cmsActivities.find((item) => item.id === asset.activity_id) ?? null
-                : null;
-              const linkedModule = linkedActivity ? modulesById.get(linkedActivity.module_id) : null;
-              const linkedTheme = linkedModule ? themesById.get(linkedModule.theme_id) : null;
-              const metadata =
-                asset.metadata && typeof asset.metadata === "object" && !Array.isArray(asset.metadata)
-                  ? (asset.metadata as Record<string, unknown>)
-                  : null;
-              const metadataThemeTitle =
-                metadata && typeof metadata.themeTitle === "string" ? metadata.themeTitle.trim() : "";
-              return (
-                <div key={asset.id} className="border-b border-slate-200 px-4 py-3 last:border-b-0">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center border border-slate-300 bg-slate-100">
-                        {assetIcon(asset.kind)}
-                      </div>
-                      <div>
-                        <p className="font-medium text-slate-900">{asset.storage_path.split("/").pop() || assetKindLabel(asset.kind)}</p>
-                        <p className="text-sm text-slate-600">{assetKindLabel(asset.kind)} • {formatDate(asset.created_at)}</p>
-                        <p className="text-xs text-slate-500">
-                          {linkedActivity
-                            ? `Vinculada em ${linkedTheme?.title ?? "Tema"} / ${linkedModule?.title ?? "Modulo"} / ${linkedActivity.title}`
-                            : metadataThemeTitle
-                              ? `Acervo geral do tema ${metadataThemeTitle}`
-                              : "Acervo geral sem aula vinculada"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`border px-2 py-1 text-xs ${asset.status === "publicado" ? "border-emerald-300 bg-emerald-50 text-emerald-700" : asset.status === "rascunho" ? "border-amber-300 bg-amber-50 text-amber-700" : "border-slate-300 bg-slate-100 text-slate-600"}`}>
-                        {assetStatusLabel(asset.status)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => startEditAsset(asset.id)}
-                        className="inline-flex items-center gap-1 border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void onDeleteAsset(asset.id)}
-                        className="inline-flex items-center gap-1 border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Excluir
-                      </button>
-                    </div>
-                  </div>
-
-                  {isEditing ? (
-                    <div className="mt-3 grid grid-cols-1 gap-2 border border-slate-200 bg-slate-50 p-3 md:grid-cols-5">
-                      <select
-                        value={editAssetActivityId}
-                        onChange={(event) => setEditAssetActivityId(event.target.value)}
-                        className="border border-slate-300 px-2 py-2 text-xs"
-                      >
-                        <option value="">Acervo geral (sem aula)</option>
-                        {cmsActivities.map((activity) => (
-                          <option key={activity.id} value={activity.id}>
-                            {activity.title}
-                          </option>
-                        ))}
-                      </select>
-                      <select value={editKind} onChange={(event) => setEditKind(event.target.value as AssetKind)} className="border border-slate-300 px-2 py-2 text-xs">
-                        <option value="mp4">Video</option>
-                        <option value="mp3">Audio</option>
-                        <option value="png">Imagem PNG</option>
-                        <option value="jpg">Imagem JPG</option>
-                      </select>
-                      <select value={editStatus} onChange={(event) => setEditStatus(event.target.value as AssetStatus)} className="border border-slate-300 px-2 py-2 text-xs">
-                        <option value="rascunho">Rascunho</option>
-                        <option value="publicado">Publicado</option>
-                        <option value="arquivado">Arquivado</option>
-                      </select>
-                      <input
-                        value={editStoragePath}
-                        onChange={(event) => setEditStoragePath(event.target.value)}
-                        className="border border-slate-300 px-2 py-2 text-xs md:col-span-2"
-                        placeholder="URL da midia"
-                      />
-                      <div className="md:col-span-5 flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={cancelEditAsset}
-                          className="inline-flex items-center gap-1 border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                          Cancelar
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy.startsWith("asset-update-")}
-                          onClick={() => void onSaveAsset(asset.id)}
-                          className="inline-flex items-center gap-1 border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                        >
-                          <Save className="h-3.5 w-3.5" />
-                          Salvar
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+            {filteredAssets.map((asset) => (
+              <MediaCard
+                key={asset.id}
+                asset={asset}
+                onDelete={() => void handleDeleteAsset(asset.id)}
+                onStatusChange={(s) => void handleStatusChange(asset, s)}
+              />
+            ))}
           </div>
         )}
       </section>

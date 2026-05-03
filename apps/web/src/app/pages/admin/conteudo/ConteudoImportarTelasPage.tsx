@@ -208,7 +208,7 @@ export default function ConteudoImportarTelasPage() {
         <div>
           <h2 className="text-xl font-semibold text-slate-900">Enviar telas por arquivo</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Envie imagens/SVG e reutilize essas telas no wizard de criacao de aulas.
+            Envie imagens/SVG e reutilize essas telas na criacao de aulas.
           </p>
         </div>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
@@ -291,7 +291,7 @@ export default function ConteudoImportarTelasPage() {
         <div className="border border-slate-300 bg-white p-4">
           <p className="inline-flex h-8 w-8 items-center justify-center bg-slate-900 text-sm font-semibold text-white">2</p>
           <p className="mt-2 font-semibold text-slate-900">Cadastro automatico</p>
-          <p className="text-sm text-slate-600">O sistema cria as telas base e prepara para o wizard.</p>
+          <p className="text-sm text-slate-600">O sistema cria as telas base e prepara para uso nas aulas.</p>
         </div>
         <div className="border border-slate-300 bg-white p-4">
           <p className="inline-flex h-8 w-8 items-center justify-center bg-slate-900 text-sm font-semibold text-white">3</p>
