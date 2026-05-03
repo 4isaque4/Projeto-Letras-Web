@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import { ChevronDown, ChevronRight, Image as ImageIcon, Video } from "lucide-react";
 import StateDisplay from "../components/StateDisplay";
 import { apiGet } from "../core/api/client";
+import { env } from "../core/config/env";
+import { resolvePublicAssetUrl } from "./admin/conteudo/cmsUtils";
 
 interface ThemeItem {
   id: string;
@@ -24,81 +28,405 @@ interface ActivityItem {
   title: string;
   type: string;
   instructions?: string;
+  is_published?: boolean;
   sort_order?: number;
-}
-
-interface AssetItem {
-  id: string;
-  activity_id: string;
-  kind: string;
-  storage_path: string;
-  status: string;
 }
 
 interface ConteudoResponse {
   themes: ThemeItem[];
   modules: ModuleItem[];
   activities: ActivityItem[];
-  assets: AssetItem[];
+  assets: unknown[];
 }
 
-interface InstructionPreview {
-  text: string;
-  template?: string;
-  itemsCount?: number;
+interface MatchLetterItem {
+  id: string;
+  label: string;
+  imageUrl: string | null;
+  wordAudioUrl: string | null;
 }
 
-function summarizeInstruction(rawValue?: string): InstructionPreview {
-  const raw = String(rawValue ?? "").trim();
-  if (!raw) {
-    return { text: "Sem orientacao cadastrada." };
-  }
+interface MarkImageItem {
+  id: string;
+  label: string;
+  imageUrl: string | null;
+  isCorrect: boolean;
+}
 
+interface MatchLetterInstructions {
+  screenTemplate: "exercise-match-letter";
+  letraAlvo: string;
+  instructionAudioUrl: string | null;
+  exercise: { items: MatchLetterItem[] };
+}
+
+interface MarkImagesInstructions {
+  screenTemplate: "exercise-mark-images";
+  instructionText: string;
+  instructionAudioUrl: string | null;
+  exercise: { items: MarkImageItem[] };
+}
+
+interface VideoInstructions {
+  screenTemplate: "video";
+  videoUrl: string | null;
+  instructionText: string | null;
+  instructionAudioUrl: string | null;
+}
+
+interface CompositeVideoBlock {
+  type: "video";
+  videoUrl: string | null;
+  instrText: string;
+  instrAudioUrl: string | null;
+}
+
+interface CompositeMatchBlock {
+  type: "exercise-match-letter";
+  letraAlvo: string;
+  instructionAudioUrl: string | null;
+  exercise: { items: MatchLetterItem[] };
+}
+
+interface CompositeMarkBlock {
+  type: "exercise-mark-images";
+  instructionText: string;
+  instructionAudioUrl: string | null;
+  exercise: { items: MarkImageItem[] };
+}
+
+type CompositeBlock = CompositeVideoBlock | CompositeMatchBlock | CompositeMarkBlock;
+
+interface CompositeInstructions {
+  screenTemplate: "composite";
+  blocks: CompositeBlock[];
+}
+
+type ParsedInstructions =
+  | MatchLetterInstructions
+  | MarkImagesInstructions
+  | VideoInstructions
+  | CompositeInstructions
+  | null;
+
+const EMPTY_DATA: ConteudoResponse = { themes: [], modules: [], activities: [], assets: [] };
+
+function parseInstructions(raw?: string): ParsedInstructions {
+  if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      const exercise =
-        parsed.exercise && typeof parsed.exercise === "object" && !Array.isArray(parsed.exercise)
-          ? (parsed.exercise as Record<string, unknown>)
-          : null;
-      const template =
-        typeof exercise?.template === "string"
-          ? exercise.template
-          : typeof parsed.screenTemplate === "string"
-            ? parsed.screenTemplate
-            : undefined;
-      const itemsCount = Array.isArray(exercise?.items) ? exercise?.items.length : undefined;
-      const instructionText =
-        (typeof exercise?.instructionText === "string" && exercise.instructionText.trim()) ||
-        (typeof parsed.learnerSpeech === "string" && parsed.learnerSpeech.trim()) ||
-        (typeof parsed.educatorGuidance === "string" && parsed.educatorGuidance.trim()) ||
-        "";
-
-      return {
-        text: instructionText || "Fluxo estruturado da etapa 2 configurado.",
-        template,
-        itemsCount,
-      };
-    }
+    return JSON.parse(raw) as ParsedInstructions;
   } catch {
-    // raw text; keep fallback below
+    return null;
   }
-
-  if (raw.length <= 180) {
-    return { text: raw };
-  }
-
-  return {
-    text: `${raw.slice(0, 177)}...`,
-  };
 }
 
-const EMPTY_DATA: ConteudoResponse = {
-  themes: [],
-  modules: [],
-  activities: [],
-  assets: [],
-};
+function toUrl(path: string | null | undefined): string {
+  if (!path) return "";
+  return resolvePublicAssetUrl(path, env.supabaseUrl ?? "");
+}
+
+let activePreviewAudio: HTMLAudioElement | null = null;
+
+function playPreviewAudio(src: string) {
+  if (!src) return;
+  if (activePreviewAudio) {
+    activePreviewAudio.pause();
+    activePreviewAudio.currentTime = 0;
+  }
+  const audio = new Audio(src);
+  activePreviewAudio = audio;
+  audio.addEventListener("ended", () => {
+    if (activePreviewAudio === audio) activePreviewAudio = null;
+  });
+  void audio.play();
+}
+
+function PreviewSoundButton({ src, large = false }: { src?: string; large?: boolean }) {
+  const color = large ? "#2fa536" : "#9be39f";
+  return (
+    <button
+      type="button"
+      onClick={() => playPreviewAudio(src ?? "")}
+      className={`flex shrink-0 items-center justify-center transition hover:opacity-80 active:scale-95 ${
+        large ? "h-[68px] w-[86px]" : "h-[38px] w-12"
+      }`}
+      aria-label="Reproduzir audio"
+    >
+      <svg
+        width={large ? 66 : 38}
+        height={large ? 54 : 32}
+        viewBox="0 0 66 54"
+        fill="none"
+        aria-hidden="true"
+      >
+        <path d="M8 22H19L33 10V44L19 32H8V22Z" fill={color} />
+        <path
+          d="M42 20C45 23.5 45 30.5 42 34"
+          stroke={color}
+          strokeWidth={large ? 4.5 : 4}
+          strokeLinecap="round"
+        />
+        <path
+          d="M49 15C55 21 55 33 49 39"
+          stroke={color}
+          strokeWidth={large ? 4.5 : 4}
+          strokeLinecap="round"
+        />
+        {large ? (
+          <path
+            d="M56 10C65 19 65 35 56 44"
+            stroke={color}
+            strokeWidth={4.5}
+            strokeLinecap="round"
+          />
+        ) : null}
+      </svg>
+    </button>
+  );
+}
+
+function PreviewNextArrow() {
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <svg width="55" height="46" viewBox="0 0 55 46" fill="none" aria-hidden="true">
+        <path
+          d="M4 17H30V8L51 23L30 38V29H4V17Z"
+          stroke="#8fd17e"
+          strokeWidth="4"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span className="text-[10px] font-semibold lowercase text-[#8fd17e]">avançar</span>
+    </div>
+  );
+}
+
+function PhonePreview({ children }: { children: ReactNode }) {
+  return (
+    <div className="mx-auto w-full max-w-[390px] rounded-[18px] border border-slate-200 bg-white px-5 py-5 shadow-sm">
+      <div className="mb-8 h-7 w-[72px] overflow-hidden border border-slate-300 bg-white">
+        <span className="block px-1 py-0.5 text-[16px] font-black leading-none tracking-[-0.03em] text-black">
+          Letras
+        </span>
+      </div>
+      {children}
+      <div className="mt-10 flex justify-center">
+        <PreviewNextArrow />
+      </div>
+    </div>
+  );
+}
+
+function LetterBoxes({ count }: { count: number }) {
+  return (
+    <div className="ml-[58px] mt-1 flex flex-wrap gap-1">
+      {Array.from({ length: Math.max(1, count) }).map((_, index) => (
+        <span key={index} className="h-8 w-8 rounded-[3px] border-2 border-slate-300 bg-white" />
+      ))}
+    </div>
+  );
+}
+
+function MatchLetterView({ instr }: { instr: MatchLetterInstructions }) {
+  return (
+    <PhonePreview>
+      <div className="mb-7 flex justify-center">
+        <PreviewSoundButton src={toUrl(instr.instructionAudioUrl)} large />
+      </div>
+
+      <div className="space-y-7">
+        {instr.exercise.items.map((item) => {
+          const imgUrl = toUrl(item.imageUrl);
+          const wordLength = String(item.label || "").trim().replace(/\s+/g, "").length;
+          return (
+            <div key={item.id}>
+              <div className="flex items-center gap-6 pl-10">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center">
+                  {imgUrl ? (
+                    <img src={imgUrl} alt={item.label} className="max-h-full max-w-full object-contain" />
+                  ) : (
+                    <ImageIcon className="h-5 w-5 text-slate-300" />
+                  )}
+                </div>
+                <PreviewSoundButton src={toUrl(item.wordAudioUrl)} />
+              </div>
+              <LetterBoxes count={wordLength} />
+            </div>
+          );
+        })}
+      </div>
+    </PhonePreview>
+  );
+}
+
+function MarkImagesView({ instr }: { instr: MarkImagesInstructions }) {
+  return (
+    <PhonePreview>
+      <div className="mb-5 flex justify-center">
+        <PreviewSoundButton src={toUrl(instr.instructionAudioUrl)} large />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {instr.exercise.items.map((item) => {
+          const imgUrl = toUrl(item.imageUrl);
+          return (
+            <div
+              key={item.id}
+              className={`relative flex min-h-[104px] flex-col items-center justify-center rounded-[6px] border bg-white p-2 ${
+                item.isCorrect ? "border-[#8fd17e] ring-1 ring-[#8fd17e]" : "border-slate-200"
+              }`}
+            >
+              <div className="flex h-16 items-center justify-center">
+                {imgUrl ? (
+                  <img src={imgUrl} alt={item.label} className="max-h-full max-w-full object-contain" />
+                ) : (
+                  <ImageIcon className="h-5 w-5 text-slate-300" />
+                )}
+              </div>
+              <span className="mt-1 text-[11px] text-slate-600">{item.label}</span>
+              {item.isCorrect ? (
+                <span className="absolute right-1.5 top-1.5 h-3 w-3 rounded-full bg-[#8fd17e]" />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </PhonePreview>
+  );
+}
+
+function VideoBlockView({
+  videoUrl,
+  instrText,
+  instrAudioUrl,
+}: {
+  videoUrl: string | null;
+  instrText?: string | null;
+  instrAudioUrl?: string | null;
+}) {
+  const url = toUrl(videoUrl);
+  return (
+    <PhonePreview>
+      {instrAudioUrl ? (
+        <div className="mb-4 flex justify-center">
+          <PreviewSoundButton src={toUrl(instrAudioUrl)} large />
+        </div>
+      ) : null}
+      {url ? (
+        <div className="mx-auto w-full max-w-[260px] overflow-hidden rounded bg-black">
+          <video
+            src={url}
+            controls
+            preload="metadata"
+            playsInline
+            className="aspect-[9/16] h-auto w-full bg-black object-contain"
+          />
+        </div>
+      ) : (
+        <div className="flex h-48 items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50">
+          <Video className="h-8 w-8 text-slate-300" />
+        </div>
+      )}
+      {instrText ? <p className="mt-4 text-center text-xs leading-5 text-slate-500">{instrText}</p> : null}
+    </PhonePreview>
+  );
+}
+
+function RenderInstructions({ parsed }: { parsed: ParsedInstructions }) {
+  if (!parsed) {
+    return <p className="text-sm text-slate-400">Nenhum conteudo configurado nesta aula.</p>;
+  }
+
+  if (parsed.screenTemplate === "exercise-match-letter") {
+    return <MatchLetterView instr={parsed as MatchLetterInstructions} />;
+  }
+
+  if (parsed.screenTemplate === "exercise-mark-images") {
+    return <MarkImagesView instr={parsed as MarkImagesInstructions} />;
+  }
+
+  if (parsed.screenTemplate === "video") {
+    const instr = parsed as VideoInstructions;
+    return (
+      <VideoBlockView
+        videoUrl={instr.videoUrl}
+        instrText={instr.instructionText}
+        instrAudioUrl={instr.instructionAudioUrl}
+      />
+    );
+  }
+
+  if (parsed.screenTemplate === "composite") {
+    return (
+      <div className="space-y-4">
+        {(parsed as CompositeInstructions).blocks.map((block, index) => (
+          <div key={index}>
+            {block.type === "video" ? (
+              <VideoBlockView
+                videoUrl={(block as CompositeVideoBlock).videoUrl}
+                instrText={(block as CompositeVideoBlock).instrText}
+                instrAudioUrl={(block as CompositeVideoBlock).instrAudioUrl}
+              />
+            ) : null}
+            {block.type === "exercise-match-letter" ? (
+              <MatchLetterView instr={block as unknown as MatchLetterInstructions} />
+            ) : null}
+            {block.type === "exercise-mark-images" ? (
+              <MarkImagesView instr={block as unknown as MarkImagesInstructions} />
+            ) : null}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return <p className="text-sm text-slate-400">Preview indisponivel para este tipo de aula.</p>;
+}
+
+function ActivityCard({
+  activity,
+  isHighlighted,
+}: {
+  activity: ActivityItem;
+  isHighlighted: boolean;
+}) {
+  const [expanded, setExpanded] = useState(isHighlighted);
+  const parsed = parseInstructions(activity.instructions);
+
+  return (
+    <div
+      id={`activity-${activity.id}`}
+      className={`overflow-hidden border transition-shadow ${
+        isHighlighted ? "border-[#8fd17e] shadow-sm" : "border-slate-200"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className={`flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition-colors ${
+          isHighlighted ? "bg-[#f3fbf0] hover:bg-[#eef8ea]" : "bg-white hover:bg-slate-50"
+        }`}
+      >
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-slate-900">{activity.title}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            {activity.is_published ? "Publicada" : "Rascunho"}
+          </p>
+        </div>
+        {expanded ? (
+          <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+        ) : (
+          <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+        )}
+      </button>
+
+      {expanded ? (
+        <div className="border-t border-slate-200 bg-slate-50 p-4">
+          <RenderInstructions parsed={parsed} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export default function MobileModulos() {
   const [data, setData] = useState<ConteudoResponse>(EMPTY_DATA);
@@ -110,35 +438,26 @@ export default function MobileModulos() {
 
   useEffect(() => {
     let active = true;
-
     const load = async () => {
       try {
         setLoading(true);
         setError("");
         const payload = (await apiGet("/painel/conteudo")) as Partial<ConteudoResponse>;
-        if (!active) {
-          return;
-        }
+        if (!active) return;
         setData({
           themes: payload.themes ?? [],
           modules: payload.modules ?? [],
           activities: payload.activities ?? [],
           assets: payload.assets ?? [],
         });
-      } catch (loadError) {
-        if (!active) {
-          return;
-        }
-        setError(loadError instanceof Error ? loadError.message : "Falha ao carregar modulos do mobile.");
+      } catch (err) {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "Falha ao carregar conteudo.");
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     };
-
-    load();
-
+    void load();
     return () => {
       active = false;
     };
@@ -146,95 +465,72 @@ export default function MobileModulos() {
 
   const modulesByThemeId = useMemo(() => {
     const map = new Map<string, ModuleItem[]>();
-
     for (const moduleItem of data.modules) {
       const current = map.get(moduleItem.theme_id) ?? [];
       current.push(moduleItem);
       map.set(moduleItem.theme_id, current);
     }
-
-    for (const [themeId, items] of map.entries()) {
+    for (const [key, items] of map.entries()) {
       items.sort(
         (a, b) =>
           Number(a.stage_number ?? 0) - Number(b.stage_number ?? 0) ||
           Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0),
       );
-      map.set(themeId, items);
+      map.set(key, items);
     }
-
     return map;
   }, [data.modules]);
 
   const activitiesByModuleId = useMemo(() => {
     const map = new Map<string, ActivityItem[]>();
-
     for (const activity of data.activities) {
       const current = map.get(activity.module_id) ?? [];
       current.push(activity);
       map.set(activity.module_id, current);
     }
-
-    for (const [moduleId, items] of map.entries()) {
+    for (const [key, items] of map.entries()) {
       items.sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
-      map.set(moduleId, items);
+      map.set(key, items);
     }
-
     return map;
   }, [data.activities]);
 
-  const assetsByActivityId = useMemo(() => {
-    const map = new Map<string, AssetItem[]>();
-
-    for (const asset of data.assets) {
-      const current = map.get(asset.activity_id) ?? [];
-      current.push(asset);
-      map.set(asset.activity_id, current);
-    }
-
-    return map;
-  }, [data.assets]);
-
-  const sortedThemes = useMemo(() => {
-    return [...data.themes].sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
-  }, [data.themes]);
+  const sortedThemes = useMemo(
+    () => [...data.themes].sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0)),
+    [data.themes],
+  );
 
   useEffect(() => {
-    if (loading || data.activities.length === 0) {
-      return;
-    }
-    const hash = typeof window !== "undefined" ? window.location.hash : "";
-    const match = /^#activity-([0-9a-f-]+)$/i.exec(hash);
-    if (!match) {
-      return;
-    }
+    if (loading || data.activities.length === 0) return;
+    const match = /^#activity-([0-9a-f-]+)$/i.exec(window.location.hash);
+    if (!match) return;
+
     const activityId = match[1];
     const activity = data.activities.find((item) => item.id === activityId);
-    if (!activity) {
-      return;
-    }
+    if (!activity) return;
+
     const moduleItem = data.modules.find((item) => item.id === activity.module_id);
-    if (!moduleItem) {
-      return;
-    }
+    if (!moduleItem) return;
+
     setExpandedThemeId(moduleItem.theme_id);
     setExpandedModuleId(moduleItem.id);
     setHighlightedActivityId(activityId);
     const timer = window.setTimeout(() => {
-      const node = document.getElementById(`activity-${activityId}`);
-      if (node) {
-        node.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }, 120);
-    return () => {
-      window.clearTimeout(timer);
-    };
+      document.getElementById(`activity-${activityId}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 150);
+    return () => window.clearTimeout(timer);
   }, [loading, data.activities, data.modules]);
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Mobile - Modulos</h1>
-        <p className="text-sm text-gray-600 mt-1">Visualizacao web do fluxo de trilhas, modulos e midias do mobile.</p>
+        <h1 className="text-2xl font-semibold text-slate-900">Preview de Aulas</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          O preview abaixo segue o mesmo padrao visual do mobile.
+        </p>
       </div>
 
       {loading ? (
@@ -242,118 +538,87 @@ export default function MobileModulos() {
       ) : error ? (
         <StateDisplay type="error" message={error} />
       ) : sortedThemes.length === 0 ? (
-        <StateDisplay type="empty" message="Nenhuma trilha encontrada no conteudo." />
+        <StateDisplay type="empty" message="Nenhum tema cadastrado." />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {sortedThemes.map((theme) => {
             const modules = modulesByThemeId.get(theme.id) ?? [];
-            const isThemeExpanded = expandedThemeId === theme.id;
+            const isOpen = expandedThemeId === theme.id;
+            const totalActivities = modules.reduce(
+              (sum, moduleItem) => sum + (activitiesByModuleId.get(moduleItem.id)?.length ?? 0),
+              0,
+            );
 
             return (
-              <section key={theme.id} className="border border-gray-300 bg-white">
-                <div className="flex items-center justify-between gap-4 border-b border-gray-200 px-4 py-3">
-                  <div>
-                    <p className="text-lg font-semibold text-gray-900">{theme.title}</p>
-                    <p className="text-sm text-gray-600">{theme.description || "Sem descricao"}</p>
+              <section key={theme.id} className="overflow-hidden border border-slate-300 bg-white">
+                <button
+                  type="button"
+                  onClick={() => setExpandedThemeId(isOpen ? null : theme.id)}
+                  className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-slate-50"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-slate-900">{theme.title}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {modules.length} modulo(s) - {totalActivities} aula(s)
+                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setExpandedThemeId(isThemeExpanded ? null : theme.id)}
-                    className="border border-gray-400 px-3 py-1 text-xs font-semibold hover:bg-gray-100"
-                  >
-                    {isThemeExpanded ? "Ocultar dados da trilha" : "Ver dados da trilha"}
-                  </button>
-                </div>
-
-                {isThemeExpanded ? (
-                  modules.length === 0 ? (
-                    <div className="px-4 py-4 text-sm text-gray-600">Sem modulos cadastrados nesta trilha.</div>
+                  {isOpen ? (
+                    <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
                   ) : (
-                    <div className="divide-y divide-gray-200">
-                      {modules.map((moduleItem) => {
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                  )}
+                </button>
+
+                {isOpen ? (
+                  <div className="divide-y divide-slate-100 border-t border-slate-200">
+                    {modules.length === 0 ? (
+                      <p className="px-5 py-4 text-sm text-slate-400">Sem modulos neste tema.</p>
+                    ) : (
+                      modules.map((moduleItem) => {
                         const activities = activitiesByModuleId.get(moduleItem.id) ?? [];
-                        const isModuleExpanded = expandedModuleId === moduleItem.id;
+                        const isModuleOpen = expandedModuleId === moduleItem.id;
 
                         return (
-                          <div key={moduleItem.id} className="px-4 py-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <div>
-                                <p className="font-semibold text-gray-900">Etapa {moduleItem.stage_number ?? 1} - {moduleItem.title}</p>
-                                <p className="text-sm text-gray-600">{moduleItem.description || "Sem descricao"}</p>
+                          <div key={moduleItem.id} className="px-5 py-3">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedModuleId(isModuleOpen ? null : moduleItem.id)}
+                              className="flex w-full items-center justify-between gap-3 text-left"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-slate-800">
+                                  {moduleItem.stage_number ? `Etapa ${moduleItem.stage_number} - ` : ""}
+                                  {moduleItem.title}
+                                </p>
+                                <p className="text-xs text-slate-400">{activities.length} aula(s)</p>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => setExpandedModuleId(isModuleExpanded ? null : moduleItem.id)}
-                                className="border border-gray-400 px-3 py-1 text-xs hover:bg-gray-100"
-                              >
-                                {isModuleExpanded ? "Ocultar aulas" : `Ver aulas (${activities.length})`}
-                              </button>
-                            </div>
-
-                            {isModuleExpanded ? (
-                              activities.length === 0 ? (
-                                <p className="mt-3 text-sm text-gray-500">Sem atividades neste modulo.</p>
+                              {isModuleOpen ? (
+                                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                               ) : (
-                                <ul className="mt-3 space-y-3">
-                                  {activities.map((activity) => {
-                                    const assets = assetsByActivityId.get(activity.id) ?? [];
-                                    const instructionPreview = summarizeInstruction(activity.instructions);
-                                    const isHighlighted = highlightedActivityId === activity.id;
-                                    return (
-                                      <li
-                                        key={activity.id}
-                                        id={`activity-${activity.id}`}
-                                        className={`border px-3 py-3 ${
-                                          isHighlighted
-                                            ? "border-emerald-400 bg-emerald-50"
-                                            : "border-gray-200 bg-gray-50"
-                                        }`}
-                                      >
-                                        <p className="font-medium text-gray-900">{activity.title}</p>
-                                        <p className="text-xs text-gray-600 mt-1">Tipo: {activity.type}</p>
-                                        <p className="text-sm text-gray-700 mt-1">{instructionPreview.text}</p>
-                                        {instructionPreview.template || instructionPreview.itemsCount ? (
-                                          <div className="mt-2 flex flex-wrap items-center gap-1">
-                                            {instructionPreview.template ? (
-                                              <span className="border border-gray-300 bg-white px-2 py-0.5 text-[10px] uppercase text-gray-600">
-                                                {instructionPreview.template}
-                                              </span>
-                                            ) : null}
-                                            {instructionPreview.itemsCount ? (
-                                              <span className="border border-gray-300 bg-white px-2 py-0.5 text-[10px] text-gray-600">
-                                                {instructionPreview.itemsCount} item(ns)
-                                              </span>
-                                            ) : null}
-                                          </div>
-                                        ) : null}
-                                        {assets.length > 0 ? (
-                                          <div className="mt-2 space-y-1">
-                                            {assets.map((asset) => (
-                                              <a
-                                                key={asset.id}
-                                                href={asset.storage_path}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="block text-xs text-blue-700 underline"
-                                              >
-                                                [{asset.kind}] {asset.storage_path}
-                                              </a>
-                                            ))}
-                                          </div>
-                                        ) : (
-                                          <p className="mt-2 text-xs text-gray-500">Sem midia vinculada nesta atividade.</p>
-                                        )}
-                                      </li>
-                                    );
-                                  })}
-                                </ul>
-                              )
+                                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                              )}
+                            </button>
+
+                            {isModuleOpen ? (
+                              <div className="mt-3 space-y-2">
+                                {activities.length === 0 ? (
+                                  <p className="text-sm text-slate-400">Sem aulas neste modulo.</p>
+                                ) : (
+                                  activities.map((activity) => (
+                                    <ActivityCard
+                                      key={activity.id}
+                                      activity={activity}
+                                      isHighlighted={highlightedActivityId === activity.id}
+                                    />
+                                  ))
+                                )}
+                              </div>
                             ) : null}
                           </div>
                         );
-                      })}
-                    </div>
-                  )
+                      })
+                    )}
+                  </div>
                 ) : null}
               </section>
             );
@@ -363,3 +628,4 @@ export default function MobileModulos() {
     </div>
   );
 }
+
