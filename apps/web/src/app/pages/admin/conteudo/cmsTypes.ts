@@ -1,5 +1,5 @@
 ﻿export type ActivityType = "video" | "quiz" | "audio" | "letra";
-export type AssetKind = "png" | "mp4" | "mp3" | "jpg";
+export type AssetKind = "png" | "mp4" | "mp3" | "jpg" | "wav";
 export type AssetStatus = "rascunho" | "publicado" | "arquivado";
 
 export interface Theme {
