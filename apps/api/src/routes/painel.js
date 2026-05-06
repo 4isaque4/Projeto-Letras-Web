@@ -47,7 +47,7 @@ export const painelRouter = Router();
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: Math.max(1, Number(env.uploadMaxFileMb || 100)) * 1024 * 1024,
+    fileSize: Math.max(1, Number(env.uploadMaxFileMb || 200)) * 1024 * 1024,
   },
 });
 
@@ -76,9 +76,29 @@ function parseMetadataInput(rawValue) {
   }
 }
 
+function decodeMultipartFilename(name) {
+  if (typeof name !== "string" || name.length === 0) return name;
+  // Multer/busboy entrega o filename do Content-Disposition como Latin-1 quando
+  // o cliente nao usa filename*=UTF-8''... — re-decodifica como UTF-8 quando os
+  // bytes formam uma sequencia UTF-8 valida.
+  try {
+    const buffer = Buffer.from(name, "latin1");
+    const utf8 = buffer.toString("utf8");
+    // Se o roundtrip via UTF-8 perdeu caracteres (replacement U+FFFD),
+    // mantem o nome original.
+    if (utf8.includes("�")) return name;
+    return utf8;
+  } catch {
+    return name;
+  }
+}
+
 function parseMultipartFile(req, res, next) {
   upload.single("file")(req, res, (error) => {
     if (!error) {
+      if (req.file && typeof req.file.originalname === "string") {
+        req.file.originalname = decodeMultipartFilename(req.file.originalname);
+      }
       next();
       return;
     }
