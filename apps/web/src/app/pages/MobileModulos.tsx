@@ -102,11 +102,33 @@ interface CompositeInstructions {
   blocks: CompositeBlock[];
 }
 
+// ─── V2 block schema ──────────────────────────────────────────────────────────
+
+interface V2TextBlock { id: string; type: "text"; content: string; audience: "educator" | "learner" | "both" }
+interface V2ImageBlock { id: string; type: "image"; url: string; caption?: string }
+interface V2VideoBlock { id: string; type: "video"; url: string; caption?: string }
+interface V2AudioBlock { id: string; type: "audio"; url: string; caption?: string }
+interface V2ExerciseMatchBlock {
+  id: string; type: "exercise-match-letter";
+  letter: string; instruction: string; instructionAudioUrl?: string;
+  rows: Array<{ id: string; label: string; imageUrl?: string; wordAudioUrl?: string; options?: string[]; correctOption?: string }>;
+}
+interface V2ExerciseMarkBlock {
+  id: string; type: "exercise-mark-images";
+  letter: string; instruction: string; instructionAudioUrl?: string;
+  rows: Array<{ id: string; label: string; imageUrl?: string; audioUrl?: string; isCorrectTarget: boolean }>;
+}
+type V2Block = V2TextBlock | V2ImageBlock | V2VideoBlock | V2AudioBlock | V2ExerciseMatchBlock | V2ExerciseMarkBlock;
+interface V2Instructions { schema: "letras-stage2-v2"; blocks: V2Block[] }
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 type ParsedInstructions =
   | MatchLetterInstructions
   | MarkImagesInstructions
   | VideoInstructions
   | CompositeInstructions
+  | V2Instructions
   | null;
 
 const EMPTY_DATA: ConteudoResponse = { themes: [], modules: [], activities: [], assets: [] };
@@ -204,10 +226,8 @@ function PreviewNextArrow() {
 function PhonePreview({ children }: { children: ReactNode }) {
   return (
     <div className="mx-auto w-full max-w-[390px] rounded-[18px] border border-slate-200 bg-white px-5 py-5 shadow-sm">
-      <div className="mb-8 h-7 w-[72px] overflow-hidden border border-slate-300 bg-white">
-        <span className="block px-1 py-0.5 text-[16px] font-black leading-none tracking-[-0.03em] text-black">
-          Letras
-        </span>
+      <div className="mb-8">
+        <img src="/logo-letras.png" alt="Letras" className="h-6 w-auto object-contain" />
       </div>
       {children}
       <div className="mt-10 flex justify-center">
@@ -331,20 +351,121 @@ function VideoBlockView({
   );
 }
 
+function V2BlocksView({ blocks }: { blocks: V2Block[] }) {
+  return (
+    <div className="space-y-4">
+      {blocks.map((block) => {
+        if (block.type === "text") {
+          const audienceLabel =
+            block.audience === "educator" ? "Alfabetizador" :
+            block.audience === "learner" ? "Alfabetizando" : null;
+          return (
+            <div key={block.id} className={`rounded border px-4 py-3 text-sm ${
+              block.audience === "educator"
+                ? "border-blue-200 bg-blue-50 text-blue-900"
+                : block.audience === "learner"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                  : "border-slate-200 bg-slate-50 text-slate-700"
+            }`}>
+              {audienceLabel && (
+                <p className="mb-1 text-[10px] font-semibold uppercase opacity-60">{audienceLabel}</p>
+              )}
+              <p className="whitespace-pre-wrap leading-relaxed">{block.content}</p>
+            </div>
+          );
+        }
+
+        if (block.type === "image") {
+          const url = toUrl(block.url);
+          return (
+            <div key={block.id} className="overflow-hidden rounded border border-slate-200 bg-white">
+              {url ? (
+                <img src={url} alt={block.caption ?? ""} className="mx-auto max-h-56 object-contain" />
+              ) : (
+                <div className="flex h-32 items-center justify-center bg-slate-100">
+                  <ImageIcon className="h-6 w-6 text-slate-300" />
+                </div>
+              )}
+              {block.caption && <p className="px-3 py-2 text-center text-xs text-slate-500">{block.caption}</p>}
+            </div>
+          );
+        }
+
+        if (block.type === "video") {
+          return (
+            <VideoBlockView key={block.id} videoUrl={block.url} instrText={block.caption} />
+          );
+        }
+
+        if (block.type === "audio") {
+          const url = toUrl(block.url);
+          return (
+            <div key={block.id} className="flex items-center gap-3 rounded border border-teal-200 bg-teal-50 px-4 py-3">
+              <PreviewSoundButton src={url} />
+              <span className="text-sm text-teal-800">{block.caption || "Áudio"}</span>
+            </div>
+          );
+        }
+
+        if (block.type === "exercise-match-letter") {
+          const adapted: MatchLetterInstructions = {
+            screenTemplate: "exercise-match-letter",
+            letraAlvo: block.letter,
+            instructionAudioUrl: block.instructionAudioUrl ?? null,
+            exercise: {
+              items: (block.rows ?? []).map((row) => ({
+                id: row.id,
+                label: row.label,
+                imageUrl: row.imageUrl ?? null,
+                wordAudioUrl: row.wordAudioUrl ?? null,
+              })),
+            },
+          };
+          return <MatchLetterView key={block.id} instr={adapted} />;
+        }
+
+        if (block.type === "exercise-mark-images") {
+          const adapted: MarkImagesInstructions = {
+            screenTemplate: "exercise-mark-images",
+            instructionText: block.instruction,
+            instructionAudioUrl: block.instructionAudioUrl ?? null,
+            exercise: {
+              items: (block.rows ?? []).map((row) => ({
+                id: row.id,
+                label: row.label,
+                imageUrl: row.imageUrl ?? null,
+                isCorrect: row.isCorrectTarget,
+              })),
+            },
+          };
+          return <MarkImagesView key={block.id} instr={adapted} />;
+        }
+
+        return null;
+      })}
+    </div>
+  );
+}
+
 function RenderInstructions({ parsed }: { parsed: ParsedInstructions }) {
   if (!parsed) {
     return <p className="text-sm text-slate-400">Nenhum conteudo configurado nesta aula.</p>;
   }
 
-  if (parsed.screenTemplate === "exercise-match-letter") {
+  // V2 multi-block format
+  if ((parsed as V2Instructions).schema === "letras-stage2-v2") {
+    return <V2BlocksView blocks={(parsed as V2Instructions).blocks ?? []} />;
+  }
+
+  if ((parsed as MatchLetterInstructions).screenTemplate === "exercise-match-letter") {
     return <MatchLetterView instr={parsed as MatchLetterInstructions} />;
   }
 
-  if (parsed.screenTemplate === "exercise-mark-images") {
+  if ((parsed as MarkImagesInstructions).screenTemplate === "exercise-mark-images") {
     return <MarkImagesView instr={parsed as MarkImagesInstructions} />;
   }
 
-  if (parsed.screenTemplate === "video") {
+  if ((parsed as VideoInstructions).screenTemplate === "video") {
     const instr = parsed as VideoInstructions;
     return (
       <VideoBlockView
@@ -355,7 +476,7 @@ function RenderInstructions({ parsed }: { parsed: ParsedInstructions }) {
     );
   }
 
-  if (parsed.screenTemplate === "composite") {
+  if ((parsed as CompositeInstructions).screenTemplate === "composite") {
     return (
       <div className="space-y-4">
         {(parsed as CompositeInstructions).blocks.map((block, index) => (
