@@ -1,0 +1,107 @@
+Resumo por IA
+Assunto: Desenvolvimento de jogo e integração de atividades educativas
+Conteúdo: Durante a conversa, os interlocutores discutem as dificuldades enfrentadas na implementação de uma nova dinâmica para um jogo, especialmente no que diz respeito à inserção de conteúdos no aplicativo móvel. Um dos participantes expressa a necessidade de uma comunicação mais eficaz para testar as funcionalidades desenvolvidas. Também há menção sobre pagamentos pendentes e a importância de um mecanismo padrão para gerar e carregar exercícios no site, visando facilitar a integração com o aplicativo. A equipe reconhece a complexidade da tarefa e a necessidade de um método uniforme para gerenciar o conteúdo. Além disso, é destacado que o prazo para finalização do projeto está definido para o final de maio, com a expectativa de que todos os recursos e funcionalidades sejam implementados antes de um possível congelamento de investimentos. A conversa enfatiza a colaboração e a urgência em avançar com o projeto.
+O conteúdo acima foi gerado por IA e é fornecido apenas para a sua referência.
+Interlocutor 1 00:00:00
+Zé não está coisando cada não, a gente queria ver se a gente ia só amiga final, se a gente fora um pouco mais.
+Interlocutor 2 00:00:04
+A gente não tem a faca e o queijo, a gente tem a faca, a gente está dizendo queijo.
+Interlocutor 3 00:00:10
+Mas assim, para mim a maior dificuldade durante essas semanas foi realmente finalizar essa parte de implementação da dinâmica do jogo, porque assim, a forma como eu estava fazendo o código de inserção dos conteúdos no mobile, ele estava
+basicamente um modelo de colocar os vídeos, colocar os textos, colocar os conteúdos das aulas, as telas, fazer as telas e inserir integralmente no mobile.
+E aí quando vocês enviaram aquelas fotos do, aquela nova dinâmica de inserção de tela, né?
+Que era tipo a seleçãozinha das imagens com o textinho, o joguinho dinâmico,
+aí deu uma quebrada, porque eu tive que pensar em uma maneira de conseguir implementar e foi dando um choquezinho na hora de fazer a implementação.
+Mas assim, a gente está avançando nessa parte de criação das telas já, eu já até ajudei a criar algumas e essa parte agora da dinâmica, eu estou quase finalizando ela, só que eu ainda estou achando ruim em algumas partes do X ali que eu fiz, que no caso é o designer ali da tela, mas está andando bem, está caminhando.
+Inclusive
+queria mostrar para vocês aqui agora como que ela.
+Interlocutor 2 00:01:21
+Tá aqui vamos deixar essa parte para demonstração para no final deixa eu falar outra coisa importante e o que que eu queria eu queria tanto vocês eu sei que não é quem tá mexendo você botou lá o negócio disponibilizou para a gente usar começou a fazer outra coisa dá pau aí eu sei que isso acontece ela foi mais normal ó não dá mais não dá funciona então o que que eu quero eu quero que vocês na medida toda durante a semana você fez o negócio tá estável
+testado para rodar avisa a gente no grupo eu e o Roberto para a gente testar avisa assim testa lá entra aqui vai lá deixa a gente testar isso aí ou por exemplo seu mais objetivo entra e testa aquilo vê como é que ficou é fundamental esse essa troca para que a gente possa ir validando aos poucos entendeu então por exemplo eu estou passando para vocês uma informação que pode ajudar na implementação final e eu testei eu fui lá rodando então vamos fazer assim tá Israel e Isaac entendeu
+operacional, alguma coisa que a gente possa mexer, olhar, avaliar, avisa a gente no grupo que a gente vai e faz.
+Tranquilo?
+Tranquilo.
+Outra coisa, outra coisa.
+Deixa eu antes da gente mostrar, outra coisa que eu queria mostrar.
+A questão do Ah, pagamentos.
+A parte de vocês, assim, no início do mês que vem, como sempre, deixa eu receber, aí eu pago a vocês.
+O Supla Bays e o Prodex, eu falei até que eu ia pagar essa semana,
+mas eu tô esperando por o seguinte na verdade o negócio lá na Vale choque eles não pagaram ainda o que eles devem eu estava contando com esse dinheiro sendo bem claro tá e eles não pagaram tudo bem pode ser que pague amanhã pode ser que pague depois não tem problema pagou eu pago vocês continua o nosso acordo tá eu vou eh a gente vai pagar essa questão do supra base e o do Sem problema nenhum tá bom vocês aguardem com outra coisa com relação ao exercício lá o famoso
+atividade, né, que eu fui mandado.
+Eu passei, eu acho que eu passei duas noites olhando para aquele troço e tentando descobrir uma forma, hein Roberto, em que a gente possa criar um mecanismo padrão para gerar o exercício, carregar no site e o Israel jogar no app.
+Eu fiquei pensando, como é que eu boto isso?
+Como é que eu estruturo essa informação?
+Interlocutor 3 00:03:47
+É fazer o preview, tipo assim, você ir colocando, criando os conteúdos ali no web e você tendo um preview de como é que faria no celular.
+Eu estou fazendo isso também.
+Interlocutor 2 00:03:55
+Exatamente.
+E eu não consegui descobrir.
+Interlocutor 3 00:03:58
+Mas eu estou fazendo Jade, eu estou deixando o preview porque tipo assim, não adianta a pessoa inserir o upload dos arquivos, colocar ali os conteúdos e não saber como que está ficando na tela.
+Interlocutor 2 00:04:07
+Então olha só, como a gente não sabe ainda como fazer, o que a gente vai fazer?
+Qualquer exercício que for desenvolvido pela nossa pedagoga lá, né?
+a gente vai tentar montar daquele jeito na marca entendeu quer dizer não eh a gente vai ter que criar lá na frente uma forma de alimentar de forma uniforme o conteúdo para que vocês possam jogar isso né armazenar essa informação e o e o Israel quando eu falo Israel tô falando do app né e o app buscar essa informação para para pro programinha eu acho que a gente não chegou a um jeito ainda a gente só acha que só vai chegar
+Com mais informação.
+Por exemplo, eu tentei pensar que atividade é essa?
+Aí o cara bota lá.
+Ah, tem um áudio inicial.
+Beleza.
+Tem quatro palavrinhas.
+Tinha o ZOL, tinha o SAL, tinha o E se tiver cinco?
+E se tiver três?
+E se tiver dois?
+Vai ser quatro?
+Entendeu?
+Esse é o Ah, aí bota a informação.
+Olha, não é isso.
+Então, no final das contas, a gente vai ter que Não adianta.
+Vamos botar daquele jeito, como você fez.
+Vamos botar daquele jeito.
+Depois, aos poucos, durante esse
+de todo a gente vai pensando numa forma de de alimentar isso né de forma automática confesso a vocês que eu ainda não consegui pensar num jeito entendeu porque foi um exercício completamente.
+Interlocutor 3 00:05:30
+Uma coisa mais complexa de fazer?
+Interlocutor 2 00:05:32
+Fernando eu acho que é que vamos chegar a exercício porque não supor se todo o processo de desenvolvimento se baseasse naquela atividade Ok mas não é a gente sabe que não é ela vai criar uma série de de interações de de
+de atividade, vamos colocar de atividade e exercício que vai mudar de um jeito para o outro, tá?
+E como é que a gente faz isso quando a gente tiver outros cenários, outras palavras, outros módulos, outros objetivos de alfabetização?
+Eu não sei.
+Então, vamos fazer do jeito que eles mudarem para a gente, a gente implementa.
+Depois a gente cria um mecanismo padronizado, ok?
+Interlocutor 1 00:06:10
+Ok.
+Interlocutor 2 00:06:11
+Beleza?
+Entenderam essa ideia?
+Sim.
+e quer mais última coisa que eu queria falar então ah então voltando aquela assunto vamos tentar chegar um ponto e a gente tentar Roberto quando tiver uma situação legal marcar com o pessoal mostrar para Manu Mônica para menininha lá entendeu eu acho que seria muito legal.
+Interlocutor 1 00:06:31
+Terminou aí na hora de você falar aqui olha já dá aqui a gente dá uma última olhada calibra e é marcar na mesma semana menos que o pessoal esteja viajando tá exatamente semana isso
+Não pode passar de maio, vamos colocar isso aqui pra gente.
+Interlocutor 2 00:06:47
+Vamos cortar o maio, final de maio como nosso prazo final.
+Combinado?
+Combinado?
+É um prazo, é um momento que a gente vai buscar atingir.
+Interlocutor 4 00:07:00
+Com tudo que a gente já construiu com o que falta lá, eu acredito que dá.
+Interlocutor 3 00:07:04
+Já tem muita coisa implementada já, dá para reaproveitar mais.
+Interlocutor 4 00:07:07
+É diferente que está faltando completar a jornada do educador.
+e fazer aquela conectividade entre, entre o educador e o educando, que é o WebSockets.
+É basicamente o que falta, porque, fora isso eu acredito que a maioria das features que vocês visitaram já estão atualmente no projeto.
+Interlocutor 2 00:07:33
+E assim, em reforçando o que o Roberto falou, o que o Roberto disse mais ou menos é o seguinte
+a alguns meses todos os cofres vão estar fechados.
+Interlocutor 3 00:07:46
+E a gente tem que aproveitar esses cofres antes.
+Interlocutor 2 00:07:48
+Ninguém vai gastar mais dinheiro com nada ninguém se envolve com nada ninguém aprova nada ninguém se coloca o nome para nada por conta da demissão entendeu é uma época terrível a gente sabe Como É Que É né Roberto a gente sabe Como É Que É o pessoal para o país para em termos de de investimento eh decisão eh
+aporte ninguém quer se meter com nada para se envolver com mais nada para não segurar para ver o que vai acontecer então quanto mais rápido a gente tiver mais aumenta as nossas chances de de sei lá de conseguir mais rápido também eh recurso para a gente tocar esse projeto desenvolver todo eles né Eh colocar aí e a gente entende que em outras áreas a gente vai ter que mais gente vai ter que ser contratada é todo um projeto o projeto não vai não tá aqui não somos nós quatro só
+gente sabe disso uma coisa virar um produto a gente tem muita gente que vai ter que participar é marketing é design é é comercial é é hospedagem é vocês sabem disso né é é muita coisa então a gente precisa agora focar para que o mais rápido possível a gente ter mais projetos uma visão Clara do que a gente quer em termos de produto para que a gente possa né Roberto ativar os contatos aí e pegar uma uma
+um recurso maior que eu acho que vai ser bom até para todos nós para vocês para a gente para tocar entendeu não é não é ainda para ganhar dinheiro pelo menos dá uma certa paz e tranquilidade.
+Interlocutor 3 00:09:18
+Estão avançando e já tá em andamento
