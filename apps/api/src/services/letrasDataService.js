@@ -17,7 +17,7 @@ const OPTIONAL_SOURCE_ERROR_CODES = new Set(["PGRST205", "42P01"]);
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ACTIVITY_TYPES = new Set(["video", "quiz", "audio", "letra"]);
-const ASSET_KINDS = new Set(["png", "mp4", "mp3", "jpg"]);
+const ASSET_KINDS = new Set(["png", "mp4", "mp3", "jpg", "wav"]);
 const ASSET_STATUSES = new Set(["rascunho", "publicado", "arquivado"]);
 const ACTIVITY_PROGRESS_STATUSES = new Set([
   "nao_iniciado",
@@ -37,12 +37,14 @@ const ASSET_KIND_BY_EXTENSION = new Map([
   ["jpeg", "jpg"],
   ["mp4", "mp4"],
   ["mp3", "mp3"],
+  ["wav", "wav"],
 ]);
 const MIME_BY_ASSET_KIND = {
   png: "image/png",
   jpg: "image/jpeg",
   mp4: "video/mp4",
   mp3: "audio/mpeg",
+  wav: "audio/wav",
 };
 
 const currentFilePath = fileURLToPath(import.meta.url);
@@ -468,6 +470,14 @@ function detectAssetKindFromUpload({ mimeType, fileName }) {
   }
   if (normalizedMime.startsWith("audio/mpeg") || normalizedMime.startsWith("audio/mp3")) {
     return "mp3";
+  }
+  if (
+    normalizedMime.startsWith("audio/wav") ||
+    normalizedMime.startsWith("audio/wave") ||
+    normalizedMime.startsWith("audio/x-wav") ||
+    normalizedMime.startsWith("audio/vnd.wave")
+  ) {
+    return "wav";
   }
 
   const extension = normalizeText(fileName).split(".").pop()?.toLowerCase() ?? "";
@@ -2340,7 +2350,7 @@ export async function createContentAsset({
   const normalizedStatus = normalizeAssetStatusInput(status, "rascunho");
 
   if (!normalizedKind) {
-    throw new HttpError(400, "Tipo de asset invalido. Use: png, mp4, mp3 ou jpg.");
+    throw new HttpError(400, "Tipo de asset invalido. Use: png, mp4, mp3, wav ou jpg.");
   }
   if (!normalizedPath) {
     throw new HttpError(400, "Caminho/URL do asset e obrigatorio.");
@@ -2636,7 +2646,7 @@ export async function uploadContentAssetFile({
   if (!detectedKind) {
     throw new HttpError(
       400,
-      "Tipo de arquivo nao suportado. Envie PNG, JPG, MP4 ou MP3.",
+      "Tipo de arquivo nao suportado. Envie PNG, JPG, MP4, MP3 ou WAV.",
     );
   }
 
@@ -2668,19 +2678,14 @@ export async function uploadContentAssetFile({
   const mergedMetadata = normalizeUploadMetadata(metadata, defaultMetadata);
 
   const normalizedStatus = normalizeAssetStatusInput(status, "rascunho");
-  let assetRow = null;
-  // Ambientes com `content_assets.activity_id` NOT NULL nao aceitam acervo sem aula vinculada.
-  // Nesse caso, mantemos o upload no Storage e retornamos payload utilizavel no wizard sem quebrar o fluxo.
-  if (normalizedActivityId) {
-    assetRow = await createContentAsset({
-      activityId: normalizedActivityId,
-      kind: detectedKind,
-      storagePath: storage.publicUrl,
-      mimeType: resolvedMimeType,
-      status: normalizedStatus,
-      metadata: mergedMetadata,
-    });
-  }
+  const assetRow = await createContentAsset({
+    activityId: normalizedActivityId || null,
+    kind: detectedKind,
+    storagePath: storage.publicUrl,
+    mimeType: resolvedMimeType,
+    status: normalizedStatus,
+    metadata: mergedMetadata,
+  });
 
   return {
     asset: mapAssetToUploadPayload(assetRow, {
