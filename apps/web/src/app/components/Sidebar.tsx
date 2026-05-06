@@ -43,8 +43,8 @@ export default function Sidebar({ userRole = 'admin' }: SidebarProps) {
   return (
     <aside className="w-64 border-r border-gray-300 bg-gray-50 p-4 flex flex-col">
       <div className="mb-8 pb-4 border-b border-gray-300">
-        <h1 className="text-xl font-bold text-gray-900">Alfabetizador Online</h1>
-        <p className="text-xs text-gray-500 mt-1">
+        <img src="/logo-letras.png" alt="Letras" className="h-14 w-auto object-contain" />
+        <p className="text-xs text-gray-500 mt-2">
           {userRole === 'admin' ? 'Admin/Coordenação' : 'Alfabetizador'}
         </p>
       </div>
