@@ -16,6 +16,7 @@ function parseBoolean(input: unknown, fallback: boolean) {
 
 export const env = {
   appEnv: import.meta.env.MODE,
+  realtimeEnabled: parseBoolean(import.meta.env.VITE_REALTIME_ENABLED, true),
   wsUrl: import.meta.env.VITE_WS_URL ?? "ws://localhost:8080/ws",
   wsToken: import.meta.env.VITE_WS_TOKEN ?? "",
   reconnectBaseDelayMs: Number(import.meta.env.VITE_WS_RECONNECT_BASE_MS ?? 1000),
