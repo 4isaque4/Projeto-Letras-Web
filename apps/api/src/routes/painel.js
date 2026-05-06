@@ -30,6 +30,7 @@ import {
   importMobileBlueprintsFromManifest,
   resetCmsContent,
   updateActivityProgressStatus,
+  upsertActivityProgressFromMobile,
   updateMobileScreenBlueprint,
   updatePanelSystemSettings,
   updateLearningActivity,
@@ -731,6 +732,26 @@ painelRouter.post("/conteudo/blueprints/import-manifest", async (req, res) => {
     });
 
     res.status(201).json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+// Endpoint usado pelo app mobile para gravar progresso do alfabetizando.
+// Espelha o contrato do POST /progress do backend NestJS (mesmo body) para
+// que o painel.letras.cloud sirva como ponto unico de escrita em producao.
+painelRouter.post("/progress", async (req, res) => {
+  try {
+    const result = await upsertActivityProgressFromMobile({
+      learnerProfileId: req.body?.learnerProfileId,
+      activityId: req.body?.activityId,
+      status: req.body?.status,
+      score: req.body?.score,
+      elapsedSeconds: req.body?.elapsedSeconds,
+    });
+
+    res.status(result.skipped ? 202 : 200).json(result);
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });

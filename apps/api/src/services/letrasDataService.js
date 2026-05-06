@@ -3742,6 +3742,105 @@ export async function deleteProfileRecord({ profileId, role }) {
   return { id: normalizedProfileId, deleted: true };
 }
 
+// Recebe progresso vindo do app mobile (POST /painel/progress) e faz upsert
+// na tabela canonica activity_progress. O mobile envia o status no formato do
+// schema Prisma (IN_PROGRESS / COMPLETED); aqui mapeamos para o enum do painel
+// (em_andamento / concluido). A escrita é tolerante a violacao de FK
+// (student_id ou activity_id ainda nao sincronizados): nesse caso retornamos
+// { skipped } para que o mobile nao quebre.
+export async function upsertActivityProgressFromMobile({
+  learnerProfileId,
+  activityId,
+  status,
+  score,
+  elapsedSeconds,
+} = {}) {
+  const client = requireSupabase();
+
+  const normalizedLearnerId = normalizeText(learnerProfileId);
+  const normalizedActivityId = normalizeText(activityId);
+  if (!UUID_PATTERN.test(normalizedLearnerId)) {
+    throw new HttpError(400, "learnerProfileId invalido (esperado UUID).");
+  }
+  if (!UUID_PATTERN.test(normalizedActivityId)) {
+    throw new HttpError(400, "activityId invalido (esperado UUID).");
+  }
+
+  const mappedStatus = mapMobileCompletionStatus(String(status ?? "").toUpperCase());
+  if (!ACTIVITY_PROGRESS_STATUSES.has(mappedStatus)) {
+    throw new HttpError(400, "Status invalido. Use IN_PROGRESS ou COMPLETED.");
+  }
+
+  let normalizedScore = null;
+  if (score !== undefined && score !== null) {
+    const parsed = Number(score);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+      throw new HttpError(400, "score deve estar entre 0 e 100.");
+    }
+    normalizedScore = parsed;
+  }
+
+  let normalizedElapsed = null;
+  if (elapsedSeconds !== undefined && elapsedSeconds !== null) {
+    const parsed = Number(elapsedSeconds);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new HttpError(400, "elapsedSeconds deve ser >= 0.");
+    }
+    normalizedElapsed = Math.floor(parsed);
+  }
+
+  const nowIso = new Date().toISOString();
+  const payload = {
+    student_id: normalizedLearnerId,
+    activity_id: normalizedActivityId,
+    status: mappedStatus,
+    source_platform: "mobile",
+    last_interacted_at: nowIso,
+    completed_at: mappedStatus === "concluido" ? nowIso : null,
+    metadata: {
+      source: "mobile_api",
+      ...(normalizedElapsed !== null ? { elapsedSeconds: normalizedElapsed } : {}),
+    },
+    ...(normalizedScore !== null ? { score: normalizedScore } : {}),
+  };
+
+  const { data, error } = await client
+    .from("activity_progress")
+    .upsert(payload, { onConflict: "student_id,activity_id" })
+    .select(
+      "id, student_id, activity_id, status, attempts, score, source_platform, last_interacted_at, completed_at, metadata, created_at, updated_at",
+    )
+    .single();
+
+  if (error) {
+    // 23503 = foreign_key_violation: ocorre quando o LearnerProfile do mobile
+    // ainda nao tem profile espelhado, ou a activity_id nao existe no CMS.
+    if (error.code === "23503") {
+      return {
+        skipped: true,
+        reason: "FK violation (perfil ou aula nao sincronizados no painel).",
+      };
+    }
+    throw new HttpError(400, `Falha ao gravar progresso: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("register mobile progress upsert event", () =>
+    registerSyncEvent({
+      sourcePlatform: "mobile",
+      eventType: "activity.progress.updated",
+      entityType: "activity_progress",
+      entityId: data.id,
+      payload: {
+        studentId: data.student_id,
+        activityId: data.activity_id,
+        status: data.status,
+      },
+    }),
+  );
+
+  return { progress: data };
+}
+
 export async function updateActivityProgressStatus({
   progressId,
   status,
