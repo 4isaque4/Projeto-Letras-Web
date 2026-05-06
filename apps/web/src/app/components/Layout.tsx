@@ -36,11 +36,11 @@ export default function Layout() {
 
   return (
     <ConfirmProvider>
-      <div className="flex h-screen overflow-hidden bg-white">
+      <div className="flex min-h-screen bg-gray-100">
         <Sidebar userRole={userRole} />
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="min-w-0 flex-1 flex flex-col">
           <Topbar />
-          <main className="flex-1 overflow-auto p-6 bg-gray-100">
+          <main className="min-w-0 flex-1 bg-gray-100 p-6">
             <Outlet />
           </main>
         </div>

@@ -125,7 +125,14 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-gray-100 text-foreground;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    background: #f3f4f6;
   }
 
   /**

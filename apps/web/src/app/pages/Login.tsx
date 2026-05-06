@@ -52,8 +52,8 @@ export default function Login() {
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Alfabetizador Online</h1>
-          <p className="text-sm text-gray-600">Sistema de Gestao de Alfabetizacao</p>
+          <img src="/logo-letras.png" alt="Letras" className="mx-auto h-16 w-auto object-contain" />
+          <p className="text-sm text-gray-600 mt-3">Sistema de Gestão de Alfabetização</p>
         </div>
 
         <div className="border-2 border-gray-300 bg-white p-8">
