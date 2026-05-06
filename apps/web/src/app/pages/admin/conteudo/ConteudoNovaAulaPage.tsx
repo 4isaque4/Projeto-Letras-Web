@@ -18,6 +18,11 @@ import { env } from "../../../core/config/env";
 import { ActivityType, AssetKind, AssetStatus, ModuleItem } from "./cmsTypes";
 import { formatBytes, inferAssetKindFromFile, inferAssetKindFromPath } from "./cmsUtils";
 import { useConteudoData } from "./useConteudoData";
+import LessonBlockEditor, {
+  type LessonBlock,
+  deserializeToBlocks,
+  serializeBlocks,
+} from "./LessonBlockEditor";
 
 const STEPS = [
   "1. Tema e aula",
@@ -356,6 +361,19 @@ function getAssetDisplayName(path: string) {
   }
 }
 
+function readMetaString(metadata: unknown, key: string): string {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return "";
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getAssetFriendlyName(asset: Asset): string {
+  const fromMetadata =
+    readMetaString(asset.metadata, "originalFileName") ||
+    readMetaString(asset.metadata, "title");
+  return fromMetadata || getAssetDisplayName(asset.storage_path);
+}
+
 function resolveBlueprintPreviewUrl(svgPath: string) {
   const normalized = String(svgPath ?? "").trim();
   if (!normalized) {
@@ -504,6 +522,7 @@ interface EditorDraftPayload {
   markRows: MarkImageRow[];
   matchRowsBulkInput: string;
   markRowsBulkInput: string;
+  blocks: LessonBlock[];
   isPublished: boolean;
   assetLink: string;
   assetKind: AssetKind;
@@ -614,6 +633,7 @@ function buildDraftFromActivity(
     markRows: INITIAL_MARK_ROWS,
     matchRowsBulkInput: "",
     markRowsBulkInput: "",
+    blocks: deserializeToBlocks(String(activity.instructions ?? "")),
     isPublished: Boolean(activity.is_published),
     assetLink: "",
     assetKind: "png",
@@ -803,6 +823,7 @@ export default function ConteudoNovaAulaPage() {
   const [assetKind, setAssetKind] = useState<AssetKind>("png");
   const [assetStatus, setAssetStatus] = useState<AssetStatus>("publicado");
   const [assetSearch, setAssetSearch] = useState("");
+  const [blocks, setBlocks] = useState<LessonBlock[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [localError, setLocalError] = useState("");
   const [editorDone, setEditorDone] = useState(false);
@@ -854,6 +875,7 @@ export default function ConteudoNovaAulaPage() {
     setMarkRows(Array.isArray(draft.markRows) && draft.markRows.length > 0 ? draft.markRows : INITIAL_MARK_ROWS);
     setMatchRowsBulkInput(draft.matchRowsBulkInput || "");
     setMarkRowsBulkInput(draft.markRowsBulkInput || "");
+    setBlocks(Array.isArray(draft.blocks) ? draft.blocks : []);
     setIsPublished(Boolean(draft.isPublished));
     setAssetLink(draft.assetLink || "");
     setAssetKind(draft.assetKind || "png");
@@ -1138,7 +1160,7 @@ export default function ConteudoNovaAulaPage() {
     [themeScopedAssets],
   );
   const audioLibraryAssets = useMemo(
-    () => themeScopedAssets.filter((asset) => asset.kind === "mp3"),
+    () => themeScopedAssets.filter((asset) => asset.kind === "mp3" || asset.kind === "wav"),
     [themeScopedAssets],
   );
   const filteredAssetsLibrary = useMemo(() => {
@@ -1195,47 +1217,8 @@ export default function ConteudoNovaAulaPage() {
   ]);
 
   const instructionsPayloadPreview = useMemo(
-    () =>
-      buildInstructionsPayload({
-        screenTemplate,
-        orientationTutor,
-        orientationStudent,
-        lockReason,
-        lockMessage,
-        lockAudioUrl,
-        exerciseInstructionText,
-        exerciseInstructionAudioUrl,
-        reinforcementText,
-        reinforcementAudioUrl,
-        reinforcementAutoReturnMs: reinforcementAutoReturnValue,
-        reinforcementPreserveProgress,
-        targetLetter,
-        maxAttemptsBeforeLock: maxAttemptsValue,
-        expectedSelections: expectedSelectionsValue,
-        progressiveUnlock,
-        matchRowsPayload,
-        markRowsPayload,
-      }),
-    [
-      exerciseInstructionAudioUrl,
-      exerciseInstructionText,
-      expectedSelectionsValue,
-      lockAudioUrl,
-      lockMessage,
-      lockReason,
-      markRowsPayload,
-      matchRowsPayload,
-      maxAttemptsValue,
-      orientationStudent,
-      orientationTutor,
-      progressiveUnlock,
-      reinforcementAudioUrl,
-      reinforcementAutoReturnValue,
-      reinforcementPreserveProgress,
-      reinforcementText,
-      screenTemplate,
-      targetLetter,
-    ],
+    () => serializeBlocks(blocks),
+    [blocks],
   );
 
   const draftPayload = useMemo<EditorDraftPayload>(
@@ -1272,6 +1255,7 @@ export default function ConteudoNovaAulaPage() {
       markRows,
       matchRowsBulkInput,
       markRowsBulkInput,
+      blocks,
       isPublished,
       assetLink,
       assetKind,
@@ -1316,6 +1300,7 @@ export default function ConteudoNovaAulaPage() {
       targetLetter,
       themeEntryMode,
       themeId,
+      blocks,
     ],
   );
 
@@ -1687,7 +1672,7 @@ export default function ConteudoNovaAulaPage() {
           <option value="">Usar audio da biblioteca</option>
           {audioLibraryAssets.map((asset) => (
             <option key={`${target}-audio-field-${asset.id}`} value={asset.storage_path}>
-              {getAssetDisplayName(asset.storage_path)}
+              {getAssetFriendlyName(asset)}
             </option>
           ))}
         </select>
@@ -1863,26 +1848,7 @@ export default function ConteudoNovaAulaPage() {
         }
       }
 
-      const instructions = buildInstructionsPayload({
-        screenTemplate,
-        orientationTutor,
-        orientationStudent,
-        lockReason,
-        lockMessage,
-        lockAudioUrl,
-        exerciseInstructionText,
-        exerciseInstructionAudioUrl,
-        reinforcementText,
-        reinforcementAudioUrl,
-        reinforcementAutoReturnMs: reinforcementAutoReturnValue,
-        reinforcementPreserveProgress,
-        targetLetter,
-        maxAttemptsBeforeLock: maxAttemptsValue,
-        expectedSelections: expectedSelectionsValue,
-        progressiveUnlock,
-        matchRowsPayload,
-        markRowsPayload,
-      });
+      const instructions = serializeBlocks(blocks) || undefined;
 
       let activityId: string | null = null;
       if (editingActivityId) {
@@ -2022,26 +1988,7 @@ export default function ConteudoNovaAulaPage() {
           });
         }
 
-        const resolvedInstructions = buildInstructionsPayload({
-          screenTemplate,
-          orientationTutor,
-          orientationStudent,
-          lockReason,
-          lockMessage,
-          lockAudioUrl: resolvedLockAudioUrl,
-          exerciseInstructionText,
-          exerciseInstructionAudioUrl: resolvedExerciseInstructionAudioUrl,
-          reinforcementText,
-          reinforcementAudioUrl: resolvedReinforcementAudioUrl,
-          reinforcementAutoReturnMs: reinforcementAutoReturnValue,
-          reinforcementPreserveProgress,
-          targetLetter,
-          maxAttemptsBeforeLock: maxAttemptsValue,
-          expectedSelections: expectedSelectionsValue,
-          progressiveUnlock,
-          matchRowsPayload: normalizeMatchRows(resolvedMatchRows, targetLetter),
-          markRowsPayload: normalizeMarkRows(resolvedMarkRows),
-        });
+        const resolvedInstructions = serializeBlocks(blocks) || undefined;
 
         const activityPatched = await updateActivity({
           activityId,
@@ -2093,9 +2040,11 @@ export default function ConteudoNovaAulaPage() {
               ? "video/mp4"
               : inferredKind === "mp3"
                 ? "audio/mpeg"
-                : inferredKind === "png"
-                  ? "image/png"
-                  : "image/jpeg",
+                : inferredKind === "wav"
+                  ? "audio/wav"
+                  : inferredKind === "png"
+                    ? "image/png"
+                    : "image/jpeg",
           metadata: { source: "editor-link", screenTemplate, ...selectedThemeMetadata },
         });
       }
@@ -2364,7 +2313,7 @@ export default function ConteudoNovaAulaPage() {
                         <option value="">Usar imagem da biblioteca</option>
                         {imageLibraryAssets.map((asset) => (
                           <option key={`${row.id}-img-${asset.id}`} value={asset.storage_path}>
-                            {getAssetDisplayName(asset.storage_path)}
+                            {getAssetFriendlyName(asset)}
                           </option>
                         ))}
                       </select>
@@ -2682,7 +2631,7 @@ export default function ConteudoNovaAulaPage() {
                         <option value="">Usar imagem da biblioteca</option>
                         {imageLibraryAssets.map((asset) => (
                           <option key={`${row.id}-mark-img-${asset.id}`} value={asset.storage_path}>
-                            {getAssetDisplayName(asset.storage_path)}
+                            {getAssetFriendlyName(asset)}
                           </option>
                         ))}
                       </select>
@@ -3106,86 +3055,13 @@ export default function ConteudoNovaAulaPage() {
     if (step === 2) {
       return (
         <div className="space-y-4">
-          <h2 className="text-4xl font-semibold text-slate-900">Orientacoes</h2>
-          <p className="text-sm text-slate-600">
-            Defina textos de apoio e o modelo da tela (padrao, marcar letra, marcar imagens ou bloqueada).
-          </p>
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="space-y-2 border border-slate-300 bg-white p-4">
-              <label className="block text-sm font-semibold text-slate-700">Orientacao para o alfabetizador</label>
-              <textarea
-                value={orientationTutor}
-                onChange={(event) => setOrientationTutor(event.target.value)}
-                rows={4}
-                placeholder="Ex.: Oriente o alfabetizando sobre a atividade."
-                className="w-full border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
-
-            <div className="space-y-2 border border-slate-300 bg-white p-4">
-              <label className="block text-sm font-semibold text-slate-700">Fala sugerida para o alfabetizando</label>
-              <textarea
-                value={orientationStudent}
-                onChange={(event) => setOrientationStudent(event.target.value)}
-                rows={4}
-                placeholder="Ex.: Escute o audio e marque a resposta correta."
-                className="w-full border border-slate-300 px-3 py-2 text-sm"
-              />
-            </div>
+          <div>
+            <h2 className="text-2xl font-semibold text-slate-900">Conteúdo da aula</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Monte a aula adicionando blocos na ordem que quiser: textos de orientação, imagens, vídeos, áudios e exercícios.
+            </p>
           </div>
-
-          <div className="space-y-3 border border-slate-300 bg-slate-50 p-4">
-            <label className="block text-sm font-semibold text-slate-700">Modelo da tela</label>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
-              <button
-                type="button"
-                onClick={() => setScreenTemplate("default")}
-                className={`border px-3 py-2 text-sm font-medium ${
-                  screenTemplate === "default"
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-300 bg-white text-slate-700"
-                }`}
-              >
-                Padrao (texto e midia)
-              </button>
-              <button
-                type="button"
-                onClick={() => setScreenTemplate("exercise-match-letter")}
-                className={`border px-3 py-2 text-sm font-medium ${
-                  screenTemplate === "exercise-match-letter"
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-300 bg-white text-slate-700"
-                }`}
-              >
-                Marcar letra correta
-              </button>
-              <button
-                type="button"
-                onClick={() => setScreenTemplate("exercise-mark-images")}
-                className={`border px-3 py-2 text-sm font-medium ${
-                  screenTemplate === "exercise-mark-images"
-                    ? "border-slate-900 bg-slate-900 text-white"
-                    : "border-slate-300 bg-white text-slate-700"
-                }`}
-              >
-                Marcar imagens corretas
-              </button>
-              <button
-                type="button"
-                onClick={() => setScreenTemplate("locked")}
-                className={`border px-3 py-2 text-sm font-medium ${
-                  screenTemplate === "locked"
-                    ? "border-red-700 bg-red-700 text-white"
-                    : "border-red-200 bg-white text-red-700"
-                }`}
-              >
-                Tela bloqueada
-              </button>
-            </div>
-          </div>
-
-          {renderTemplateEditor()}
+          <LessonBlockEditor blocks={blocks} onChange={setBlocks} />
         </div>
       );
     }
@@ -3278,7 +3154,7 @@ export default function ConteudoNovaAulaPage() {
                   if (previewKind === "mp4") {
                     return <video src={assetPreviewUrl} className="h-20 w-32 rounded border border-slate-200 bg-black" muted />;
                   }
-                  if (previewKind === "mp3") {
+                  if (previewKind === "mp3" || previewKind === "wav") {
                     return <audio src={assetPreviewUrl} controls className="w-48" />;
                   }
                   return (
@@ -3321,10 +3197,10 @@ export default function ConteudoNovaAulaPage() {
               ) : (
                 <div className="grid max-h-72 grid-cols-1 gap-2 overflow-auto sm:grid-cols-2 lg:grid-cols-3">
                   {filteredAssetsLibrary.map((asset) => {
-                    const isImage = ["png", "webp", "svg"].includes(asset.kind);
+                    const isImage = ["png", "webp", "svg", "jpg"].includes(asset.kind);
                     const isVideo = asset.kind === "mp4";
-                    const isAudio = asset.kind === "mp3";
-                    const displayName = getAssetDisplayName(asset.storage_path);
+                    const isAudio = asset.kind === "mp3" || asset.kind === "wav";
+                    const displayName = getAssetFriendlyName(asset);
                     return (
                       <button
                         key={`library-${asset.id}`}
@@ -3603,7 +3479,7 @@ export default function ConteudoNovaAulaPage() {
             <p className="mt-1 text-[11px] text-slate-600">Nenhuma midia selecionada.</p>
           ) : previewMediaKind === "mp4" ? (
             <video src={previewMediaUrl} controls className="mt-1 h-28 w-full rounded border border-slate-200 bg-black" />
-          ) : previewMediaKind === "mp3" ? (
+          ) : previewMediaKind === "mp3" || previewMediaKind === "wav" ? (
             <audio src={previewMediaUrl} controls className="mt-1 w-full" />
           ) : (
             <img src={previewMediaUrl} alt="Preview da midia" className="mt-1 h-28 w-full rounded border border-slate-200 object-cover" />

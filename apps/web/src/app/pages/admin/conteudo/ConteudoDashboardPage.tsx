@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import {
   BookOpen,
   Eye,
@@ -10,7 +10,9 @@ import {
   Layers,
   LayoutGrid,
   Monitor,
+  Pause,
   Pencil,
+  Play,
   Plus,
   Trash2,
   Upload,
@@ -25,14 +27,14 @@ import { useConteudoData } from "./useConteudoData";
 import {
   assetStatusLabel,
   formatBytes,
-  getAssetDisplayName,
+  getAssetFriendlyName,
   inferAssetKindFromFile,
   resolvePublicAssetUrl,
 } from "./cmsUtils";
 
 function iconByKind(kind: string) {
   if (kind === "mp4") return <FileVideo className="h-4 w-4 text-slate-500" />;
-  if (kind === "mp3") return <FileAudio2 className="h-4 w-4 text-slate-500" />;
+  if (kind === "mp3" || kind === "wav") return <FileAudio2 className="h-4 w-4 text-slate-500" />;
   return <FileImage className="h-4 w-4 text-slate-500" />;
 }
 
@@ -50,6 +52,81 @@ function activityTypeIcon(type: string) {
   if (type === "quiz") return <LayoutGrid className="h-3.5 w-3.5 text-slate-400" />;
   if (type === "audio") return <Volume2 className="h-3.5 w-3.5 text-slate-400" />;
   return null;
+}
+
+function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function CompactAudioPlayer({ url }: { url: string }) {
+  const ref = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  function toggle() {
+    const el = ref.current;
+    if (!el) return;
+    if (playing) {
+      el.pause();
+      setPlaying(false);
+    } else {
+      void el.play().then(() => setPlaying(true));
+    }
+  }
+
+  function seek(e: React.MouseEvent<HTMLDivElement>) {
+    const el = ref.current;
+    if (!el || !el.duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    el.currentTime = pct * el.duration;
+    setCurrentTime(el.currentTime);
+  }
+
+  const progress = duration > 0 ? currentTime / duration : 0;
+
+  return (
+    <div className="mt-1.5 flex items-center gap-2">
+      <button
+        type="button"
+        onClick={toggle}
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-800 text-white hover:bg-slate-700"
+        aria-label={playing ? "Pausar" : "Tocar"}
+      >
+        {playing ? (
+          <Pause className="h-3 w-3 fill-white" />
+        ) : (
+          <Play className="h-3 w-3 fill-white" />
+        )}
+      </button>
+      <div
+        className="relative h-1.5 flex-1 cursor-pointer rounded-full bg-slate-200"
+        onClick={seek}
+        title="Clique para avançar"
+      >
+        <div
+          className="h-full rounded-full bg-slate-700 transition-[width]"
+          style={{ width: `${progress * 100}%` }}
+        />
+      </div>
+      <span className="shrink-0 text-[10px] tabular-nums text-slate-500">
+        {formatDuration(currentTime)} / {formatDuration(duration)}
+      </span>
+      <audio
+        ref={ref}
+        src={url}
+        preload="metadata"
+        onEnded={() => { setPlaying(false); setCurrentTime(0); }}
+        onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+        onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+        className="sr-only"
+      />
+    </div>
+  );
 }
 
 export default function ConteudoDashboardPage() {
@@ -341,26 +418,52 @@ export default function ConteudoDashboardPage() {
           ) : (
             <ul>
               {recentAssets.map((asset) => {
-                const isImage = ["png", "jpg"].includes(asset.kind);
+                const isImage = asset.kind === "png" || asset.kind === "jpg";
+                const isVideo = asset.kind === "mp4";
+                const isAudio = asset.kind === "mp3" || asset.kind === "wav";
                 const previewUrl = resolvePublicAssetUrl(asset.storage_path, env.supabaseUrl ?? "");
-                const displayName = getAssetDisplayName(asset.storage_path) || asset.storage_path;
+                const displayName = getAssetFriendlyName(asset) || asset.storage_path;
                 return (
                   <li
                     key={asset.id}
                     className="border-b border-slate-100 px-4 py-3 last:border-b-0"
                   >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-start gap-3">
                       {isImage && previewUrl ? (
-                        <img
-                          src={previewUrl}
-                          alt={displayName}
-                          className="h-10 w-10 shrink-0 rounded border border-slate-200 object-cover"
-                          onError={(e) => {
-                            e.currentTarget.style.visibility = "hidden";
-                          }}
-                        />
+                        <a
+                          href={previewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="shrink-0"
+                        >
+                          <img
+                            src={previewUrl}
+                            alt={displayName}
+                            className="h-12 w-12 rounded border border-slate-200 object-cover"
+                            onError={(e) => {
+                              e.currentTarget.style.visibility = "hidden";
+                            }}
+                          />
+                        </a>
+                      ) : isVideo && previewUrl ? (
+                        <a
+                          href={previewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="relative block h-12 w-12 shrink-0 overflow-hidden rounded border border-slate-200 bg-slate-900"
+                        >
+                          <video
+                            src={previewUrl}
+                            preload="metadata"
+                            muted
+                            className="h-full w-full object-cover"
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                            <Play className="h-4 w-4 fill-white text-white" />
+                          </div>
+                        </a>
                       ) : (
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded border border-slate-200 bg-slate-50">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded border border-slate-200 bg-slate-50">
                           {iconByKind(asset.kind)}
                         </div>
                       )}
@@ -374,11 +477,12 @@ export default function ConteudoDashboardPage() {
                         >
                           {displayName}
                         </a>
-                        <div className="flex items-center gap-1.5 mt-0.5">
+                        <div className="mt-0.5 flex items-center gap-1.5">
                           <span className="text-[11px] uppercase text-slate-400">{asset.kind}</span>
-                          <span className="text-slate-300 text-[11px]">·</span>
+                          <span className="text-[11px] text-slate-300">·</span>
                           <span className="text-[11px] text-slate-400">{assetStatusLabel(asset.status)}</span>
                         </div>
+                        {isAudio && previewUrl ? <CompactAudioPlayer url={previewUrl} /> : null}
                       </div>
                     </div>
                   </li>
