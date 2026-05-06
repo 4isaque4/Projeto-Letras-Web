@@ -399,10 +399,18 @@ painelRouter.get("/conteudo", async (req, res) => {
   try {
     const scope = String(req.query?.scope || "all").trim().toLowerCase();
     const cmsOnly = scope === "cms";
+    // Mobile passa ?published=true para receber apenas aulas que o admin
+    // marcou como publicadas. O painel web omite o parametro para continuar
+    // editando rascunhos.
+    const publishedOnly = ["1", "true", "yes"].includes(
+      String(req.query?.published || "").trim().toLowerCase(),
+    );
     const [themes, modules, activities, assets, blueprints] = await Promise.all([
       cmsOnly ? getPanelLearningThemes() : getLearningThemes(),
       cmsOnly ? getPanelLearningModules() : getLearningModules(),
-      cmsOnly ? getPanelLearningActivities() : getLearningActivities(),
+      cmsOnly
+        ? getPanelLearningActivities({ publishedOnly })
+        : getLearningActivities(),
       getContentAssets(),
       getMobileScreenBlueprints(),
     ]);

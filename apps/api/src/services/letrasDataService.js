@@ -1147,7 +1147,7 @@ export async function getLearningActivities({ ids } = {}) {
   return dedupeById(activities, mobileActivities.map(mapMobileActivityToActivity));
 }
 
-export async function getPanelLearningActivities({ ids } = {}) {
+export async function getPanelLearningActivities({ ids, publishedOnly = false } = {}) {
   if (ids && ids.length === 0) {
     return [];
   }
@@ -1164,6 +1164,10 @@ export async function getPanelLearningActivities({ ids } = {}) {
 
   if (ids) {
     query = query.in("id", uuidIds);
+  }
+
+  if (publishedOnly) {
+    query = query.eq("is_published", true);
   }
 
   return runQuery(query, "Falha ao listar atividades do CMS");
