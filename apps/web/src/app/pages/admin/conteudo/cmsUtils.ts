@@ -22,9 +22,22 @@ export function formatDate(value: string) {
 
 export function assetKindLabel(kind: AssetKind) {
   if (kind === "mp4") return "Video";
-  if (kind === "mp3") return "Audio";
+  if (kind === "mp3") return "Audio (MP3)";
+  if (kind === "wav") return "Audio (WAV)";
   if (kind === "png") return "Imagem (PNG)";
   return "Imagem (JPG)";
+}
+
+export function isAudioKind(kind: AssetKind): boolean {
+  return kind === "mp3" || kind === "wav";
+}
+
+export function isImageKind(kind: AssetKind): boolean {
+  return kind === "png" || kind === "jpg";
+}
+
+export function isVideoKind(kind: AssetKind): boolean {
+  return kind === "mp4";
 }
 
 export function assetStatusLabel(status: AssetStatus) {
@@ -61,12 +74,21 @@ export function inferAssetKindFromFile(file: File): AssetKind | null {
   const mimeType = file.type.toLowerCase();
   if (mimeType.startsWith("video/mp4")) return "mp4";
   if (mimeType.startsWith("audio/mpeg") || mimeType.startsWith("audio/mp3")) return "mp3";
+  if (
+    mimeType.startsWith("audio/wav") ||
+    mimeType.startsWith("audio/wave") ||
+    mimeType.startsWith("audio/x-wav") ||
+    mimeType.startsWith("audio/vnd.wave")
+  ) {
+    return "wav";
+  }
   if (mimeType.startsWith("image/png")) return "png";
   if (mimeType.startsWith("image/jpeg")) return "jpg";
 
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (extension === "mp4") return "mp4";
   if (extension === "mp3") return "mp3";
+  if (extension === "wav") return "wav";
   if (extension === "png") return "png";
   if (extension === "jpg" || extension === "jpeg") return "jpg";
   return null;
@@ -81,6 +103,7 @@ export function inferAssetKindFromPath(path: string): AssetKind | null {
   const cleanPath = value.split("?")[0]?.split("#")[0] ?? value;
   if (cleanPath.endsWith(".mp4")) return "mp4";
   if (cleanPath.endsWith(".mp3")) return "mp3";
+  if (cleanPath.endsWith(".wav")) return "wav";
   if (cleanPath.endsWith(".png")) return "png";
   if (cleanPath.endsWith(".jpg") || cleanPath.endsWith(".jpeg")) return "jpg";
 
@@ -115,6 +138,25 @@ export function getAssetDisplayName(path: string) {
   } catch {
     return normalized;
   }
+}
+
+function readMetadataString(metadata: unknown, key: string): string {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return "";
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function getAssetFriendlyName(asset: {
+  storage_path: string;
+  metadata?: Record<string, unknown> | null;
+}): string {
+  const fromMetadata =
+    readMetadataString(asset.metadata, "originalFileName") ||
+    readMetadataString(asset.metadata, "title");
+  if (fromMetadata) {
+    return fromMetadata;
+  }
+  return getAssetDisplayName(asset.storage_path);
 }
 
 export function resolvePublicAssetUrl(path: string, supabaseUrl: string, publicBucket = "letras-assets") {

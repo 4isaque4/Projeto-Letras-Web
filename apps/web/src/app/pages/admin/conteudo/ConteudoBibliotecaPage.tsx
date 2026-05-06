@@ -1,6 +1,8 @@
-import { FormEvent, useMemo, useRef, useState } from "react";
+import React, { FormEvent, useMemo, useRef, useState } from "react";
 import {
+  BookOpen,
   FolderOpen,
+  Layers,
   Pause,
   Pencil,
   Play,
@@ -17,37 +19,52 @@ import StateDisplay from "../../../components/StateDisplay";
 import { env } from "../../../core/config/env";
 import { Asset, AssetKind, AssetStatus } from "./cmsTypes";
 import { useConteudoData } from "./useConteudoData";
-import { getAssetDisplayName, inferAssetKindFromFile, resolvePublicAssetUrl } from "./cmsUtils";
+import {
+  getAssetFriendlyName,
+  inferAssetKindFromFile,
+  isAudioKind,
+  isImageKind,
+  isVideoKind,
+  resolvePublicAssetUrl,
+} from "./cmsUtils";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const MIME_BY_KIND: Record<AssetKind, string> = {
   mp4: "video/mp4",
   mp3: "audio/mpeg",
+  wav: "audio/wav",
   png: "image/png",
   jpg: "image/jpeg",
 };
 
-type FilterType = "all" | "imagem" | "mp3" | "mp4";
+type FilterType = "all" | "imagem" | "audio" | "mp4";
 
-function isImage(kind: AssetKind) { return kind === "png" || kind === "jpg"; }
-function isAudio(kind: AssetKind) { return kind === "mp3"; }
-function isVideo(kind: AssetKind) { return kind === "mp4"; }
+const isImage = isImageKind;
+const isAudio = isAudioKind;
+const isVideo = isVideoKind;
 
 function assetUrl(storagePath: string) {
   return resolvePublicAssetUrl(storagePath, env.supabaseUrl ?? "");
 }
 
-function cleanFileName(storagePath: string): string {
-  const full = getAssetDisplayName(storagePath);
-  const withoutUuid = full.replace(
+function cleanFileName(asset: Asset): string {
+  const friendly = getAssetFriendlyName(asset);
+  const withoutUuid = friendly.replace(
     /-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.[^.]+)?$/i,
     "$1",
   );
-  return withoutUuid || full;
+  return withoutUuid || friendly;
 }
 
 // ─── Audio Card ───────────────────────────────────────────────────────────────
+
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 function AudioCard({
   asset,
@@ -60,8 +77,11 @@ function AudioCard({
 }) {
   const ref = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const url = assetUrl(asset.storage_path);
-  const name = cleanFileName(asset.storage_path);
+  const name = cleanFileName(asset);
 
   function toggle() {
     if (!ref.current) return;
@@ -73,13 +93,36 @@ function AudioCard({
     }
   }
 
+  function handleTimeUpdate() {
+    const el = ref.current;
+    if (!el || !el.duration) return;
+    setCurrentTime(el.currentTime);
+    setProgress(el.currentTime / el.duration);
+  }
+
+  function handleLoadedMetadata() {
+    if (ref.current) setDuration(ref.current.duration);
+  }
+
+  function seek(e: React.MouseEvent<HTMLDivElement>) {
+    const el = ref.current;
+    if (!el || !el.duration) return;
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    el.currentTime = pct * el.duration;
+    setProgress(pct);
+    setCurrentTime(el.currentTime);
+  }
+
   return (
     <div className="group flex flex-col">
       <div className="relative aspect-square overflow-hidden rounded border border-slate-200 bg-gradient-to-br from-slate-700 to-slate-900">
+        {/* Área central clicável para play/pause */}
         <button
           type="button"
           onClick={toggle}
-          className="flex h-full w-full flex-col items-center justify-center gap-3 px-4"
+          className="flex h-full w-full flex-col items-center justify-center gap-3 px-4 pb-10"
         >
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/20 transition-colors hover:bg-white/35">
             {playing ? (
@@ -93,14 +136,45 @@ function AudioCard({
             <span className="truncate text-xs text-white/80">{name}</span>
           </div>
         </button>
-        <audio ref={ref} src={url} onEnded={() => setPlaying(false)} className="sr-only" />
 
-        {/* Hover overlay — mesma estrutura do VisualCard */}
-        <div className="pointer-events-none absolute inset-0 flex items-end justify-between bg-black/30 p-2 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+        {/* Barra de progresso + tempo — fixada na base do card */}
+        <div className="absolute bottom-0 left-0 right-0 px-3 pb-3">
+          <div
+            className="pointer-events-auto relative h-2 cursor-pointer rounded-full bg-white/20"
+            onClick={seek}
+            title="Clique para avançar"
+          >
+            <div
+              className="h-full rounded-full bg-white/70 transition-[width]"
+              style={{ width: `${progress * 100}%` }}
+            />
+            {/* Ponteiro de posição */}
+            <div
+              className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white shadow"
+              style={{ left: `calc(${progress * 100}% - 6px)` }}
+            />
+          </div>
+          <div className="mt-1 flex justify-between">
+            <span className="text-[10px] text-white/50">{formatTime(currentTime)}</span>
+            <span className="text-[10px] text-white/50">{formatTime(duration)}</span>
+          </div>
+        </div>
+
+        <audio
+          ref={ref}
+          src={url}
+          onEnded={() => { setPlaying(false); setProgress(0); setCurrentTime(0); }}
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          className="sr-only"
+        />
+
+        {/* Hover overlay */}
+        <div className="pointer-events-none absolute inset-0 flex items-start justify-between bg-black/20 p-2 opacity-0 transition-opacity group-hover:opacity-100">
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onStatusChange(asset.status === "publicado" ? "rascunho" : "publicado"); }}
-            className={`border px-2 py-0.5 text-xs font-medium backdrop-blur-sm ${
+            className={`pointer-events-auto border px-2 py-0.5 text-xs font-medium backdrop-blur-sm ${
               asset.status === "publicado"
                 ? "border-emerald-400 bg-emerald-500/80 text-white"
                 : "border-slate-400 bg-slate-700/80 text-white"
@@ -111,7 +185,7 @@ function AudioCard({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className="flex h-7 w-7 items-center justify-center border border-red-400 bg-red-600/80 text-white backdrop-blur-sm hover:bg-red-700"
+            className="pointer-events-auto flex h-7 w-7 items-center justify-center border border-red-400 bg-red-600/80 text-white backdrop-blur-sm hover:bg-red-700"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
@@ -134,7 +208,7 @@ function VisualCard({
   onStatusChange: (s: AssetStatus) => void;
 }) {
   const url = assetUrl(asset.storage_path);
-  const name = cleanFileName(asset.storage_path);
+  const name = cleanFileName(asset);
 
   return (
     <div className="group flex flex-col">
@@ -172,13 +246,13 @@ function VisualCard({
           </div>
         )}
 
-        {/* Hover overlay */}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+        {/* Hover overlay — pointer-events-none no container, só os botões capturam cliques */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/65 via-black/10 to-transparent opacity-0 transition-opacity group-hover:opacity-100">
           <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between p-2">
             <button
               type="button"
               onClick={() => onStatusChange(asset.status === "publicado" ? "rascunho" : "publicado")}
-              className={`border px-2 py-0.5 text-xs font-medium backdrop-blur-sm transition-colors ${
+              className={`pointer-events-auto border px-2 py-0.5 text-xs font-medium backdrop-blur-sm transition-colors ${
                 asset.status === "publicado"
                   ? "border-emerald-400 bg-emerald-500/80 text-white hover:bg-emerald-600/80"
                   : "border-slate-400 bg-slate-700/80 text-white hover:bg-slate-800/80"
@@ -189,7 +263,7 @@ function VisualCard({
             <button
               type="button"
               onClick={onDelete}
-              className="flex h-7 w-7 items-center justify-center border border-red-400 bg-red-600/80 text-white backdrop-blur-sm hover:bg-red-700"
+              className="pointer-events-auto flex h-7 w-7 items-center justify-center border border-red-400 bg-red-600/80 text-white backdrop-blur-sm hover:bg-red-700"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -234,10 +308,13 @@ export default function ConteudoBibliotecaPage() {
     createTheme,
     updateTheme,
     deleteTheme,
+    updateModule,
+    deleteModule,
     uploadAsset,
     updateAsset,
     deleteAsset,
     cmsThemes,
+    cmsModules,
     modulesById,
     themesById,
   } = useConteudoData();
@@ -253,6 +330,10 @@ export default function ConteudoBibliotecaPage() {
   const [newThemeTitle, setNewThemeTitle] = useState("");
   const [editingThemeId, setEditingThemeId] = useState<string | null>(null);
   const [editThemeTitle, setEditThemeTitle] = useState("");
+
+  // Module management
+  const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
+  const [editModuleTitle, setEditModuleTitle] = useState("");
 
   // Filter
   const [filterKind, setFilterKind] = useState<FilterType>("all");
@@ -290,7 +371,8 @@ export default function ConteudoBibliotecaPage() {
       result = result.filter((a) => ids.has(a.id));
     }
     if (filterKind === "imagem") result = result.filter((a) => isImage(a.kind));
-    else if (filterKind !== "all") result = result.filter((a) => a.kind === filterKind);
+    else if (filterKind === "audio") result = result.filter((a) => isAudio(a.kind));
+    else if (filterKind === "mp4") result = result.filter((a) => isVideo(a.kind));
     return result;
   }, [data.assets, filterKind, filterThemeId, assetsByTheme]);
 
@@ -301,8 +383,8 @@ export default function ConteudoBibliotecaPage() {
     return {
       all:    base.length,
       imagem: base.filter((a) => isImage(a.kind)).length,
-      mp3:    base.filter((a) => a.kind === "mp3").length,
-      mp4:    base.filter((a) => a.kind === "mp4").length,
+      audio:  base.filter((a) => isAudio(a.kind)).length,
+      mp4:    base.filter((a) => isVideo(a.kind)).length,
     };
   }, [data.assets, filterThemeId, assetsByTheme]);
 
@@ -316,14 +398,26 @@ export default function ConteudoBibliotecaPage() {
     const metadata: Record<string, unknown> = theme
       ? { themeId: theme.id, themeTitle: theme.title, themeSlug: theme.slug }
       : {};
+    const rejected: string[] = [];
     for (const file of files) {
+      const kind = inferAssetKindFromFile(file);
+      if (!kind) {
+        rejected.push(file.name);
+        continue;
+      }
       await uploadAsset({
         file,
-        kind: inferAssetKindFromFile(file) ?? "png",
+        kind,
         status: uploadStatus,
         folder,
         metadata,
       });
+    }
+    if (rejected.length > 0) {
+      window.alert(
+        `Tipo de arquivo nao suportado: ${rejected.join(", ")}.\n` +
+          `Aceitos: PNG, JPG, MP4, MP3, WAV.`,
+      );
     }
     setFiles([]);
   };
@@ -353,6 +447,25 @@ export default function ConteudoBibliotecaPage() {
     if (!ok) return;
     await deleteTheme(themeId);
     if (editingThemeId === themeId) setEditingThemeId(null);
+  };
+
+  const handleSaveModule = async (moduleId: string) => {
+    const title = editModuleTitle.trim();
+    if (!title) return;
+    const saved = await updateModule({ moduleId, title });
+    if (saved) setEditingModuleId(null);
+  };
+
+  const handleDeleteModule = async (moduleId: string, title: string) => {
+    const ok = await confirm({
+      title: "Excluir módulo",
+      message: `Excluir "${title}"? Todas as aulas e mídias vinculadas serão removidas.`,
+      confirmLabel: "Excluir módulo",
+      variant: "danger",
+    });
+    if (!ok) return;
+    await deleteModule(moduleId);
+    if (editingModuleId === moduleId) setEditingModuleId(null);
   };
 
   const handleDeleteAsset = async (assetId: string) => {
@@ -385,7 +498,7 @@ export default function ConteudoBibliotecaPage() {
   const filterTabs: { value: FilterType; label: string }[] = [
     { value: "all",    label: `Todos (${counts.all})`       },
     { value: "imagem", label: `Imagens (${counts.imagem})`  },
-    { value: "mp3",    label: `Áudios (${counts.mp3})`      },
+    { value: "audio",  label: `Áudios (${counts.audio})`    },
     { value: "mp4",    label: `Vídeos (${counts.mp4})`      },
   ];
 
@@ -554,6 +667,211 @@ export default function ConteudoBibliotecaPage() {
             </button>
           </form>
         </div>
+      </section>
+
+      {/* ── Módulos ────────────────────────────────────────────────────────── */}
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Layers className="h-4 w-4 text-slate-400" />
+          <h2 className="font-semibold text-slate-900">Módulos</h2>
+          <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+            {cmsModules.length}
+          </span>
+        </div>
+
+        {cmsModules.length === 0 ? (
+          <p className="text-sm text-slate-400">Nenhum módulo cadastrado.</p>
+        ) : (
+          <div className="divide-y divide-slate-100 rounded border border-slate-200 bg-white">
+            {cmsThemes
+              .filter((theme) => cmsModules.some((m) => m.theme_id === theme.id))
+              .map((theme) => {
+                const themeModules = cmsModules.filter((m) => m.theme_id === theme.id);
+                return (
+                  <div key={theme.id}>
+                    {/* Theme group header */}
+                    <div className="flex items-center gap-2 bg-slate-50 px-4 py-2">
+                      <FolderOpen className="h-3.5 w-3.5 text-slate-400" />
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        {theme.title}
+                      </span>
+                    </div>
+
+                    {/* Modules list */}
+                    <div className="divide-y divide-slate-50">
+                      {themeModules
+                        .slice()
+                        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                        .map((module) => {
+                          const activityCount = data.activities.filter(
+                            (a) => a.module_id === module.id,
+                          ).length;
+                          const isEditingThis = editingModuleId === module.id;
+
+                          return (
+                            <div
+                              key={module.id}
+                              className="flex items-center gap-3 px-4 py-3"
+                            >
+                              <BookOpen className="h-4 w-4 shrink-0 text-slate-300" />
+
+                              {isEditingThis ? (
+                                <div className="flex flex-1 items-center gap-2">
+                                  <input
+                                    value={editModuleTitle}
+                                    onChange={(e) => setEditModuleTitle(e.target.value)}
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") void handleSaveModule(module.id);
+                                      if (e.key === "Escape") setEditingModuleId(null);
+                                    }}
+                                    className="min-w-0 flex-1 border border-slate-300 px-2 py-1 text-sm outline-none focus:border-slate-900"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleSaveModule(module.id)}
+                                    disabled={busy.startsWith("module-update")}
+                                    className="border border-slate-900 bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+                                  >
+                                    <Save className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingModuleId(null)}
+                                    className="border border-slate-200 px-2.5 py-1 text-slate-500 hover:bg-slate-50"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-medium text-slate-800">
+                                      {module.title}
+                                    </p>
+                                    <p className="text-xs text-slate-400">
+                                      Etapa {module.stage_number} · {activityCount} aula
+                                      {activityCount !== 1 ? "s" : ""}
+                                    </p>
+                                  </div>
+
+                                  <div className="flex shrink-0 items-center gap-0.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingModuleId(module.id);
+                                        setEditModuleTitle(module.title);
+                                      }}
+                                      className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                      title="Renomear módulo"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void handleDeleteModule(module.id, module.title)
+                                      }
+                                      className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                                      title="Excluir módulo"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                );
+              })}
+
+            {/* Modules sem tema reconhecido */}
+            {(() => {
+              const orphans = cmsModules.filter(
+                (m) => !cmsThemes.some((t) => t.id === m.theme_id),
+              );
+              if (orphans.length === 0) return null;
+              return (
+                <div>
+                  <div className="flex items-center gap-2 bg-slate-50 px-4 py-2">
+                    <FolderOpen className="h-3.5 w-3.5 text-slate-300" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                      Sem tema
+                    </span>
+                  </div>
+                  {orphans.map((module) => {
+                    const activityCount = data.activities.filter(
+                      (a) => a.module_id === module.id,
+                    ).length;
+                    const isEditingThis = editingModuleId === module.id;
+                    return (
+                      <div key={module.id} className="flex items-center gap-3 px-4 py-3">
+                        <BookOpen className="h-4 w-4 shrink-0 text-slate-300" />
+                        {isEditingThis ? (
+                          <div className="flex flex-1 items-center gap-2">
+                            <input
+                              value={editModuleTitle}
+                              onChange={(e) => setEditModuleTitle(e.target.value)}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") void handleSaveModule(module.id);
+                                if (e.key === "Escape") setEditingModuleId(null);
+                              }}
+                              className="min-w-0 flex-1 border border-slate-300 px-2 py-1 text-sm outline-none focus:border-slate-900"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveModule(module.id)}
+                              className="border border-slate-900 bg-slate-900 px-2.5 py-1 text-xs text-white hover:bg-slate-700"
+                            >
+                              <Save className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingModuleId(null)}
+                              className="border border-slate-200 px-2.5 py-1 text-slate-500 hover:bg-slate-50"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-slate-800">{module.title}</p>
+                              <p className="text-xs text-slate-400">
+                                Etapa {module.stage_number} · {activityCount} aula
+                                {activityCount !== 1 ? "s" : ""}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => { setEditingModuleId(module.id); setEditModuleTitle(module.title); }}
+                                className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteModule(module.id, module.title)}
+                                className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </section>
 
       {/* ── Upload ─────────────────────────────────────────────────────────── */}
