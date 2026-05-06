@@ -18,7 +18,13 @@ pnpm-debug.log*
 .run-logs/
 infra/supabase/.temp/
 .playwright-cli/
+.playwright-mcp/
 artifacts/
+
+# Screenshots ad-hoc gerados por testes (Playwright MCP, debug manual)
+/mobile-*.png
+/web-*.png
+/screenshot-*.png
 
 # Editor / OS files
 .DS_Store
