@@ -27,6 +27,14 @@ export function startRealtimeBridge() {
     return client;
   }
 
+  // Permite desligar o bridge em ambientes onde o backend de realtime ainda
+  // nao foi provisionado (ex.: producao MVP). Mantem o store em estado idle
+  // sem disparar connect() — evita reconexao em loop e erros no console.
+  if (!env.realtimeEnabled) {
+    started = true;
+    return null;
+  }
+
   client = new RealtimeSocketClient({
     url: env.wsUrl,
     token: env.wsToken || undefined,
