@@ -5,7 +5,7 @@ import { apiGet, apiPatch } from "../../core/api/client";
 
 interface QueueItem {
   id: string;
-  queueType?: "vinculo" | "progresso" | string;
+  queueType?: "vinculo" | "progresso" | "ajuda" | string;
   tipo: string;
   aluno: string;
   etapa: string;
@@ -13,6 +13,9 @@ interface QueueItem {
   status: string;
   tempo: string;
   prioridade: string;
+  mensagem?: string;
+  studentId?: string;
+  activityId?: string;
 }
 
 interface QueueResponse {
@@ -28,6 +31,7 @@ export default function Fila() {
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedId, setSelectedId] = useState("");
+  const [actionReason, setActionReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
 
@@ -88,8 +92,18 @@ export default function Fila() {
     }
   }, [filteredItems, selectedId]);
 
-  const runQueueAction = async (action: "confirmar" | "negar" | "desbloquear") => {
+  useEffect(() => {
+    setActionReason("");
+  }, [selectedId]);
+
+  const runQueueAction = async (action: "confirmar" | "negar" | "desbloquear" | "resolver") => {
     if (!selectedItem) {
+      return;
+    }
+
+    const mustProvideReason = action === "negar" || action === "desbloquear" || action === "resolver";
+    if (mustProvideReason && actionReason.trim().length < 3) {
+      setError("Informe uma observacao/motivo antes de concluir esta acao.");
       return;
     }
 
@@ -100,11 +114,14 @@ export default function Fila() {
 
       await apiPatch(`/painel/fila/${selectedItem.id}`, {
         action,
+        reason: actionReason.trim() || undefined,
+        responseMessage: action === "resolver" ? actionReason.trim() : undefined,
         decidedBy: "painel-web",
       });
 
       await loadQueue();
       setSelectedId("");
+      setActionReason("");
       setActionMessage("Item atualizado com sucesso.");
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Falha ao atualizar item da fila.");
@@ -268,6 +285,28 @@ export default function Fila() {
                 <p className="text-xs text-gray-500 mb-1">Tempo aberto</p>
                 <p className="text-sm text-gray-900">{selectedItem.tempo}</p>
               </div>
+              {selectedItem.mensagem ? (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Mensagem</p>
+                  <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedItem.mensagem}</p>
+                </div>
+              ) : null}
+              {(selectedItem.queueType === "vinculo" ||
+                selectedItem.queueType === "progresso" ||
+                selectedItem.queueType === "ajuda") ? (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    Observacao / motivo
+                  </label>
+                  <textarea
+                    value={actionReason}
+                    onChange={(event) => setActionReason(event.target.value)}
+                    rows={3}
+                    placeholder="Explique brevemente a acao tomada..."
+                    className="w-full border border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:border-gray-500"
+                  />
+                </div>
+              ) : null}
               {selectedItem.queueType === "vinculo" ? (
                 <div className="pt-2 border-t border-gray-200 space-y-2">
                   <button
@@ -297,6 +336,18 @@ export default function Fila() {
                     className="w-full px-3 py-2 text-sm font-semibold border border-gray-900 bg-gray-900 text-white disabled:opacity-60"
                   >
                     {actionLoading ? "Processando..." : "Desbloquear aluno"}
+                  </button>
+                </div>
+              ) : null}
+              {selectedItem.queueType === "ajuda" ? (
+                <div className="pt-2 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => void runQueueAction("resolver")}
+                    disabled={actionLoading}
+                    className="w-full px-3 py-2 text-sm font-semibold border border-gray-900 bg-gray-900 text-white disabled:opacity-60"
+                  >
+                    {actionLoading ? "Processando..." : "Marcar ajuda como atendida"}
                   </button>
                 </div>
               ) : null}
