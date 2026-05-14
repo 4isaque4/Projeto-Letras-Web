@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import {
   createContentAsset,
+  createSupportRequest,
   deleteContentAsset,
   createLearningActivity,
   createLearningModule,
@@ -23,7 +24,10 @@ import {
   getMobileScreenBlueprints,
   getLearningThemes,
   getPanelSystemSettings,
+  getEducatorNotifications,
+  getMobileLearnerSessionState,
   getProfiles,
+  getSupportRequests,
   getSyncEvents,
   getTutorStudentLinks,
   importContentAssetsFromDirectory,
@@ -40,6 +44,9 @@ import {
   toHttpError,
   updateContentAsset,
   uploadContentAssetFile,
+  markEducatorNotificationRead,
+  setMobileLearnerSessionLockState,
+  updateSupportRequestStatus,
 } from "../services/letrasDataService.js";
 import { env } from "../config/env.js";
 
@@ -758,14 +765,86 @@ painelRouter.post("/progress", async (req, res) => {
   }
 });
 
+painelRouter.post("/support-requests", async (req, res) => {
+  try {
+    const result = await createSupportRequest({
+      learnerProfileId: req.body?.learnerProfileId,
+      studentId: req.body?.studentId,
+      tutorId: req.body?.tutorId,
+      activityId: req.body?.activityId,
+      progressId: req.body?.progressId,
+      currentView: req.body?.currentView,
+      currentActivityId: req.body?.currentActivityId,
+      message: req.body?.message,
+      priority: req.body?.priority,
+      sourcePlatform: req.body?.sourcePlatform ?? "mobile",
+      metadata: req.body?.metadata,
+    });
+
+    res.status(result.duplicated ? 200 : 201).json(result);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.get("/notifications", async (req, res) => {
+  try {
+    const unreadOnly = ["1", "true", "yes"].includes(
+      String(req.query?.unreadOnly ?? req.query?.unread ?? "").trim().toLowerCase(),
+    );
+    const notifications = await getEducatorNotifications({
+      recipientId: req.query?.recipientId,
+      recipientRole: req.query?.recipientRole,
+      unreadOnly,
+      limit: req.query?.limit,
+    });
+
+    res.json({
+      total: notifications.length,
+      unread: notifications.filter((item) => !item.read_at).length,
+      items: notifications,
+    });
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.patch("/notifications/:id/read", async (req, res) => {
+  try {
+    const data = await markEducatorNotificationRead(req.params.id);
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.get("/learner-sessions/:learnerProfileId", async (req, res) => {
+  try {
+    const data = await getMobileLearnerSessionState(req.params.learnerProfileId);
+    if (!data) {
+      res.status(404).json({ message: "Sessao mobile nao encontrada." });
+      return;
+    }
+
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
 painelRouter.get("/fila", async (_req, res) => {
   try {
-    const [links, students, progress, activities, modules] = await Promise.all([
+    const [links, students, progress, activities, modules, supportRequests] = await Promise.all([
       getTutorStudentLinks(),
       getProfiles({ role: "alfabetizando" }),
       getActivityProgress(),
       getLearningActivities(),
       getLearningModules(),
+      getSupportRequests({ statuses: ["aberto", "em_atendimento"] }),
     ]);
 
     const studentById = mapById(students);
@@ -804,9 +883,30 @@ painelRouter.get("/fila", async (_req, res) => {
         };
       });
 
+    const supportQueueItems = supportRequests.map((request) => {
+      const activityId = request.activity_id || request.current_activity_id;
+      const activity = activityId ? activityById.get(activityId) : null;
+      const module = activity ? moduleById.get(activity.module_id) : null;
+
+      return {
+        id: request.id,
+        queueType: "ajuda",
+        tipo: "Pedido de ajuda",
+        aluno: studentById.get(request.student_id)?.full_name ?? "Sem nome",
+        etapa: module ? toStageLabel(module.stage_number ?? 1) : "Atendimento",
+        atividade: activity?.title ?? request.current_view ?? "Tela atual",
+        status: request.status,
+        tempo: formatRelativeTime(request.requested_at || request.created_at),
+        prioridade: request.priority || "alta",
+        mensagem: request.message,
+        studentId: request.student_id,
+        activityId,
+      };
+    });
+
     res.json({
-      total: pendingLinks.length + lockedProgress.length,
-      items: [...pendingLinks, ...lockedProgress].slice(0, 200),
+      total: pendingLinks.length + lockedProgress.length + supportQueueItems.length,
+      items: [...supportQueueItems, ...pendingLinks, ...lockedProgress].slice(0, 200),
     });
   } catch (error) {
     const httpError = toHttpError(error);
@@ -878,8 +978,28 @@ painelRouter.patch("/fila/:id", async (req, res) => {
       return;
     }
 
+    if (action === "resolver" || action === "ajuda_recebida" || action === "atender") {
+      const data = await updateSupportRequestStatus({
+        supportRequestId: queueItemId,
+        status: "resolvido",
+        resolvedBy: decidedBy,
+        reason,
+        responseMessage: req.body?.responseMessage,
+      });
+
+      await setMobileLearnerSessionLockState(data.student_id, false);
+
+      res.json({
+        id: queueItemId,
+        queueType: "ajuda",
+        action: "resolver",
+        result: data,
+      });
+      return;
+    }
+
     res.status(400).json({
-      message: "Acao invalida. Use confirmar, negar ou desbloquear.",
+      message: "Acao invalida. Use confirmar, negar, resolver ou desbloquear.",
     });
   } catch (error) {
     const httpError = toHttpError(error);

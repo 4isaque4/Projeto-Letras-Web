@@ -25,6 +25,9 @@ const ACTIVITY_PROGRESS_STATUSES = new Set([
   "travado",
   "concluido",
 ]);
+const SUPPORT_REQUEST_STATUSES = new Set(["aberto", "em_atendimento", "resolvido", "cancelado"]);
+const SUPPORT_REQUEST_PRIORITIES = new Set(["baixa", "media", "alta", "critica"]);
+const NOTIFICATION_TYPES = new Set(["support_request", "progress_locked", "link_pending", "system"]);
 const SYSTEM_SETTINGS_EVENT_TYPE = "system.settings.updated";
 const SYSTEM_SETTINGS_ENTITY_TYPE = "system_settings";
 const DEFAULT_SYSTEM_SETTINGS = Object.freeze({
@@ -65,7 +68,17 @@ const DEFAULT_STAGE_TWO_CONTENTS_DIRECTORY_PATH = resolve(
 );
 const ALLOWED_CONTENT_IMPORT_ROOTS = [monorepoRootPath, mobileRefRootPath].map((item) => resolve(item));
 
+let supabaseAdminOverrideForTests = null;
+
+export function __setSupabaseAdminForTests(client) {
+  supabaseAdminOverrideForTests = client;
+}
+
 function requireSupabase() {
+  if (supabaseAdminOverrideForTests) {
+    return supabaseAdminOverrideForTests;
+  }
+
   if (!isSupabaseConfigured || !supabaseAdmin) {
     throw new HttpError(
       500,
@@ -220,6 +233,9 @@ function mapMobileCompletionStatus(status) {
   switch (status) {
     case "COMPLETED":
       return "concluido";
+    case "LOCKED":
+    case "TRAVADO":
+      return "travado";
     case "IN_PROGRESS":
       return "em_andamento";
     default:
@@ -1284,6 +1300,475 @@ export async function getSyncEvents({ limit = 100 } = {}) {
       .limit(limit),
     "Falha ao listar eventos de sincronizacao",
   );
+}
+
+function normalizeSupportStatus(value, fallback = "aberto") {
+  const normalized = normalizeText(value).toLowerCase();
+  return SUPPORT_REQUEST_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeSupportPriority(value, fallback = "alta") {
+  const normalized = normalizeText(value).toLowerCase();
+  return SUPPORT_REQUEST_PRIORITIES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeNotificationType(value, fallback = "system") {
+  const normalized = normalizeText(value).toLowerCase();
+  return NOTIFICATION_TYPES.has(normalized) ? normalized : fallback;
+}
+
+async function resolveTutorIdForStudent(studentId) {
+  const client = requireSupabase();
+  const normalizedStudentId = normalizeText(studentId);
+  if (!normalizedStudentId) {
+    return null;
+  }
+
+  if (isUuid(normalizedStudentId)) {
+    const { data, error } = await client
+      .from("tutor_student_links")
+      .select("tutor_id, status, requested_at, updated_at")
+      .eq("student_id", normalizedStudentId)
+      .in("status", ["confirmado", "pendente"])
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error && !isOptionalSourceMissing(error)) {
+      throw new HttpError(500, `Falha ao buscar tutor do alfabetizando: ${error.message}`);
+    }
+
+    return normalizeNullableText(data?.tutor_id);
+  }
+
+  const { data, error } = await client
+    .from("LearnerProfile")
+    .select("educatorId")
+    .eq("id", normalizedStudentId)
+    .maybeSingle();
+
+  if (error && !isOptionalSourceMissing(error)) {
+    throw new HttpError(500, `Falha ao buscar tutor mobile do alfabetizando: ${error.message}`);
+  }
+
+  return normalizeNullableText(data?.educatorId);
+}
+
+export async function createEducatorNotification({
+  recipientId,
+  recipientRole = "tutor",
+  type = "system",
+  title,
+  body,
+  sourceEntityType,
+  sourceEntityId,
+  payload,
+} = {}) {
+  const client = requireSupabase();
+  const normalizedTitle = normalizeText(title);
+  if (!normalizedTitle) {
+    throw new HttpError(400, "Titulo da notificacao e obrigatorio.");
+  }
+
+  const notificationPayload = {
+    recipient_id: normalizeNullableText(recipientId),
+    recipient_role: normalizeText(recipientRole).toLowerCase() || "tutor",
+    type: normalizeNotificationType(type),
+    title: normalizedTitle,
+    body: normalizeNullableText(body),
+    source_entity_type: normalizeNullableText(sourceEntityType),
+    source_entity_id: normalizeNullableText(sourceEntityId),
+    payload: payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {},
+  };
+
+  const { data, error } = await client
+    .from("educator_notifications")
+    .insert(notificationPayload)
+    .select("id, recipient_id, recipient_role, type, title, body, source_entity_type, source_entity_id, payload, read_at, created_at, updated_at")
+    .single();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao criar notificacao: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("register notification event", () =>
+    registerSyncEvent({
+      sourcePlatform: "backend",
+      eventType: "notification.created",
+      entityType: "educator_notification",
+      entityId: data.id,
+      payload: {
+        type: data.type,
+        recipientId: data.recipient_id,
+        sourceEntityType: data.source_entity_type,
+        sourceEntityId: data.source_entity_id,
+      },
+    }),
+  );
+
+  return data;
+}
+
+export async function getEducatorNotifications({
+  recipientId,
+  recipientRole,
+  unreadOnly = false,
+  limit = 50,
+} = {}) {
+  const client = requireSupabase();
+  let query = client
+    .from("educator_notifications")
+    .select("id, recipient_id, recipient_role, type, title, body, source_entity_type, source_entity_id, payload, read_at, created_at, updated_at")
+    .order("created_at", { ascending: false })
+    .limit(Math.min(Math.max(normalizeInteger(limit, 50), 1), 200));
+
+  const normalizedRecipientId = normalizeText(recipientId);
+  if (normalizedRecipientId) {
+    query = query.eq("recipient_id", normalizedRecipientId);
+  }
+
+  const normalizedRole = normalizeText(recipientRole).toLowerCase();
+  if (normalizedRole) {
+    query = query.eq("recipient_role", normalizedRole);
+  }
+
+  if (unreadOnly) {
+    query = query.is("read_at", null);
+  }
+
+  return runOptionalQuery(query, "Falha ao listar notificacoes");
+}
+
+export async function markEducatorNotificationRead(notificationId) {
+  const client = requireSupabase();
+  const normalizedId = normalizeText(notificationId);
+  if (!normalizedId) {
+    throw new HttpError(400, "ID da notificacao e obrigatorio.");
+  }
+
+  const { data, error } = await client
+    .from("educator_notifications")
+    .update({ read_at: new Date().toISOString() })
+    .eq("id", normalizedId)
+    .select("id, recipient_id, recipient_role, type, title, body, source_entity_type, source_entity_id, payload, read_at, created_at, updated_at")
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao marcar notificacao como lida: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new HttpError(404, "Notificacao nao encontrada.");
+  }
+
+  return data;
+}
+
+export async function getSupportRequests({ statuses, tutorIds, studentIds, limit = 200 } = {}) {
+  const client = requireSupabase();
+  let query = client
+    .from("support_requests")
+    .select("id, student_id, tutor_id, activity_id, progress_id, current_view, current_activity_id, message, status, priority, source_platform, requested_at, resolved_at, resolved_by, resolution_reason, response_message, metadata, created_at, updated_at")
+    .order("requested_at", { ascending: false })
+    .limit(Math.min(Math.max(normalizeInteger(limit, 200), 1), 500));
+
+  const normalizedStatuses = (statuses ?? []).map((item) => normalizeSupportStatus(item, "")).filter(Boolean);
+  if (normalizedStatuses.length > 0) {
+    query = query.in("status", normalizedStatuses);
+  }
+
+  const normalizedTutorIds = (tutorIds ?? []).map((item) => normalizeText(item)).filter(Boolean);
+  if (normalizedTutorIds.length > 0) {
+    query = query.in("tutor_id", normalizedTutorIds);
+  }
+
+  const normalizedStudentIds = (studentIds ?? []).map((item) => normalizeText(item)).filter(Boolean);
+  if (normalizedStudentIds.length > 0) {
+    query = query.in("student_id", normalizedStudentIds);
+  }
+
+  return runOptionalQuery(query, "Falha ao listar pedidos de ajuda");
+}
+
+async function findOpenSupportRequest({ studentId, activityId, currentActivityId, currentView }) {
+  const client = requireSupabase();
+  let query = client
+    .from("support_requests")
+    .select("id, student_id, tutor_id, activity_id, progress_id, current_view, current_activity_id, message, status, priority, source_platform, requested_at, resolved_at, resolved_by, resolution_reason, response_message, metadata, created_at, updated_at")
+    .eq("student_id", studentId)
+    .in("status", ["aberto", "em_atendimento"])
+    .order("requested_at", { ascending: false })
+    .limit(1);
+
+  if (activityId) {
+    query = query.eq("activity_id", activityId);
+  } else if (currentActivityId) {
+    query = query.eq("current_activity_id", currentActivityId);
+  } else if (currentView) {
+    query = query.eq("current_view", currentView);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error && !isOptionalSourceMissing(error)) {
+    throw new HttpError(500, `Falha ao buscar pedido de ajuda aberto: ${error.message}`);
+  }
+
+  return data ?? null;
+}
+
+export async function createSupportRequest({
+  learnerProfileId,
+  studentId,
+  tutorId,
+  activityId,
+  progressId,
+  currentView,
+  currentActivityId,
+  message,
+  priority,
+  sourcePlatform = "mobile",
+  metadata,
+} = {}) {
+  const client = requireSupabase();
+  const normalizedStudentId = normalizeText(learnerProfileId || studentId);
+  if (!normalizedStudentId) {
+    throw new HttpError(400, "learnerProfileId e obrigatorio.");
+  }
+
+  const normalizedMessage = normalizeText(message) || "Preciso de ajuda para continuar.";
+  const normalizedActivityId = normalizeNullableText(activityId);
+  const normalizedCurrentActivityId = normalizeNullableText(currentActivityId);
+  const normalizedCurrentView = normalizeNullableText(currentView);
+  const resolvedTutorId = normalizeNullableText(tutorId) || (await resolveTutorIdForStudent(normalizedStudentId));
+
+  const openRequest = await findOpenSupportRequest({
+    studentId: normalizedStudentId,
+    activityId: normalizedActivityId,
+    currentActivityId: normalizedCurrentActivityId,
+    currentView: normalizedCurrentView,
+  });
+
+  if (openRequest) {
+    return {
+      request: openRequest,
+      duplicated: true,
+    };
+  }
+
+  const payload = {
+    student_id: normalizedStudentId,
+    tutor_id: resolvedTutorId,
+    activity_id: normalizedActivityId,
+    progress_id: normalizeNullableText(progressId),
+    current_view: normalizedCurrentView,
+    current_activity_id: normalizedCurrentActivityId,
+    message: normalizedMessage,
+    priority: normalizeSupportPriority(priority),
+    source_platform: normalizeText(sourcePlatform).toLowerCase() === "web" ? "web" : "mobile",
+    metadata: metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {},
+  };
+
+  const { data, error } = await client
+    .from("support_requests")
+    .insert(payload)
+    .select("id, student_id, tutor_id, activity_id, progress_id, current_view, current_activity_id, message, status, priority, source_platform, requested_at, resolved_at, resolved_by, resolution_reason, response_message, metadata, created_at, updated_at")
+    .single();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao criar pedido de ajuda: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("create support notification", () =>
+    createEducatorNotification({
+      recipientId: data.tutor_id,
+      recipientRole: data.tutor_id ? "tutor" : "admin",
+      type: "support_request",
+      title: "Pedido de ajuda",
+      body: normalizedMessage,
+      sourceEntityType: "support_request",
+      sourceEntityId: data.id,
+      payload: {
+        studentId: data.student_id,
+        activityId: data.activity_id,
+        currentView: data.current_view,
+        currentActivityId: data.current_activity_id,
+      },
+    }),
+  );
+
+  await runBestEffortMobileSync("register support created event", () =>
+    registerSyncEvent({
+      sourcePlatform: data.source_platform,
+      eventType: "support.created",
+      entityType: "support_request",
+      entityId: data.id,
+      payload: {
+        studentId: data.student_id,
+        tutorId: data.tutor_id,
+        activityId: data.activity_id,
+        status: data.status,
+      },
+    }),
+  );
+
+  return {
+    request: data,
+    duplicated: false,
+  };
+}
+
+export async function updateSupportRequestStatus({
+  supportRequestId,
+  status = "resolvido",
+  resolvedBy,
+  reason,
+  responseMessage,
+} = {}) {
+  const client = requireSupabase();
+  const normalizedId = normalizeText(supportRequestId);
+  if (!normalizedId) {
+    throw new HttpError(400, "ID do pedido de ajuda e obrigatorio.");
+  }
+
+  const normalizedStatus = normalizeSupportStatus(status, "resolvido");
+  const payload = {
+    status: normalizedStatus,
+    resolved_by: normalizeNullableText(resolvedBy),
+    resolution_reason: normalizeNullableText(reason),
+    response_message: normalizeNullableText(responseMessage),
+    resolved_at: normalizedStatus === "resolvido" || normalizedStatus === "cancelado" ? new Date().toISOString() : null,
+  };
+
+  const { data, error } = await client
+    .from("support_requests")
+    .update(payload)
+    .eq("id", normalizedId)
+    .select("id, student_id, tutor_id, activity_id, progress_id, current_view, current_activity_id, message, status, priority, source_platform, requested_at, resolved_at, resolved_by, resolution_reason, response_message, metadata, created_at, updated_at")
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao atualizar pedido de ajuda: ${error.message}`);
+  }
+
+  if (!data) {
+    throw new HttpError(404, "Pedido de ajuda nao encontrado.");
+  }
+
+  await runBestEffortMobileSync("register support resolved event", () =>
+    registerSyncEvent({
+      sourcePlatform: "web",
+      eventType: normalizedStatus === "resolvido" ? "support.resolved" : "support.updated",
+      entityType: "support_request",
+      entityId: data.id,
+      payload: {
+        studentId: data.student_id,
+        tutorId: data.tutor_id,
+        activityId: data.activity_id,
+        status: data.status,
+      },
+    }),
+  );
+
+  return data;
+}
+
+export async function setMobileLearnerSessionLockState(learnerProfileId, isLocked) {
+  const client = requireSupabase();
+  const normalizedLearnerId = normalizeText(learnerProfileId);
+  if (!normalizedLearnerId) {
+    return { skipped: true, reason: "learnerProfileId ausente." };
+  }
+
+  const { data: session, error: readError } = await client
+    .from("LearnerSession")
+    .select("id, learnerProfileId")
+    .eq("learnerProfileId", normalizedLearnerId)
+    .maybeSingle();
+
+  if (readError) {
+    if (isOptionalSourceMissing(readError)) {
+      return { skipped: true, reason: "Schema mobile ausente." };
+    }
+    throw new HttpError(400, `Falha ao buscar sessao mobile: ${readError.message}`);
+  }
+
+  if (!session?.id) {
+    return { skipped: true, reason: "Sessao mobile nao encontrada." };
+  }
+
+  const { data: existingState, error: stateReadError } = await client
+    .from("SessionState")
+    .select("id, sessionId")
+    .eq("sessionId", session.id)
+    .maybeSingle();
+
+  if (stateReadError && !isOptionalSourceMissing(stateReadError)) {
+    throw new HttpError(400, `Falha ao buscar estado da sessao mobile: ${stateReadError.message}`);
+  }
+
+  const statePayload = existingState?.id
+    ? { isLocked: Boolean(isLocked) }
+    : {
+        id: randomUUID(),
+        sessionId: session.id,
+        currentView: "home",
+        statePayload: {},
+        isLocked: Boolean(isLocked),
+      };
+
+  const query = existingState?.id
+    ? client.from("SessionState").update(statePayload).eq("id", existingState.id)
+    : client.from("SessionState").insert(statePayload);
+
+  const { data, error } = await query
+    .select("id, sessionId, currentView, currentActivityId, statePayload, isLocked, createdAt, updatedAt")
+    .single();
+
+  if (error && !isOptionalSourceMissing(error)) {
+    throw new HttpError(400, `Falha ao atualizar bloqueio da sessao mobile: ${error.message}`);
+  }
+
+  return { state: data, skipped: false };
+}
+
+export async function getMobileLearnerSessionState(learnerProfileId) {
+  const client = requireSupabase();
+  const normalizedLearnerId = normalizeText(learnerProfileId);
+  if (!normalizedLearnerId) {
+    throw new HttpError(400, "learnerProfileId e obrigatorio.");
+  }
+
+  const { data: session, error } = await client
+    .from("LearnerSession")
+    .select("id, learnerProfileId, deviceId, connectedAt, createdAt, updatedAt")
+    .eq("learnerProfileId", normalizedLearnerId)
+    .maybeSingle();
+
+  if (error) {
+    if (isOptionalSourceMissing(error)) {
+      return null;
+    }
+    throw new HttpError(400, `Falha ao buscar sessao mobile: ${error.message}`);
+  }
+
+  if (!session?.id) {
+    return null;
+  }
+
+  const { data: sessionState, error: stateError } = await client
+    .from("SessionState")
+    .select("id, sessionId, currentView, currentActivityId, statePayload, isLocked, createdAt, updatedAt")
+    .eq("sessionId", session.id)
+    .maybeSingle();
+
+  if (stateError && !isOptionalSourceMissing(stateError)) {
+    throw new HttpError(400, `Falha ao buscar estado da sessao mobile: ${stateError.message}`);
+  }
+
+  return {
+    ...session,
+    sessionState: sessionState ?? null,
+  };
 }
 
 export async function getPanelSystemSettings() {
@@ -3768,7 +4253,7 @@ export async function upsertActivityProgressFromMobile({
 
   const mappedStatus = mapMobileCompletionStatus(String(status ?? "").toUpperCase());
   if (!ACTIVITY_PROGRESS_STATUSES.has(mappedStatus)) {
-    throw new HttpError(400, "Status invalido. Use IN_PROGRESS ou COMPLETED.");
+    throw new HttpError(400, "Status invalido. Use IN_PROGRESS, COMPLETED ou LOCKED.");
   }
 
   let normalizedScore = null;
@@ -3827,7 +4312,7 @@ export async function upsertActivityProgressFromMobile({
   await runBestEffortMobileSync("register mobile progress upsert event", () =>
     registerSyncEvent({
       sourcePlatform: "mobile",
-      eventType: "activity.progress.updated",
+      eventType: mappedStatus === "travado" ? "progress.locked" : "activity.progress.updated",
       entityType: "activity_progress",
       entityId: data.id,
       payload: {
@@ -3837,6 +4322,30 @@ export async function upsertActivityProgressFromMobile({
       },
     }),
   );
+
+  if (mappedStatus === "travado") {
+    await runBestEffortMobileSync("lock mobile learner session after progress lock", () =>
+      setMobileLearnerSessionLockState(data.student_id, true),
+    );
+    await runBestEffortMobileSync("create progress locked notification", () =>
+      resolveTutorIdForStudent(data.student_id).then((resolvedTutorId) =>
+        createEducatorNotification({
+          recipientId: resolvedTutorId,
+          recipientRole: resolvedTutorId ? "tutor" : "admin",
+          type: "progress_locked",
+          title: "Aluno travado",
+          body: "Um alfabetizando ficou travado em uma atividade.",
+          sourceEntityType: "activity_progress",
+          sourceEntityId: data.id,
+          payload: {
+            studentId: data.student_id,
+            activityId: data.activity_id,
+            status: data.status,
+          },
+        }),
+      ),
+    );
+  }
 
   return { progress: data };
 }
@@ -3947,7 +4456,12 @@ export async function updateActivityProgressStatus({
   await runBestEffortMobileSync("register activity progress update event", () =>
     registerSyncEvent({
       sourcePlatform: "web",
-      eventType: "activity.progress.updated",
+      eventType:
+        data.status === "travado"
+          ? "progress.locked"
+          : existing.status === "travado" && data.status !== "travado"
+            ? "progress.unlocked"
+            : "activity.progress.updated",
       entityType: "activity_progress",
       entityId: data.id,
       payload: {
@@ -3957,6 +4471,18 @@ export async function updateActivityProgressStatus({
       },
     }),
   );
+
+  if (normalizedStatus === "travado") {
+    await runBestEffortMobileSync("lock mobile learner session after panel progress update", () =>
+      setMobileLearnerSessionLockState(data.student_id, true),
+    );
+  }
+
+  if (existing.status === "travado" && data.status !== "travado") {
+    await runBestEffortMobileSync("unlock mobile learner session after panel progress update", () =>
+      setMobileLearnerSessionLockState(data.student_id, false),
+    );
+  }
 
   return data;
 }
@@ -4002,6 +4528,39 @@ export async function createTutorStudentLink({
     }),
   );
 
+  await runBestEffortMobileSync("register link create event", () =>
+    registerSyncEvent({
+      sourcePlatform: "web",
+      eventType: data.status === "pendente" ? "link.requested" : "link.updated",
+      entityType: "tutor_student_link",
+      entityId: data.id,
+      payload: {
+        tutorId: data.tutor_id,
+        studentId: data.student_id,
+        status: data.status,
+      },
+    }),
+  );
+
+  if (data.status === "pendente") {
+    await runBestEffortMobileSync("create link pending notification", () =>
+      createEducatorNotification({
+        recipientId: data.tutor_id,
+        recipientRole: "tutor",
+        type: "link_pending",
+        title: "Vinculo pendente",
+        body: "Um alfabetizando solicitou vinculacao.",
+        sourceEntityType: "tutor_student_link",
+        sourceEntityId: data.id,
+        payload: {
+          tutorId: data.tutor_id,
+          studentId: data.student_id,
+          status: data.status,
+        },
+      }),
+    );
+  }
+
   return data;
 }
 
@@ -4038,6 +4597,20 @@ export async function updateTutorStudentLink(id, updates) {
       tutorId: data.tutor_id,
       studentId: data.student_id,
       status: data.status,
+    }),
+  );
+
+  await runBestEffortMobileSync("register link update event", () =>
+    registerSyncEvent({
+      sourcePlatform: "web",
+      eventType: "link.updated",
+      entityType: "tutor_student_link",
+      entityId: data.id,
+      payload: {
+        tutorId: data.tutor_id,
+        studentId: data.student_id,
+        status: data.status,
+      },
     }),
   );
 
