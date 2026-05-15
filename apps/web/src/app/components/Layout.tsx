@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router";
 import { useAuth } from "../core/auth/AuthProvider";
+import { startRealtimeBridge, stopRealtimeBridge } from "../core/realtime/realtimeBootstrap";
 import { ConfirmProvider } from "./ConfirmDialog";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
@@ -7,6 +9,19 @@ import Topbar from "./Topbar";
 export default function Layout() {
   const location = useLocation();
   const { status, isAuthenticated, user } = useAuth();
+
+  useEffect(() => {
+    if (!isAuthenticated || !user || user.role === "alfabetizando") {
+      stopRealtimeBridge();
+      return;
+    }
+
+    startRealtimeBridge();
+
+    return () => {
+      stopRealtimeBridge();
+    };
+  }, [isAuthenticated, user?.id, user?.role]);
 
   if (status === "loading") {
     return (
