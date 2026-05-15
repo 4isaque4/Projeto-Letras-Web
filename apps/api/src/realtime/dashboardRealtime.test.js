@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   createRealtimeEnvelope,
+  emitLearnerLockChanged,
   emitOperationalRealtimeEvent,
   normalizeRealtimeRole,
 } from "./dashboardRealtime.js";
@@ -33,5 +34,9 @@ describe("dashboard realtime contract", () => {
     const emitted = await emitOperationalRealtimeEvent("support.created", { id: "support-1" });
 
     assert.equal(emitted, false);
+  });
+
+  it("keeps learner lock realtime best-effort when socket.io is not installed", () => {
+    assert.equal(emitLearnerLockChanged("learner-1", false), false);
   });
 });

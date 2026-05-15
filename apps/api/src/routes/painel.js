@@ -49,7 +49,7 @@ import {
   updateSupportRequestStatus,
 } from "../services/letrasDataService.js";
 import { env } from "../config/env.js";
-import { emitOperationalRealtimeEvent } from "../realtime/dashboardRealtime.js";
+import { emitLearnerLockChanged, emitOperationalRealtimeEvent } from "../realtime/dashboardRealtime.js";
 
 export const painelRouter = Router();
 
@@ -829,6 +829,7 @@ painelRouter.post("/progress", async (req, res) => {
 
     if (!result.skipped && result.progress?.status === "travado") {
       await emitOperationalRealtimeEvent("progress.locked", buildProgressRealtimePayload(result.progress));
+      emitLearnerLockChanged(result.progress.student_id, true);
     }
 
     res.status(result.skipped ? 202 : 200).json(result);
@@ -1062,6 +1063,7 @@ painelRouter.patch("/fila/:id", async (req, res) => {
 
       await setMobileLearnerSessionLockState(data.student_id, false);
       await emitOperationalRealtimeEvent("progress.unlocked", buildProgressRealtimePayload(data));
+      emitLearnerLockChanged(data.student_id, false);
 
       res.json({
         id: queueItemId,
@@ -1083,6 +1085,7 @@ painelRouter.patch("/fila/:id", async (req, res) => {
 
       await setMobileLearnerSessionLockState(data.student_id, false);
       await emitOperationalRealtimeEvent("support.resolved", buildSupportRealtimePayload(data));
+      emitLearnerLockChanged(data.student_id, false);
 
       res.json({
         id: queueItemId,
