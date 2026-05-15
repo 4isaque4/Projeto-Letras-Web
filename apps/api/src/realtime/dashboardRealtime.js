@@ -46,6 +46,25 @@ export async function emitOperationalRealtimeEvent(type, payload, options = {}) 
   return true;
 }
 
+export function emitLearnerLockChanged(learnerProfileId, isLocked) {
+  if (!dashboardNamespace) {
+    return false;
+  }
+
+  const normalizedLearnerProfileId = getSocketStringValue(learnerProfileId);
+  if (!normalizedLearnerProfileId) {
+    return false;
+  }
+
+  dashboardNamespace.to(getLearnerRoomName(normalizedLearnerProfileId)).emit("locked_changed", {
+    learnerProfileId: normalizedLearnerProfileId,
+    isLocked: Boolean(isLocked),
+    updatedAt: new Date().toISOString(),
+  });
+
+  return true;
+}
+
 export function installDashboardRealtimeServer(httpServer) {
   const io = new Server(httpServer, {
     namespace: "/realtime",
@@ -83,6 +102,11 @@ export function installDashboardRealtimeServer(httpServer) {
   });
 
   namespace.on("connection", (socket) => {
+    const learnerProfileId = getSocketStringValue(socket.handshake.query?.learnerProfileId);
+    if (learnerProfileId) {
+      socket.join(getLearnerRoomName(learnerProfileId));
+    }
+
     socket.on("subscribe.dashboard", async (eventOrPayload) => {
       const payload = getEventPayload(eventOrPayload);
       const tenantId = normalizeTenantId(payload?.tenantId);
@@ -172,9 +196,13 @@ function getDashboardRoomName(tenantId) {
   return `dashboard:${tenantId}`;
 }
 
+function getLearnerRoomName(learnerProfileId) {
+  return `learner:${learnerProfileId}`;
+}
+
 function buildPresenceUser(socket, tenantId) {
   const query = socket.handshake.query ?? {};
-  const userId = getSocketStringValue(query.userId) ?? socket.id;
+  const userId = getSocketStringValue(query.userId) ?? getSocketStringValue(query.learnerProfileId) ?? socket.id;
   const name = getSocketStringValue(query.name) ?? "Painel web";
   const role = normalizeRealtimeRole(query.role);
   const now = new Date().toISOString();

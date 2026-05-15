@@ -36,6 +36,7 @@ export default function Fila() {
   const [actionReason, setActionReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
+  const [actionError, setActionError] = useState("");
 
   const loadQueue = useCallback(async (options: { silent?: boolean } = {}) => {
     try {
@@ -110,6 +111,7 @@ export default function Fila() {
 
   useEffect(() => {
     setActionReason("");
+    setActionError("");
   }, [selectedId]);
 
   const runQueueAction = async (action: "confirmar" | "negar" | "desbloquear" | "resolver") => {
@@ -117,21 +119,29 @@ export default function Fila() {
       return;
     }
 
-    const mustProvideReason = action === "negar" || action === "desbloquear" || action === "resolver";
+    const mustProvideReason = action === "negar";
     if (mustProvideReason && actionReason.trim().length < 3) {
-      setError("Informe uma observacao/motivo antes de concluir esta acao.");
+      setActionError("Informe uma observacao/motivo antes de concluir esta acao.");
       return;
     }
 
     try {
       setActionLoading(true);
       setError("");
+      setActionError("");
       setActionMessage("");
+      const normalizedReason =
+        actionReason.trim() ||
+        (action === "desbloquear"
+          ? "Aluno desbloqueado pelo painel."
+          : action === "resolver"
+            ? "Ajuda atendida pelo painel."
+            : "");
 
       await apiPatch(`/painel/fila/${selectedItem.id}`, {
         action,
-        reason: actionReason.trim() || undefined,
-        responseMessage: action === "resolver" ? actionReason.trim() : undefined,
+        reason: normalizedReason || undefined,
+        responseMessage: action === "resolver" ? normalizedReason : undefined,
         decidedBy: "painel-web",
       });
 
@@ -140,7 +150,7 @@ export default function Fila() {
       setActionReason("");
       setActionMessage("Item atualizado com sucesso.");
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Falha ao atualizar item da fila.");
+      setActionError(actionError instanceof Error ? actionError.message : "Falha ao atualizar item da fila.");
     } finally {
       setActionLoading(false);
     }
@@ -321,6 +331,9 @@ export default function Fila() {
                     placeholder="Explique brevemente a acao tomada..."
                     className="w-full border border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:border-gray-500"
                   />
+                  {actionError ? (
+                    <p className="mt-2 text-xs font-semibold text-red-700">{actionError}</p>
+                  ) : null}
                 </div>
               ) : null}
               {selectedItem.queueType === "vinculo" ? (
