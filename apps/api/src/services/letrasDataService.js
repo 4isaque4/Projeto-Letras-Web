@@ -1683,6 +1683,9 @@ export async function setMobileLearnerSessionLockState(learnerProfileId, isLocke
     .from("LearnerSession")
     .select("id, learnerProfileId")
     .eq("learnerProfileId", normalizedLearnerId)
+    .order("updatedAt", { ascending: false })
+    .order("createdAt", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (readError) {
@@ -1742,6 +1745,9 @@ export async function getMobileLearnerSessionState(learnerProfileId) {
     .from("LearnerSession")
     .select("id, learnerProfileId, deviceId, connectedAt, createdAt, updatedAt")
     .eq("learnerProfileId", normalizedLearnerId)
+    .order("updatedAt", { ascending: false })
+    .order("createdAt", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) {
