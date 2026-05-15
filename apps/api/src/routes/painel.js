@@ -49,7 +49,11 @@ import {
   updateSupportRequestStatus,
 } from "../services/letrasDataService.js";
 import { env } from "../config/env.js";
-import { emitLearnerLockChanged, emitOperationalRealtimeEvent } from "../realtime/dashboardRealtime.js";
+import {
+  emitHelpReceivedToLearner,
+  emitLearnerLockChanged,
+  emitOperationalRealtimeEvent,
+} from "../realtime/dashboardRealtime.js";
 
 export const painelRouter = Router();
 
@@ -992,6 +996,10 @@ painelRouter.get("/fila", async (_req, res) => {
         mensagem: request.message,
         studentId: request.student_id,
         activityId,
+        // Metadata bruto do pedido de ajuda. O alfabetizando manda aqui o
+        // snapshot da tela em que travou (metadata.snapshot), que o painel
+        // renderiza como replica visual na lateral.
+        metadata: request.metadata ?? null,
       };
     });
 
@@ -1086,6 +1094,9 @@ painelRouter.patch("/fila/:id", async (req, res) => {
       await setMobileLearnerSessionLockState(data.student_id, false);
       await emitOperationalRealtimeEvent("support.resolved", buildSupportRealtimePayload(data));
       emitLearnerLockChanged(data.student_id, false);
+      // Faz o botao "AGUARDANDO AJUDA" no mobile voltar ao estado normal.
+      // O aluno usa help_received pra atualizar helpAcknowledgedAt.
+      emitHelpReceivedToLearner(data.student_id, req.body?.responseMessage);
 
       res.json({
         id: queueItemId,

@@ -65,6 +65,29 @@ export function emitLearnerLockChanged(learnerProfileId, isLocked) {
   return true;
 }
 
+// O mobile do aluno entra em estado "AGUARDANDO AJUDA" assim que aperta
+// PRECISO DE AJUDA, e so volta ao botao normal quando recebe help_received
+// (helpAcknowledgedAt > helpRequestedAt). O painel emite isso ao marcar a
+// ajuda como atendida, junto com o locked_changed que destrava a sessao.
+export function emitHelpReceivedToLearner(learnerProfileId, message) {
+  if (!dashboardNamespace) {
+    return false;
+  }
+
+  const normalizedLearnerProfileId = getSocketStringValue(learnerProfileId);
+  if (!normalizedLearnerProfileId) {
+    return false;
+  }
+
+  dashboardNamespace.to(getLearnerRoomName(normalizedLearnerProfileId)).emit("help_received", {
+    learnerProfileId: normalizedLearnerProfileId,
+    message: typeof message === "string" && message.trim().length > 0 ? message : undefined,
+    timestamp: new Date().toISOString(),
+  });
+
+  return true;
+}
+
 export function installDashboardRealtimeServer(httpServer) {
   const io = new Server(httpServer, {
     namespace: "/realtime",
