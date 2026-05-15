@@ -49,6 +49,7 @@ import {
   updateSupportRequestStatus,
 } from "../services/letrasDataService.js";
 import { env } from "../config/env.js";
+import { emitOperationalRealtimeEvent } from "../realtime/dashboardRealtime.js";
 
 export const painelRouter = Router();
 
@@ -177,15 +178,63 @@ function groupProgressByStudent(progressRows) {
   return map;
 }
 
+function buildSupportRealtimePayload(request) {
+  return {
+    id: request.id,
+    studentId: request.student_id,
+    tutorId: request.tutor_id ?? null,
+    activityId: request.activity_id ?? request.current_activity_id ?? null,
+    progressId: request.progress_id ?? null,
+    status: request.status,
+    priority: request.priority ?? "alta",
+    message: request.message ?? null,
+    currentView: request.current_view ?? null,
+    sourcePlatform: request.source_platform ?? "mobile",
+    requestedAt: request.requested_at ?? request.created_at ?? null,
+    resolvedAt: request.resolved_at ?? null,
+  };
+}
+
+function buildProgressRealtimePayload(progress) {
+  return {
+    id: progress.id,
+    studentId: progress.student_id,
+    activityId: progress.activity_id,
+    status: progress.status,
+    attempts: progress.attempts ?? null,
+    score: progress.score ?? null,
+    elapsedSeconds: progress.elapsed_seconds ?? null,
+    errorsCount: progress.metadata?.errorsCount ?? null,
+    maxAttempts: progress.metadata?.maxAttempts ?? null,
+    lockReason: progress.metadata?.lockReason ?? null,
+    sourcePlatform: progress.source_platform ?? null,
+    updatedAt: progress.updated_at ?? progress.last_interacted_at ?? null,
+  };
+}
+
+function buildNotificationRealtimePayload(notification) {
+  return {
+    id: notification.id,
+    type: notification.type,
+    recipientId: notification.recipientId ?? null,
+    recipientRole: notification.recipientRole ?? null,
+    sourceEntityType: notification.sourceEntityType ?? null,
+    sourceEntityId: notification.sourceEntityId ?? null,
+    createdAt: notification.createdAt ?? new Date().toISOString(),
+  };
+}
+
 painelRouter.get("/dashboard/admin", async (_req, res) => {
   try {
-    const [students, tutors, links, progress, activities, modules] = await Promise.all([
+    const [students, tutors, links, progress, activities, modules, supportRequests, notifications] = await Promise.all([
       getProfiles({ role: "alfabetizando" }),
       getProfiles({ role: "tutor" }),
       getTutorStudentLinks(),
       getActivityProgress(),
       getLearningActivities(),
       getLearningModules(),
+      getSupportRequests({ statuses: ["aberto", "em_atendimento"], limit: 500 }),
+      getEducatorNotifications({ unreadOnly: true, limit: 500 }),
     ]);
 
     const progressByStudent = groupProgressByStudent(progress);
@@ -262,6 +311,10 @@ painelRouter.get("/dashboard/admin", async (_req, res) => {
         mediaAcerto: Number(averageScore.toFixed(2)),
         tempoMedioRespostaHoras: avgTutorResponseHours,
         totalTutores: tutors.length,
+        pedidosAbertos: supportRequests.length,
+        travasAbertas: lockedStudents.length,
+        vinculosPendentes: links.filter((link) => link.status === "pendente").length,
+        notificacoesNaoLidas: notifications.length,
       },
       chartData,
       alertas: alerts,
@@ -280,12 +333,14 @@ painelRouter.get("/dashboard/tutor", async (req, res) => {
       return;
     }
 
-    const [links, students, progress, activities, modules] = await Promise.all([
+    const [links, students, progress, activities, modules, supportRequests, notifications] = await Promise.all([
       getTutorStudentLinks({ tutorIds: [tutorId] }),
       getProfiles({ role: "alfabetizando" }),
       getActivityProgress(),
       getLearningActivities(),
       getLearningModules(),
+      getSupportRequests({ statuses: ["aberto", "em_atendimento"], tutorIds: [tutorId], limit: 500 }),
+      getEducatorNotifications({ recipientId: tutorId, unreadOnly: true, limit: 500 }),
     ]);
 
     const confirmedLinks = links.filter((link) => link.status === "confirmado");
@@ -305,6 +360,13 @@ painelRouter.get("/dashboard/tutor", async (req, res) => {
     });
 
     const pedidosRecentes = [
+      ...supportRequests.map((request) => ({
+        id: request.id,
+        aluno: studentById.get(request.student_id)?.full_name ?? "Sem nome",
+        tipo: "Pedido de ajuda",
+        tempo: formatRelativeTime(request.requested_at || request.created_at),
+        prioridade: request.priority || "alta",
+      })),
       ...pendingLinks.map((link) => ({
         id: link.id,
         aluno: studentById.get(link.student_id)?.full_name ?? "Sem nome",
@@ -387,6 +449,9 @@ painelRouter.get("/dashboard/tutor", async (req, res) => {
         ativosHoje: activeToday.length,
         travados: lockedStudents.length,
         pedidosAbertos: pedidosRecentes.length,
+        ajudasAbertas: supportRequests.length,
+        vinculosPendentes: pendingLinks.length,
+        notificacoesNaoLidas: notifications.length,
       },
       pedidosRecentes,
       alunosEvoluindo,
@@ -756,7 +821,15 @@ painelRouter.post("/progress", async (req, res) => {
       status: req.body?.status,
       score: req.body?.score,
       elapsedSeconds: req.body?.elapsedSeconds,
+      attempts: req.body?.attempts,
+      errorsCount: req.body?.errorsCount,
+      maxAttempts: req.body?.maxAttempts,
+      lockReason: req.body?.lockReason,
     });
+
+    if (!result.skipped && result.progress?.status === "travado") {
+      await emitOperationalRealtimeEvent("progress.locked", buildProgressRealtimePayload(result.progress));
+    }
 
     res.status(result.skipped ? 202 : 200).json(result);
   } catch (error) {
@@ -780,6 +853,23 @@ painelRouter.post("/support-requests", async (req, res) => {
       sourcePlatform: req.body?.sourcePlatform ?? "mobile",
       metadata: req.body?.metadata,
     });
+
+    if (!result.duplicated) {
+      await emitOperationalRealtimeEvent("support.created", buildSupportRealtimePayload(result.request));
+      await emitOperationalRealtimeEvent(
+        "notification.created",
+        buildNotificationRealtimePayload({
+          id: `support:${result.request.id}`,
+          type: "support_request",
+          recipientId: result.request.tutor_id,
+          recipientRole: result.request.tutor_id ? "tutor" : "admin",
+          sourceEntityType: "support_request",
+          sourceEntityId: result.request.id,
+          createdAt: result.request.requested_at ?? result.request.created_at,
+        }),
+        { includeMetrics: false },
+      );
+    }
 
     res.status(result.duplicated ? 200 : 201).json(result);
   } catch (error) {
@@ -969,6 +1059,10 @@ painelRouter.patch("/fila/:id", async (req, res) => {
           },
         },
       });
+
+      await setMobileLearnerSessionLockState(data.student_id, false);
+      await emitOperationalRealtimeEvent("progress.unlocked", buildProgressRealtimePayload(data));
+
       res.json({
         id: queueItemId,
         queueType: "progresso",
@@ -988,6 +1082,7 @@ painelRouter.patch("/fila/:id", async (req, res) => {
       });
 
       await setMobileLearnerSessionLockState(data.student_id, false);
+      await emitOperationalRealtimeEvent("support.resolved", buildSupportRealtimePayload(data));
 
       res.json({
         id: queueItemId,

@@ -64,6 +64,25 @@ Ao publicar tema/modulo/atividade/asset no web:
 4. Mobile nao deve manter cache sem reconciliacao (usar `updated_at`).
 5. Alteracoes de cadastro devem refletir em no maximo 5 segundos no painel.
 
+## IDs canonicos de alfabetizando
+
+O identificador aceito pelos endpoints operacionais do painel e sempre
+`profiles.id`/`LearnerProfile.id` em formato UUID. IDs locais gerados pelo app
+ou pelo Prisma, como `cmn...`, nao devem ser enviados para
+`POST /api/v1/painel/progress`.
+
+Fluxo recomendado:
+
+1. O mobile cria ou autentica o alfabetizando e resolve um profile canonico no
+   Supabase antes de registrar progresso.
+2. Se o app ainda tiver apenas um ID local, ele deve chamar o fluxo de
+   provisionamento/sync primeiro e guardar o UUID retornado.
+3. Sessoes antigas com ID local devem ficar em modo de reconciliacao: bloquear
+   escrita de progresso canonico, sincronizar cadastro, trocar o cache local
+   pelo UUID e entao reenfileirar eventos pendentes.
+4. A API deve responder `400 learnerProfileId invalido (esperado UUID)` para ID
+   local em `/painel/progress`; isso e intencional para evitar progresso orfao.
+
 ## Estrategia de reconciliacao
 
 1. Ler por `updated_at > ultimo_sync` em lotes.

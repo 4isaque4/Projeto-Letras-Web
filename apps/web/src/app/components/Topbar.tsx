@@ -1,5 +1,5 @@
 import { Bell, LogOut, Search, User } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { apiGet } from "../core/api/client";
 import { useAuth } from "../core/auth/AuthProvider";
@@ -36,43 +36,44 @@ export default function Topbar() {
     navigate("/admin/fila");
   };
 
-  useEffect(() => {
-    let active = true;
-
-    const loadNotifications = async () => {
-      try {
-        const query = new URLSearchParams({
-          unreadOnly: "true",
-          limit: "50",
-        });
-        if (user?.id) {
-          query.set("recipientId", user.id);
-        }
-        if (user?.role) {
-          query.set("recipientRole", user.role === "admin" ? "admin" : "tutor");
-        }
-        const response = (await apiGet(`/painel/notifications?${query.toString()}`)) as {
-          unread?: number;
-          total?: number;
-        };
-        if (active) {
-          setUnreadNotifications(Number(response.unread ?? response.total ?? 0));
-        }
-      } catch {
-        if (active) {
-          setUnreadNotifications(0);
-        }
+  const loadNotifications = useCallback(async () => {
+    try {
+      const query = new URLSearchParams({
+        unreadOnly: "true",
+        limit: "50",
+      });
+      if (user?.id) {
+        query.set("recipientId", user.id);
       }
-    };
+      if (user?.role) {
+        query.set("recipientRole", user.role === "admin" ? "admin" : "tutor");
+      }
+      const response = (await apiGet(`/painel/notifications?${query.toString()}`)) as {
+        unread?: number;
+        total?: number;
+      };
+      setUnreadNotifications(Number(response.unread ?? response.total ?? 0));
+    } catch {
+      setUnreadNotifications(0);
+    }
+  }, [user?.id, user?.role]);
 
+  useEffect(() => {
     void loadNotifications();
     const timer = window.setInterval(loadNotifications, 30000);
 
     return () => {
-      active = false;
       window.clearInterval(timer);
     };
-  }, [user?.id, user?.role]);
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    if (!realtime.lastOperationalEventAt) {
+      return;
+    }
+
+    void loadNotifications();
+  }, [loadNotifications, realtime.lastOperationalEventAt]);
 
   return (
     <header className="h-16 border-b border-gray-300 bg-white px-6 flex items-center justify-between">

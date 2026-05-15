@@ -2,6 +2,7 @@ import {
   ConnectionStatus,
   PresenceUser,
   ServerEvent,
+  ServerEventType,
   SessionMetrics,
 } from "./contracts";
 
@@ -10,6 +11,8 @@ export interface RealtimeState {
   onlineUsers: PresenceUser[];
   metrics: SessionMetrics | null;
   lastEventAt: string | null;
+  lastOperationalEventAt: string | null;
+  lastOperationalEventType: ServerEventType | null;
 }
 
 let state: RealtimeState = {
@@ -17,9 +20,18 @@ let state: RealtimeState = {
   onlineUsers: [],
   metrics: null,
   lastEventAt: null,
+  lastOperationalEventAt: null,
+  lastOperationalEventType: null,
 };
 
 const subscribers = new Set<() => void>();
+const operationalEventTypes = new Set<ServerEventType>([
+  "support.created",
+  "support.resolved",
+  "progress.locked",
+  "progress.unlocked",
+  "notification.created",
+]);
 
 function notify() {
   subscribers.forEach((listener) => listener());
@@ -89,6 +101,17 @@ export const realtimeStore = {
       nextState = {
         ...nextState,
         metrics: event.payload,
+      };
+      state = nextState;
+      notify();
+      return;
+    }
+
+    if (operationalEventTypes.has(event.type)) {
+      nextState = {
+        ...nextState,
+        lastOperationalEventAt: event.emittedAt,
+        lastOperationalEventType: event.type,
       };
       state = nextState;
       notify();

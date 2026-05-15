@@ -147,8 +147,10 @@ Capacidades parciais:
    - `sync_events`.
 7. Mobile recebe realtime/polling e libera a tela.
 
-Hoje o passo 6 esta incompleto: o painel destrava o progresso canonico, mas nao
-parece chamar o backend mobile/session para liberar `SessionState.isLocked`.
+Status em 2026-05-15: o painel passou a chamar a liberacao de
+`SessionState.isLocked` ao destravar progresso pela fila. A liberacao em tempo
+real segue best effort; REST/polling continua sendo o fallback canonico para o
+mobile.
 
 ## Backlog recomendado
 
@@ -157,8 +159,8 @@ parece chamar o backend mobile/session para liberar `SessionState.isLocked`.
 - Criar migration para `support_requests` e `educator_notifications`.
 - Definir contrato unico de eventos: `support.created`, `support.resolved`,
   `progress.locked`, `progress.unlocked`.
-- Ajustar `/painel/fila/:id` para, ao desbloquear, tambem liberar
-  `SessionState.isLocked` quando houver sessao mobile vinculada.
+- Manter `/painel/fila/:id` liberando `SessionState.isLocked` quando houver
+  sessao mobile vinculada.
 - Persistir pedido de ajuda do mobile em API HTTP, nao so socket.
 - Painel: exigir motivo/observacao quando negar vinculo e quando destravar.
 
@@ -211,4 +213,3 @@ parece chamar o backend mobile/session para liberar `SessionState.isLocked`.
 4. O desbloqueio deve ser por tela/atividade ou por sessao inteira?
 5. Pedido de ajuda sem bloqueio deve aparecer na mesma fila de bloqueios ou em
    aba separada?
-

@@ -5,6 +5,7 @@ import {
   ServerEvent,
   ServerEventType,
 } from "./contracts";
+import { io, Socket } from "socket.io-client";
 
 type ServerEventHandler<T extends ServerEventType = ServerEventType> = (
   event: ServerEvent<T>,
@@ -28,11 +29,10 @@ export class RealtimeSocketClient {
   private readonly listeners = new Map<ServerEventType, Set<ServerEventHandler>>();
   private readonly onConnectionStatus?: (status: ConnectionStatus) => void;
 
-  private socket: WebSocket | null = null;
-  private pendingMessages: string[] = [];
+  private socket: Socket | null = null;
+  private pendingMessages: ClientEvent[] = [];
+  private boundServerEvents = new Set<ServerEventType>();
   private reconnectAttempts = 0;
-  private manualClose = false;
-  private reconnectTimer: number | null = null;
   private heartbeatTimer: number | null = null;
 
   constructor(options: SocketClientOptions) {
@@ -45,56 +45,55 @@ export class RealtimeSocketClient {
   }
 
   connect() {
-    if (this.socket && this.socket.readyState <= WebSocket.OPEN) {
+    if (this.socket?.connected || this.socket?.active) {
       return;
     }
 
     const status: ConnectionStatus = this.reconnectAttempts > 0 ? "reconnecting" : "connecting";
     this.emitConnectionStatus(status);
 
-    const endpoint = this.withToken(this.url, this.token);
-    this.socket = new WebSocket(endpoint);
+    const endpoint = this.toSocketIoEndpoint(this.url);
+    this.boundServerEvents.clear();
+    this.socket = io(endpoint, {
+      auth: this.token ? { token: this.token } : undefined,
+      reconnection: true,
+      reconnectionDelay: this.reconnectBaseDelayMs,
+      reconnectionDelayMax: this.reconnectMaxDelayMs,
+      transports: ["websocket"],
+    });
 
-    this.socket.onopen = () => {
+    this.socket.on("connect", () => {
       this.reconnectAttempts = 0;
       this.emitConnectionStatus("connected");
       this.flushPendingMessages();
       this.startHeartbeat();
-    };
+    });
 
-    this.socket.onmessage = (message) => {
-      const event = this.safeParseEvent(message.data);
-      if (!event) {
-        return;
-      }
+    this.socket.io.on("reconnect_attempt", (attempt) => {
+      this.reconnectAttempts = attempt;
+      this.emitConnectionStatus("reconnecting");
+    });
 
-      if (event.type === "pong") {
-        return;
-      }
-
-      this.dispatchEvent(event);
-    };
-
-    this.socket.onerror = () => {
+    this.socket.on("connect_error", () => {
       this.emitConnectionStatus("error");
-    };
+    });
 
-    this.socket.onclose = () => {
+    this.socket.on("disconnect", () => {
       this.stopHeartbeat();
       this.emitConnectionStatus("disconnected");
+    });
 
-      if (!this.manualClose) {
-        this.scheduleReconnect();
-      }
-    };
+    this.listeners.forEach((_handlers, eventType) => {
+      this.bindSocketEvent(eventType);
+    });
   }
 
   disconnect() {
-    this.manualClose = true;
-    this.clearReconnect();
     this.stopHeartbeat();
-    this.socket?.close();
+    this.socket?.removeAllListeners();
+    this.socket?.disconnect();
     this.socket = null;
+    this.boundServerEvents.clear();
     this.emitConnectionStatus("disconnected");
   }
 
@@ -106,20 +105,19 @@ export class RealtimeSocketClient {
       version: "1.0",
     };
 
-    const message = JSON.stringify(event);
-
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      this.pendingMessages.push(message);
+    if (!this.socket?.connected) {
+      this.pendingMessages.push(event);
       return;
     }
 
-    this.socket.send(message);
+    this.socket.emit(event.type, event);
   }
 
   subscribe<T extends ServerEventType>(eventType: T, handler: ServerEventHandler<T>) {
     const handlers = this.listeners.get(eventType) ?? new Set<ServerEventHandler>();
     handlers.add(handler as ServerEventHandler);
     this.listeners.set(eventType, handlers);
+    this.bindSocketEvent(eventType);
 
     return () => {
       const currentHandlers = this.listeners.get(eventType);
@@ -131,12 +129,8 @@ export class RealtimeSocketClient {
   }
 
   private safeParseEvent(data: unknown): ServerEvent | null {
-    if (typeof data !== "string") {
-      return null;
-    }
-
     try {
-      const parsed = JSON.parse(data) as ServerEvent;
+      const parsed = typeof data === "string" ? JSON.parse(data) as ServerEvent : data as ServerEvent;
       if (!parsed || typeof parsed !== "object" || !("type" in parsed) || !("payload" in parsed)) {
         return null;
       }
@@ -144,6 +138,22 @@ export class RealtimeSocketClient {
     } catch {
       return null;
     }
+  }
+
+  private bindSocketEvent(eventType: ServerEventType) {
+    if (!this.socket || this.boundServerEvents.has(eventType)) {
+      return;
+    }
+
+    this.boundServerEvents.add(eventType);
+    this.socket.on(eventType, (data: unknown) => {
+      const event = this.safeParseEvent(data);
+      if (!event || event.type === "pong") {
+        return;
+      }
+
+      this.dispatchEvent(event);
+    });
   }
 
   private dispatchEvent(event: ServerEvent) {
@@ -157,27 +167,6 @@ export class RealtimeSocketClient {
     });
   }
 
-  private scheduleReconnect() {
-    this.clearReconnect();
-    this.reconnectAttempts += 1;
-
-    const delay = Math.min(
-      this.reconnectBaseDelayMs * 2 ** (this.reconnectAttempts - 1),
-      this.reconnectMaxDelayMs,
-    );
-
-    this.reconnectTimer = window.setTimeout(() => {
-      this.connect();
-    }, delay);
-  }
-
-  private clearReconnect() {
-    if (this.reconnectTimer) {
-      window.clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-  }
-
   private startHeartbeat() {
     this.stopHeartbeat();
     this.heartbeatTimer = window.setInterval(() => {
@@ -186,16 +175,16 @@ export class RealtimeSocketClient {
   }
 
   private flushPendingMessages() {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+    if (!this.socket?.connected) {
       return;
     }
 
     while (this.pendingMessages.length > 0) {
-      const message = this.pendingMessages.shift();
-      if (!message) {
+      const event = this.pendingMessages.shift();
+      if (!event) {
         continue;
       }
-      this.socket.send(message);
+      this.socket.emit(event.type, event);
     }
   }
 
@@ -210,15 +199,19 @@ export class RealtimeSocketClient {
     this.onConnectionStatus?.(status);
   }
 
-  private withToken(url: string, token?: string) {
-    if (!token) {
-      return url;
-    }
-
+  private toSocketIoEndpoint(url: string) {
     try {
       const parsed = new URL(url);
-      parsed.searchParams.set("token", token);
-      return parsed.toString();
+      if (parsed.protocol === "ws:") {
+        parsed.protocol = "http:";
+      }
+      if (parsed.protocol === "wss:") {
+        parsed.protocol = "https:";
+      }
+      if (!parsed.pathname || parsed.pathname === "/" || parsed.pathname === "/ws") {
+        parsed.pathname = "/realtime";
+      }
+      return parsed.toString().replace(/\/$/, "");
     } catch {
       return url;
     }

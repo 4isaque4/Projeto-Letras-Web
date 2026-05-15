@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import KPICard from "../../components/KPICard";
 import StateDisplay from "../../components/StateDisplay";
 import { Users, UserCheck, AlertCircle, Clock, Target, Timer } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { apiGet } from "../../core/api/client";
+import { useRealtimeStatus } from "../../core/realtime/useRealtimeStatus";
 
 interface DashboardKpis {
   totalAlfabetizandos: number;
@@ -12,6 +13,10 @@ interface DashboardKpis {
   inativos7d: number;
   mediaAcerto: number;
   tempoMedioRespostaHoras: number;
+  pedidosAbertos?: number;
+  travasAbertas?: number;
+  vinculosPendentes?: number;
+  notificacoesNaoLidas?: number;
 }
 
 interface DashboardAlert {
@@ -35,9 +40,14 @@ const EMPTY_KPIS: DashboardKpis = {
   inativos7d: 0,
   mediaAcerto: 0,
   tempoMedioRespostaHoras: 0,
+  pedidosAbertos: 0,
+  travasAbertas: 0,
+  vinculosPendentes: 0,
+  notificacoesNaoLidas: 0,
 };
 
 export default function AdminDashboard() {
+  const realtime = useRealtimeStatus();
   const [period, setPeriod] = useState("7");
   const [kpis, setKpis] = useState<DashboardKpis>(EMPTY_KPIS);
   const [chartData, setChartData] = useState<Array<{ dia: string; progresso: number }>>([]);
@@ -45,38 +55,38 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    let active = true;
-
-    const load = async () => {
-      try {
+  const loadDashboard = useCallback(async (options: { silent?: boolean } = {}) => {
+    try {
+      if (!options.silent) {
         setLoading(true);
         setError("");
-        const response = (await apiGet("/painel/dashboard/admin")) as DashboardResponse;
-        if (!active) {
-          return;
-        }
-        setKpis(response.kpis ?? EMPTY_KPIS);
-        setChartData(response.chartData ?? []);
-        setAlertas(response.alertas ?? []);
-      } catch (fetchError) {
-        if (!active) {
-          return;
-        }
-        setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar dashboard.");
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
       }
-    };
-
-    load();
-
-    return () => {
-      active = false;
-    };
+      const response = (await apiGet("/painel/dashboard/admin")) as DashboardResponse;
+      setKpis(response.kpis ?? EMPTY_KPIS);
+      setChartData(response.chartData ?? []);
+      setAlertas(response.alertas ?? []);
+    } catch (fetchError) {
+      if (!options.silent) {
+        setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar dashboard.");
+      }
+    } finally {
+      if (!options.silent) {
+        setLoading(false);
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    if (!realtime.lastOperationalEventAt) {
+      return;
+    }
+
+    void loadDashboard({ silent: true });
+  }, [loadDashboard, realtime.lastOperationalEventAt]);
 
   const chartWindow = useMemo(() => {
     if (period === "30") {
@@ -126,7 +136,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
         <KPICard title="Total Alfabetizandos" value={kpis.totalAlfabetizandos} icon={Users} />
         <KPICard
           title="Ativos Hoje"
@@ -134,7 +144,10 @@ export default function AdminDashboard() {
           icon={UserCheck}
           subtitle={`${kpis.totalAlfabetizandos > 0 ? Math.round((kpis.ativosHoje / kpis.totalAlfabetizandos) * 100) : 0}% do total`}
         />
-        <KPICard title="Travados" value={kpis.travados} icon={AlertCircle} subtitle="Requerem atencao" />
+        <KPICard title="Travados" value={kpis.travasAbertas ?? kpis.travados} icon={AlertCircle} subtitle="Requerem atencao" />
+        <KPICard title="Pedidos Abertos" value={kpis.pedidosAbertos ?? 0} icon={Clock} subtitle="Ajuda" />
+        <KPICard title="Vinculos Pendentes" value={kpis.vinculosPendentes ?? 0} icon={UserCheck} />
+        <KPICard title="Notificacoes" value={kpis.notificacoesNaoLidas ?? 0} icon={AlertCircle} subtitle="Nao lidas" />
         <KPICard title="Inativos 7d" value={kpis.inativos7d} icon={Clock} />
         <KPICard title="Media de Acerto" value={`${kpis.mediaAcerto.toFixed(2)}%`} icon={Target} />
         <KPICard
