@@ -51,6 +51,11 @@ export function startRealtimeBridge() {
     "presence.user_joined",
     "presence.user_left",
     "session.metrics_updated",
+    "support.created",
+    "support.resolved",
+    "progress.locked",
+    "progress.unlocked",
+    "notification.created",
   ] as const;
 
   forwardEventTypes.forEach((eventType) => {

@@ -7,9 +7,11 @@ import {
   formatDateTime,
   formatRelativeTime,
   getActivityProgress,
+  getEducatorNotifications,
   getLearningActivities,
   getLearningModules,
   getProfiles,
+  getSupportRequests,
   getTutorStudentLinks,
   toHttpError,
   updateProfileRecord,
@@ -17,6 +19,8 @@ import {
 } from "../services/letrasDataService.js";
 
 export const cadastrosRouter = Router();
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function mapById(items) {
   return new Map(items.map((item) => [item.id, item]));
@@ -79,6 +83,25 @@ function normalizeSubmissionStatus(value, fallback = "pendente") {
     return "enviada";
   }
   return normalized;
+}
+
+function buildMobileProvisionEmail(deviceId) {
+  const suffix = String(deviceId ?? "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(-24)
+    .toLowerCase() || Date.now().toString(36);
+  return `alfabetizando.${suffix}@mobile.letras.local`;
+}
+
+function toCanonicalLearnerProfile(profile) {
+  return {
+    id: profile.id,
+    displayName: profile.full_name,
+    notes: profile.metadata?.notes ?? profile.metadata?.source ?? null,
+    educatorId: profile.metadata?.educatorId ?? null,
+    createdAt: profile.created_at,
+    updatedAt: profile.updated_at,
+  };
 }
 
 function normalizeSubmissionType(rawItem) {
@@ -424,6 +447,57 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
   }
 });
 
+cadastrosRouter.post("/alfabetizandos/provisionar-mobile", async (req, res) => {
+  try {
+    const deviceId = String(req.body?.deviceId ?? "").trim();
+    if (!deviceId) {
+      res.status(400).json({ message: "deviceId e obrigatorio." });
+      return;
+    }
+
+    const displayName =
+      String(req.body?.displayName ?? "").trim() ||
+      `Alfabetizando ${deviceId.replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase() || "WEB"}`;
+    const email = buildMobileProvisionEmail(deviceId);
+    const existingProfiles = await getProfiles({ role: "alfabetizando" });
+    const existing = existingProfiles.find((profile) => {
+      if (!UUID_PATTERN.test(profile.id)) {
+        return false;
+      }
+      const metadata = profile.metadata && typeof profile.metadata === "object" ? profile.metadata : {};
+      return metadata.mobileDeviceId === deviceId || extractProfileEmail(profile) === email;
+    });
+
+    if (existing) {
+      res.json(toCanonicalLearnerProfile(existing));
+      return;
+    }
+
+    const created = await createAuthUserWithProfile({
+      email,
+      password: `Letras@${Date.now().toString(36)}${deviceId.replace(/[^a-zA-Z0-9]/g, "").slice(-6) || "mobile"}`,
+      fullName: displayName,
+      role: "alfabetizando",
+    });
+
+    const updated = await updateProfileRecord({
+      profileId: created.id,
+      role: "alfabetizando",
+      metadata: {
+        ...(created.metadata && typeof created.metadata === "object" ? created.metadata : {}),
+        email,
+        mobileDeviceId: deviceId,
+        source: "mobile_autoprovision",
+      },
+    });
+
+    res.status(201).json(toCanonicalLearnerProfile(updated));
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
 cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
   try {
     const studentId = String(req.params.id ?? "").trim();
@@ -443,6 +517,10 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
     const tutors = await getProfiles({ role: "tutor" });
     const tutorById = mapById(tutors);
     const progress = await getActivityProgress({ studentIds: [studentId] });
+    const [supportRequests, notifications] = await Promise.all([
+      getSupportRequests({ studentIds: [studentId], limit: 100 }),
+      getEducatorNotifications({ limit: 200 }),
+    ]);
     const activityIds = [...new Set(progress.map((item) => item.activity_id).filter(Boolean))];
     const activities = await getLearningActivities({ ids: activityIds });
     const activityById = new Map(activities.map((item) => [item.id, item]));
@@ -481,24 +559,75 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
       .sort((a, b) => a.etapa.localeCompare(b.etapa));
 
     const tentativas = progress
-      .map((row) => ({
-        id: row.id,
-        atividade: activityById.get(row.activity_id)?.title ?? "Atividade",
-        data: formatDateTime(row.last_interacted_at || row.updated_at || row.created_at),
-        acertos: row.score ? Number(row.score) : 0,
-        erros: row.attempts ?? 0,
-        taxa: row.score ? `${Number(row.score).toFixed(0)}%` : "-",
-      }))
+      .map((row) => {
+        const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata) ? row.metadata : {};
+        return {
+          id: row.id,
+          atividade: activityById.get(row.activity_id)?.title ?? "Atividade",
+          data: formatDateTime(row.last_interacted_at || row.updated_at || row.created_at),
+          acertos: row.score ? Number(row.score) : 0,
+          erros: Number(metadata.errorsCount ?? row.attempts ?? 0),
+          taxa: row.score ? `${Number(row.score).toFixed(0)}%` : "-",
+        };
+      })
       .sort((a, b) => b.data.localeCompare(a.data));
 
-    const historico = links
-      .map((link) => ({
+    const linkHistory = links.map((link) => ({
         id: link.id,
         tipo: `Vinculo ${link.status}`,
         data: formatDateTime(link.updated_at || link.created_at),
         usuario: tutorById.get(link.tutor_id)?.full_name ?? "Sistema",
         obs: link.reason || "Atualizacao de vinculo",
-      }))
+        status: link.status,
+        queueType: "vinculo",
+        actionable: link.status === "pendente",
+      }));
+
+    const supportHistory = supportRequests.map((request) => ({
+      id: request.id,
+      tipo: request.status === "resolvido" ? "Ajuda resolvida" : "Pedido de ajuda",
+      data: formatDateTime(request.resolved_at || request.requested_at || request.created_at),
+      usuario: request.resolved_by || tutorById.get(request.tutor_id)?.full_name || "Sistema",
+      obs: request.response_message || request.resolution_reason || request.message || "Pedido de ajuda registrado",
+      status: request.status,
+      queueType: "ajuda",
+      actionable: request.status === "aberto" || request.status === "em_atendimento",
+    }));
+
+    const progressHistory = progress
+      .filter((row) => row.status === "travado" || row.metadata?.queueResolution || row.metadata?.lockReason)
+      .map((row) => {
+        const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata) ? row.metadata : {};
+        const resolution = metadata.queueResolution && typeof metadata.queueResolution === "object" ? metadata.queueResolution : null;
+        return {
+          id: row.id,
+          tipo: row.status === "travado" ? "Aluno travado" : "Desbloqueio registrado",
+          data: formatDateTime(row.last_interacted_at || row.updated_at || row.created_at),
+          usuario: resolution?.resolvedBy || "Sistema",
+          obs: resolution?.reason || metadata.lockReason || "Atualizacao de trava/destrava",
+          status: row.status,
+          queueType: "progresso",
+          actionable: row.status === "travado",
+        };
+      });
+
+    const notificationHistory = notifications
+      .filter((notification) => {
+        const payload = notification.payload && typeof notification.payload === "object" ? notification.payload : {};
+        return payload.studentId === studentId || notification.source_entity_id === studentId;
+      })
+      .map((notification) => ({
+        id: notification.id,
+        tipo: `Notificacao ${notification.read_at ? "lida" : "aberta"}`,
+        data: formatDateTime(notification.created_at),
+        usuario: notification.recipient_role || "Sistema",
+        obs: notification.title || notification.body || notification.type,
+        status: notification.read_at ? "lida" : "aberta",
+        queueType: "notificacao",
+        actionable: false,
+      }));
+
+    const historico = [...supportHistory, ...progressHistory, ...linkHistory, ...notificationHistory]
       .sort((a, b) => b.data.localeCompare(a.data));
     const submissoes = extractSubmissionsFromProgress(progress, activityById);
 

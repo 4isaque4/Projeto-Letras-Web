@@ -1,6 +1,8 @@
 import cors from "cors";
 import express from "express";
+import { createServer } from "node:http";
 import { env } from "./config/env.js";
+import { installDashboardRealtimeServer } from "./realtime/dashboardRealtime.js";
 import { cadastrosRouter } from "./routes/cadastros.js";
 import { healthRouter } from "./routes/health.js";
 import { painelRouter } from "./routes/painel.js";
@@ -76,8 +78,11 @@ app.get("/", (_req, res) => {
   });
 });
 
-app.listen(env.port, () => {
+const httpServer = createServer(app);
+installDashboardRealtimeServer(httpServer);
+
+httpServer.listen(env.port, () => {
   console.log(
-    `[letras-api] running on http://localhost:${env.port} with prefix ${env.apiPrefix}`,
+    `[letras-api] running on http://localhost:${env.port} with prefix ${env.apiPrefix} and realtime /realtime`,
   );
 });

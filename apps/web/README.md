@@ -16,10 +16,10 @@ npm run dev --workspace @letras/web
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
 
-## Realtime (WebSocket)
+## Realtime (Socket.IO)
 
 1. Configure `VITE_WS_URL` e `VITE_WS_TOKEN`.
-2. O painel tenta conectar no websocket informado e exibe o estado da conexao no topo.
+2. O painel tenta conectar no namespace Socket.IO informado e exibe o estado da conexao no topo.
 
 O painel exibe:
 

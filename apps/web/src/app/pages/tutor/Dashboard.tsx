@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AlertCircle, Inbox, UserX, Users } from "lucide-react";
 import KPICard from "../../components/KPICard";
 import StateDisplay from "../../components/StateDisplay";
 import { apiGet } from "../../core/api/client";
 import { useAuth } from "../../core/auth/AuthProvider";
+import { useRealtimeStatus } from "../../core/realtime/useRealtimeStatus";
 
 interface TutorDashboardResponse {
   kpis: {
@@ -11,6 +12,9 @@ interface TutorDashboardResponse {
     ativosHoje: number;
     travados: number;
     pedidosAbertos: number;
+    ajudasAbertas?: number;
+    vinculosPendentes?: number;
+    notificacoesNaoLidas?: number;
   };
   pedidosRecentes: Array<{
     id: string;
@@ -39,6 +43,9 @@ const EMPTY_RESPONSE: TutorDashboardResponse = {
     ativosHoje: 0,
     travados: 0,
     pedidosAbertos: 0,
+    ajudasAbertas: 0,
+    vinculosPendentes: 0,
+    notificacoesNaoLidas: 0,
   },
   pedidosRecentes: [],
   alunosEvoluindo: [],
@@ -52,53 +59,54 @@ const EMPTY_RESPONSE: TutorDashboardResponse = {
 
 export default function TutorDashboard() {
   const { user } = useAuth();
+  const realtime = useRealtimeStatus();
   const [response, setResponse] = useState<TutorDashboardResponse>(EMPTY_RESPONSE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const loadDashboard = useCallback(async (options: { silent?: boolean } = {}) => {
     if (!user?.id) {
       setLoading(false);
       setError("Usuario tutor nao autenticado.");
       return;
     }
 
-    let active = true;
-
-    const load = async () => {
-      try {
+    try {
+      if (!options.silent) {
         setLoading(true);
         setError("");
-        const payload = (await apiGet(
-          `/painel/dashboard/tutor?tutorId=${encodeURIComponent(user.id)}`,
-        )) as TutorDashboardResponse;
-        if (!active) {
-          return;
-        }
-        setResponse({
-          kpis: payload.kpis ?? EMPTY_RESPONSE.kpis,
-          pedidosRecentes: payload.pedidosRecentes ?? [],
-          alunosEvoluindo: payload.alunosEvoluindo ?? [],
-          resumoSemanal: payload.resumoSemanal ?? EMPTY_RESPONSE.resumoSemanal,
-        });
-      } catch (fetchError) {
-        if (!active) {
-          return;
-        }
-        setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar dashboard do tutor.");
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
       }
-    };
-
-    load();
-
-    return () => {
-      active = false;
-    };
+      const payload = (await apiGet(
+        `/painel/dashboard/tutor?tutorId=${encodeURIComponent(user.id)}`,
+      )) as TutorDashboardResponse;
+      setResponse({
+        kpis: payload.kpis ?? EMPTY_RESPONSE.kpis,
+        pedidosRecentes: payload.pedidosRecentes ?? [],
+        alunosEvoluindo: payload.alunosEvoluindo ?? [],
+        resumoSemanal: payload.resumoSemanal ?? EMPTY_RESPONSE.resumoSemanal,
+      });
+    } catch (fetchError) {
+      if (!options.silent) {
+        setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar dashboard do tutor.");
+      }
+    } finally {
+      if (!options.silent) {
+        setLoading(false);
+      }
+    }
   }, [user?.id]);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
+
+  useEffect(() => {
+    if (!realtime.lastOperationalEventAt) {
+      return;
+    }
+
+    void loadDashboard({ silent: true });
+  }, [loadDashboard, realtime.lastOperationalEventAt]);
 
   if (loading) {
     return <StateDisplay type="loading" />;
@@ -115,10 +123,12 @@ export default function TutorDashboard() {
         <p className="text-sm text-gray-600 mt-1">Visao geral dos seus alfabetizandos e atendimentos</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <KPICard title="Meus Alunos Ativos" value={response.kpis.ativosHoje} icon={Users} subtitle={`de ${response.kpis.meusAlunosTotal} total`} />
         <KPICard title="Travados" value={response.kpis.travados} icon={AlertCircle} subtitle="Requerem atencao" />
-        <KPICard title="Pedidos Abertos" value={response.kpis.pedidosAbertos} icon={Inbox} subtitle="Aguardando resposta" />
+        <KPICard title="Ajuda Aberta" value={response.kpis.ajudasAbertas ?? response.kpis.pedidosAbertos} icon={Inbox} subtitle="Aguardando resposta" />
+        <KPICard title="Vinculos Pendentes" value={response.kpis.vinculosPendentes ?? 0} icon={Inbox} />
+        <KPICard title="Notificacoes" value={response.kpis.notificacoesNaoLidas ?? 0} icon={AlertCircle} subtitle="Nao lidas" />
         <KPICard
           title="Alunos em risco"
           value={Math.max(0, response.kpis.meusAlunosTotal - response.kpis.ativosHoje)}

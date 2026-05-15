@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshCw, Search, X } from "lucide-react";
 import StateDisplay from "../../components/StateDisplay";
 import { apiGet, apiPatch } from "../../core/api/client";
+import { useRealtimeStatus } from "../../core/realtime/useRealtimeStatus";
 
 interface QueueItem {
   id: string;
@@ -24,6 +25,7 @@ interface QueueResponse {
 }
 
 export default function Fila() {
+  const realtime = useRealtimeStatus();
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -35,22 +37,36 @@ export default function Fila() {
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
 
-  const loadQueue = async () => {
+  const loadQueue = useCallback(async (options: { silent?: boolean } = {}) => {
     try {
-      setLoading(true);
-      setError("");
+      if (!options.silent) {
+        setLoading(true);
+        setError("");
+      }
       const response = (await apiGet("/painel/fila")) as QueueResponse;
       setItems(response.items ?? []);
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar fila.");
+      if (!options.silent) {
+        setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar fila.");
+      }
     } finally {
-      setLoading(false);
+      if (!options.silent) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadQueue();
-  }, []);
+    void loadQueue();
+  }, [loadQueue]);
+
+  useEffect(() => {
+    if (!realtime.lastOperationalEventAt) {
+      return;
+    }
+
+    void loadQueue({ silent: true });
+  }, [loadQueue, realtime.lastOperationalEventAt]);
 
   const typeOptions = useMemo(() => {
     return [...new Set(items.map((item) => item.tipo).filter(Boolean))];
@@ -138,7 +154,7 @@ export default function Fila() {
           <p className="text-sm text-gray-600 mt-1">Pedidos e bloqueios preventivos em tempo real</p>
         </div>
         <button
-          onClick={loadQueue}
+          onClick={() => void loadQueue()}
           className="px-4 py-2 border border-gray-300 hover:bg-gray-100 flex items-center gap-2 text-sm"
         >
           <RefreshCw className="w-4 h-4" />

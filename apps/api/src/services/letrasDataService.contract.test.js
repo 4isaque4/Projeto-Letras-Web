@@ -95,15 +95,39 @@ describe("mobile-web support and lock contracts", () => {
       activityId: ACTIVITY_ID,
       status: "LOCKED",
       elapsedSeconds: 42,
+      attempts: 3,
+      errorsCount: 3,
+      maxAttempts: 3,
+      lockReason: "Errou tres vezes a letra A",
     });
 
     assert.equal(result.progress.status, "travado");
+    assert.equal(result.progress.attempts, 3);
+    assert.equal(result.progress.metadata.errorsCount, 3);
+    assert.equal(result.progress.metadata.maxAttempts, 3);
+    assert.equal(result.progress.metadata.lockReason, "Errou tres vezes a letra A");
     assert.equal(supabase.rows("SessionState")[0].isLocked, true);
     assert.equal(supabase.rows("educator_notifications")[0].type, "progress_locked");
     assert.equal(
       supabase.rows("sync_events").some((row) => row.event_type === "progress.locked"),
       true,
     );
+  });
+
+  it("rejects local mobile learner ids on canonical progress writes", async () => {
+    const supabase = createProgressSupabase();
+    __setSupabaseAdminForTests(supabase);
+
+    await assert.rejects(
+      upsertActivityProgressFromMobile({
+        learnerProfileId: "cmnqr706f000jvlf4u222r8s8",
+        activityId: ACTIVITY_ID,
+        status: "LOCKED",
+      }),
+      (error) => error.status === 400 && /UUID/.test(error.message),
+    );
+
+    assert.equal(supabase.rows("activity_progress").length, 0);
   });
 
   it("unlocks SessionState when panel progress moves out of travado", async () => {

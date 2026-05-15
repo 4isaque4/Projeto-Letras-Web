@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { ArrowLeft, Lock } from "lucide-react";
 import StateDisplay from "../../components/StateDisplay";
-import { apiGet } from "../../core/api/client";
+import { apiGet, apiPatch } from "../../core/api/client";
 
 interface ProgressByStage {
   etapa: string;
@@ -34,6 +34,9 @@ interface HistoryItem {
   data: string;
   usuario: string;
   obs: string;
+  status?: string;
+  queueType?: "ajuda" | "progresso" | "vinculo" | "notificacao" | string;
+  actionable?: boolean;
 }
 
 interface StudentDetailResponse {
@@ -58,6 +61,8 @@ export default function AlfabetizandoDetalhe() {
   const [detail, setDetail] = useState<StudentDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionLoadingId, setActionLoadingId] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     if (!id) {
@@ -94,7 +99,7 @@ export default function AlfabetizandoDetalhe() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, reloadToken]);
 
   const statusLabel = useMemo(() => {
     if (!detail?.status) {
@@ -102,6 +107,30 @@ export default function AlfabetizandoDetalhe() {
     }
     return detail.status;
   }, [detail?.status]);
+
+  const runHistoryAction = async (history: HistoryItem) => {
+    if (!history.actionable || actionLoadingId) {
+      return;
+    }
+
+    const action = history.queueType === "progresso" ? "desbloquear" : "resolver";
+
+    try {
+      setActionLoadingId(history.id);
+      setError("");
+      await apiPatch(`/painel/fila/${history.id}`, {
+        action,
+        reason: "Resolvido pelo detalhe do alfabetizando",
+        responseMessage: action === "resolver" ? "Pode continuar a atividade" : undefined,
+        decidedBy: "painel-web",
+      });
+      setReloadToken((value) => value + 1);
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : "Falha ao atualizar historico.");
+    } finally {
+      setActionLoadingId("");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -273,6 +302,7 @@ export default function AlfabetizandoDetalhe() {
                       <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Data/Hora</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Usuario</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Observacao</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Acao</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -282,6 +312,24 @@ export default function AlfabetizandoDetalhe() {
                         <td className="px-4 py-3 text-sm text-gray-600">{history.data}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">{history.usuario}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">{history.obs}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {history.actionable && (history.queueType === "ajuda" || history.queueType === "progresso") ? (
+                            <button
+                              type="button"
+                              onClick={() => void runHistoryAction(history)}
+                              disabled={Boolean(actionLoadingId)}
+                              className="px-3 py-1.5 border border-gray-900 bg-gray-900 text-white text-xs font-semibold disabled:opacity-60"
+                            >
+                              {actionLoadingId === history.id
+                                ? "Atualizando..."
+                                : history.queueType === "progresso"
+                                  ? "Desbloquear"
+                                  : "Resolver"}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-gray-500">{history.status ?? "-"}</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

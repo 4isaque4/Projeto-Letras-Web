@@ -27,6 +27,46 @@ export interface SessionMetrics {
   updatedAt: string;
 }
 
+export interface SupportRealtimePayload {
+  id: string;
+  studentId: string;
+  tutorId: string | null;
+  activityId: string | null;
+  progressId: string | null;
+  status: string;
+  priority: string;
+  message: string | null;
+  currentView: string | null;
+  sourcePlatform: string;
+  requestedAt: string | null;
+  resolvedAt: string | null;
+}
+
+export interface ProgressRealtimePayload {
+  id: string;
+  studentId: string;
+  activityId: string;
+  status: string;
+  attempts: number | null;
+  score: number | string | null;
+  elapsedSeconds: number | null;
+  errorsCount: number | null;
+  maxAttempts: number | null;
+  lockReason: string | null;
+  sourcePlatform: string | null;
+  updatedAt: string | null;
+}
+
+export interface NotificationRealtimePayload {
+  id: string;
+  type: string;
+  recipientId: string | null;
+  recipientRole: string | null;
+  sourceEntityType: string | null;
+  sourceEntityId: string | null;
+  createdAt: string;
+}
+
 export interface EventEnvelope<TType extends string, TPayload> {
   type: TType;
   payload: TPayload;
@@ -40,6 +80,11 @@ export type ServerToWebPayloadMap = {
   "presence.user_joined": { user: PresenceUser };
   "presence.user_left": { userId: string; lastSeenAt: string };
   "session.metrics_updated": SessionMetrics;
+  "support.created": SupportRealtimePayload;
+  "support.resolved": SupportRealtimePayload;
+  "progress.locked": ProgressRealtimePayload;
+  "progress.unlocked": ProgressRealtimePayload;
+  "notification.created": NotificationRealtimePayload;
   "alert.created": {
     id: string;
     priority: "low" | "medium" | "high";

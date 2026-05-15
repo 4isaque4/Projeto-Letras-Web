@@ -4239,6 +4239,10 @@ export async function upsertActivityProgressFromMobile({
   status,
   score,
   elapsedSeconds,
+  attempts,
+  errorsCount,
+  maxAttempts,
+  lockReason,
 } = {}) {
   const client = requireSupabase();
 
@@ -4274,6 +4278,35 @@ export async function upsertActivityProgressFromMobile({
     normalizedElapsed = Math.floor(parsed);
   }
 
+  let normalizedAttempts = null;
+  if (attempts !== undefined && attempts !== null) {
+    const parsed = Number(attempts);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new HttpError(400, "attempts deve ser >= 0.");
+    }
+    normalizedAttempts = Math.floor(parsed);
+  }
+
+  let normalizedErrors = null;
+  if (errorsCount !== undefined && errorsCount !== null) {
+    const parsed = Number(errorsCount);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new HttpError(400, "errorsCount deve ser >= 0.");
+    }
+    normalizedErrors = Math.floor(parsed);
+  }
+
+  let normalizedMaxAttempts = null;
+  if (maxAttempts !== undefined && maxAttempts !== null) {
+    const parsed = Number(maxAttempts);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new HttpError(400, "maxAttempts deve ser >= 0.");
+    }
+    normalizedMaxAttempts = Math.floor(parsed);
+  }
+
+  const normalizedLockReason = normalizeNullableText(lockReason);
+
   const nowIso = new Date().toISOString();
   const payload = {
     student_id: normalizedLearnerId,
@@ -4285,8 +4318,12 @@ export async function upsertActivityProgressFromMobile({
     metadata: {
       source: "mobile_api",
       ...(normalizedElapsed !== null ? { elapsedSeconds: normalizedElapsed } : {}),
+      ...(normalizedErrors !== null ? { errorsCount: normalizedErrors } : {}),
+      ...(normalizedMaxAttempts !== null ? { maxAttempts: normalizedMaxAttempts } : {}),
+      ...(normalizedLockReason ? { lockReason: normalizedLockReason } : {}),
     },
     ...(normalizedScore !== null ? { score: normalizedScore } : {}),
+    ...(normalizedAttempts !== null ? { attempts: normalizedAttempts } : {}),
   };
 
   const { data, error } = await client
@@ -4319,6 +4356,9 @@ export async function upsertActivityProgressFromMobile({
         studentId: data.student_id,
         activityId: data.activity_id,
         status: data.status,
+        attempts: data.attempts ?? null,
+        errorsCount: data.metadata?.errorsCount ?? null,
+        lockReason: data.metadata?.lockReason ?? null,
       },
     }),
   );
@@ -4341,6 +4381,9 @@ export async function upsertActivityProgressFromMobile({
             studentId: data.student_id,
             activityId: data.activity_id,
             status: data.status,
+            attempts: data.attempts ?? null,
+            errorsCount: data.metadata?.errorsCount ?? null,
+            lockReason: data.metadata?.lockReason ?? null,
           },
         }),
       ),
