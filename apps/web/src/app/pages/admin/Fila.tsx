@@ -3,6 +3,7 @@ import { RefreshCw, Search, X } from "lucide-react";
 import StateDisplay from "../../components/StateDisplay";
 import { apiGet, apiPatch } from "../../core/api/client";
 import { useRealtimeStatus } from "../../core/realtime/useRealtimeStatus";
+import { LessonScreenPreview, LearnerScreenSnapshot } from "../../components/LessonScreenPreview";
 
 interface QueueItem {
   id: string;
@@ -17,6 +18,10 @@ interface QueueItem {
   mensagem?: string;
   studentId?: string;
   activityId?: string;
+  // O backend agora propaga support_requests.metadata aqui. O snapshot
+  // da tela do aluno (quando o pedido vem do mobile) fica em
+  // metadata.snapshot e segue o shape LearnerScreenSnapshot.
+  metadata?: { snapshot?: LearnerScreenSnapshot | null } & Record<string, unknown>;
 }
 
 interface QueueResponse {
@@ -315,6 +320,15 @@ export default function Fila() {
                 <div>
                   <p className="text-xs text-gray-500 mb-1">Mensagem</p>
                   <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedItem.mensagem}</p>
+                </div>
+              ) : null}
+              {selectedItem.queueType === "ajuda" && selectedItem.metadata?.snapshot ? (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Tela em que o aluno travou</p>
+                  <LessonScreenPreview
+                    snapshot={selectedItem.metadata.snapshot}
+                    learnerName={selectedItem.aluno}
+                  />
                 </div>
               ) : null}
               {(selectedItem.queueType === "vinculo" ||
