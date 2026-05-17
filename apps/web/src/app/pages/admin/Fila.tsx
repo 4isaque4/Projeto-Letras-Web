@@ -124,9 +124,11 @@ export default function Fila() {
       return;
     }
 
-    const mustProvideReason = action === "negar";
+    // B1 2026-05-17: negar e desbloquear exigem motivo manual,
+    // sem auto-preencher (decisao em decisoes-etapa1-etapa2-2026-05-17.md).
+    const mustProvideReason = action === "negar" || action === "desbloquear";
     if (mustProvideReason && actionReason.trim().length < 3) {
-      setActionError("Informe uma observacao/motivo antes de concluir esta acao.");
+      setActionError("Informe uma observacao/motivo (minimo 3 caracteres) antes de concluir esta acao.");
       return;
     }
 
@@ -137,11 +139,7 @@ export default function Fila() {
       setActionMessage("");
       const normalizedReason =
         actionReason.trim() ||
-        (action === "desbloquear"
-          ? "Aluno desbloqueado pelo painel."
-          : action === "resolver"
-            ? "Ajuda atendida pelo painel."
-            : "");
+        (action === "resolver" ? "Ajuda atendida pelo painel." : "");
 
       await apiPatch(`/painel/fila/${selectedItem.id}`, {
         action,
@@ -337,12 +335,21 @@ export default function Fila() {
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">
                     Observacao / motivo
+                    {selectedItem.queueType === "vinculo" || selectedItem.queueType === "progresso" ? (
+                      <span className="ml-1 text-red-600">*</span>
+                    ) : null}
                   </label>
                   <textarea
                     value={actionReason}
                     onChange={(event) => setActionReason(event.target.value)}
                     rows={3}
-                    placeholder="Explique brevemente a acao tomada..."
+                    placeholder={
+                      selectedItem.queueType === "progresso"
+                        ? "Obrigatorio: descreva por que esta desbloqueando este aluno..."
+                        : selectedItem.queueType === "vinculo"
+                          ? "Obrigatorio ao negar: explique o motivo da decisao..."
+                          : "Explique brevemente a acao tomada..."
+                    }
                     className="w-full border border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:border-gray-500"
                   />
                   {actionError ? (
