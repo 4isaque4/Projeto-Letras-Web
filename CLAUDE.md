@@ -6,6 +6,7 @@ Fontes primárias (se divergir deste arquivo, as fontes prevalecem e este arquiv
 
 - [docs/product/glossario.md](docs/product/glossario.md)
 - [docs/product/regras-negocio-mvp-alfabetizacao.md](docs/product/regras-negocio-mvp-alfabetizacao.md) — RN001 a RN123
+- [docs/product/decisoes-etapa1-etapa2-2026-05-17.md](docs/product/decisoes-etapa1-etapa2-2026-05-17.md) — escopo congelado p/ Etapas 1 e 2
 - [docs/product/etapa1-web-execucao.md](docs/product/etapa1-web-execucao.md)
 - [docs/product/wireframe.md](docs/product/wireframe.md)
 - [docs/architecture/integracao-web-mobile-etapa1.md](docs/architecture/integracao-web-mobile-etapa1.md)
