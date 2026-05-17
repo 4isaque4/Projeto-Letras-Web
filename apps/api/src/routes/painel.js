@@ -1025,6 +1025,20 @@ painelRouter.patch("/fila/:id", async (req, res) => {
     const reason = req.body?.reason;
     const decidedBy = req.body?.decidedBy;
 
+    // B1 2026-05-17: negar vinculo e desbloquear aluno exigem motivo
+    // (decisao em docs/product/decisoes-etapa1-etapa2-2026-05-17.md).
+    const reasonRequiringActions = new Set(["negar", "recusar", "desbloquear", "liberar"]);
+    if (reasonRequiringActions.has(action)) {
+      const normalizedReason = typeof reason === "string" ? reason.trim() : "";
+      if (normalizedReason.length < 3) {
+        res.status(400).json({
+          message: "Informe um motivo (minimo 3 caracteres) para esta acao.",
+          field: "reason",
+        });
+        return;
+      }
+    }
+
     if (action === "confirmar" || action === "aprovar") {
       const data = await updateTutorStudentLink(queueItemId, {
         status: "confirmado",
