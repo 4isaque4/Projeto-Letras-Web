@@ -26,4 +26,6 @@ export const env = {
   supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? "",
   supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL ?? "",
+  sentryDsn: import.meta.env.VITE_SENTRY_DSN ?? "",
+  sentryEnvironment: import.meta.env.VITE_SENTRY_ENVIRONMENT ?? import.meta.env.MODE,
 };
