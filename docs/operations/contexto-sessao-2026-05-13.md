@@ -112,20 +112,30 @@ de áudio standalone fundido no exercício).
 
 ## 4. Sentry — estado da integração
 
-- Org: `spin-xs`
-- Projeto criado: **`react-native`** (este slug, não `letras-mobile`).
-  Plataforma React Native, usado pelo `letras-mobile-ref`.
-- DSN do projeto react-native salvo em
-  `C:\Projetos\letras-mobile-ref\apps\mobile-app\.env` (gitignored).
-  Template em [apps/mobile-app/.env.example](https://github.com/4isaque4/Projeto-Letras-Web/blob/main/apps/mobile-app/.env.example)
-  do repo mobile.
-- **Faltando:** projeto Sentry para o painel web (org tem só
-  `react-native`). Criar como "JavaScript / React", anotar o DSN para
-  `VITE_SENTRY_DSN` em `apps/web/.env.production`.
-- **Faltando:** SDK do Sentry ainda não foi instrumentado em nenhum
-  dos apps. Para o mobile, rodar
-  `npx @sentry/wizard@latest -i reactNative --saas --org spin-xs --project react-native`
-  no repo mobile.
+- Org: `spin-xs`. Team: `letras-painel`.
+- Projetos:
+  - **`react-native`** (platform React Native) — usado pelo `letras-mobile-ref`.
+  - **`painel-web`** (platform JavaScript/React) — usado pelo painel web.
+    Criado em 2026-05-17.
+- DSNs (public-safe, podem ficar no bundle):
+  - Mobile: salvo em `apps/mobile-app/.env` (gitignored) e replicado em
+    `.env.example`. Lido por `process.env.EXPO_PUBLIC_SENTRY_DSN` em
+    `apps/mobile-app/App.tsx`.
+  - Painel: `VITE_SENTRY_DSN` em `apps/web/.env.production` e `.env.example`.
+    Lido por `apps/web/src/app/core/observability/sentry.ts`.
+- SDK instrumentado em ambos:
+  - Mobile: `@sentry/react-native@^8.11.1` via `@sentry/wizard`. App.tsx
+    chama `Sentry.init` (guarded por DSN) e `Sentry.wrap(App)`. Plugin
+    `@sentry/react-native/expo` registrado em `app.json`. `metro.config.js`
+    usa `getSentryExpoConfig` para symbolication.
+  - Painel: `@sentry/react@^10.53.1`. `main.tsx` chama `initSentry()` e
+    embrulha `<App>` em `Sentry.ErrorBoundary`. Init habilita
+    `browserTracingIntegration` (10% sample em prod) e
+    `replayIntegration` (apenas on-error).
+- **Faltando ainda:** upload automático de source maps no deploy.
+  Mobile: precisa de `SENTRY_AUTH_TOKEN` com escopo `project:releases`
+  configurado no EAS/CI. Painel: integrar `@sentry/vite-plugin` no build,
+  também com auth token de release no CI (não usar user token pessoal).
 
 ## 5. Como retomar trabalho
 
@@ -139,10 +149,11 @@ de áudio standalone fundido no exercício).
 
 ## 6. Pendências conhecidas
 
-- Criar projeto Sentry para painel web e salvar DSN em
-  `apps/web/.env.production`.
-- Instrumentar SDK do Sentry no mobile (`@sentry/wizard`).
-- Instrumentar SDK do Sentry no painel (`@sentry/react` + Vite plugin).
+- Source map upload automático no deploy do painel e do mobile (Sentry
+  release flow). Hoje os crashes chegam no Sentry, mas sem stack trace
+  resolvido pro código original.
+- Validar um test event real no Sentry depois do próximo deploy mobile
+  (`Sentry.captureException(new Error('test'))` em algum ponto temporário).
 - Avaliar se o slug `react-native` no Sentry deve ser renomeado para
   `letras-mobile` (cosmético, mas alinha com a nomenclatura do produto).
 - Painel não tem Figma URL conectada ainda — quando houver protótipo
