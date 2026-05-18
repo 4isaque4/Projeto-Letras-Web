@@ -1,8 +1,45 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, Lock } from "lucide-react";
+import {
+  ArrowLeft,
+  Lock,
+  HelpCircle,
+  UserPlus,
+  Bell,
+  CheckCircle2,
+  AlertOctagon,
+  Activity as ActivityIcon,
+} from "lucide-react";
 import StateDisplay from "../../components/StateDisplay";
 import { apiGet, apiPatch } from "../../core/api/client";
+
+// B3 2026-05-17: timeline visual no detalhe do alfabetizando (decisao codex).
+// Mapeia queueType + status para icone + cor, agrupando por dia.
+function timelineVisual(event: HistoryItem): { Icon: typeof HelpCircle; tone: string } {
+  if (event.queueType === "ajuda") {
+    return event.status === "resolvido"
+      ? { Icon: CheckCircle2, tone: "text-emerald-600 bg-emerald-50 border-emerald-200" }
+      : { Icon: HelpCircle, tone: "text-amber-600 bg-amber-50 border-amber-200" };
+  }
+  if (event.queueType === "progresso") {
+    return event.status === "travado"
+      ? { Icon: AlertOctagon, tone: "text-red-600 bg-red-50 border-red-200" }
+      : { Icon: CheckCircle2, tone: "text-emerald-600 bg-emerald-50 border-emerald-200" };
+  }
+  if (event.queueType === "vinculo") {
+    return { Icon: UserPlus, tone: "text-blue-600 bg-blue-50 border-blue-200" };
+  }
+  if (event.queueType === "notificacao") {
+    return { Icon: Bell, tone: "text-gray-600 bg-gray-50 border-gray-200" };
+  }
+  return { Icon: ActivityIcon, tone: "text-gray-600 bg-gray-50 border-gray-200" };
+}
+
+function dayBucket(date: string): string {
+  // Formato 'dd/mm/yyyy hh:mm' do formatDateTime → quebra no espaco.
+  const datePart = date.split(" ")[0] ?? date;
+  return datePart;
+}
 
 interface ProgressByStage {
   etapa: string;
@@ -288,53 +325,72 @@ export default function AlfabetizandoDetalhe() {
           </div>
 
           <div className="border border-gray-300 bg-white">
-            <div className="p-4 border-b border-gray-300">
-              <h3 className="font-bold text-gray-900">Historico de Atendimento</h3>
+            <div className="p-4 border-b border-gray-300 flex items-center justify-between">
+              <h3 className="font-bold text-gray-900">Linha do tempo</h3>
+              <span className="text-xs text-gray-500">{detail.historico.length} eventos</span>
             </div>
             {detail.historico.length === 0 ? (
-              <StateDisplay type="empty" message="Sem eventos de historico para este alfabetizando." />
+              <StateDisplay type="empty" message="Sem eventos para este alfabetizando." />
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-100 border-b border-gray-300">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Tipo</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Data/Hora</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Usuario</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Observacao</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Acao</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.historico.map((history) => (
-                      <tr key={history.id} className="border-b border-gray-200 hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900">{history.tipo}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{history.data}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{history.usuario}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{history.obs}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          {history.actionable && (history.queueType === "ajuda" || history.queueType === "progresso") ? (
+              <ol className="p-4 space-y-4 relative" aria-label="Linha do tempo de eventos">
+                {detail.historico.map((event, index) => {
+                  const { Icon, tone } = timelineVisual(event);
+                  const isLast = index === detail.historico.length - 1;
+                  const prevDay = index > 0 ? dayBucket(detail.historico[index - 1].data) : "";
+                  const currentDay = dayBucket(event.data);
+                  const showDayHeader = index === 0 || currentDay !== prevDay;
+
+                  return (
+                    <li key={event.id} className="relative">
+                      {showDayHeader ? (
+                        <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2 mt-1">
+                          {currentDay}
+                        </div>
+                      ) : null}
+                      <div className="flex items-start gap-3">
+                        <div className={`w-8 h-8 flex items-center justify-center border ${tone} shrink-0`}>
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        {!isLast ? (
+                          <span
+                            className="absolute left-4 top-9 w-px h-full -ml-px bg-gray-200"
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                        <div className="flex-1 pb-2">
+                          <div className="flex flex-wrap items-baseline gap-2">
+                            <span className="text-sm font-semibold text-gray-900">{event.tipo}</span>
+                            {event.status ? (
+                              <span className="text-xs px-1.5 py-0.5 border border-gray-300 bg-gray-50 text-gray-700">
+                                {event.status}
+                              </span>
+                            ) : null}
+                            <span className="text-xs text-gray-500 ml-auto">{event.data}</span>
+                          </div>
+                          {event.obs ? (
+                            <p className="mt-1 text-sm text-gray-700 leading-relaxed">{event.obs}</p>
+                          ) : null}
+                          <p className="mt-1 text-xs text-gray-500">por {event.usuario}</p>
+                          {event.actionable && (event.queueType === "ajuda" || event.queueType === "progresso") ? (
                             <button
                               type="button"
-                              onClick={() => void runHistoryAction(history)}
+                              onClick={() => void runHistoryAction(event)}
                               disabled={Boolean(actionLoadingId)}
-                              className="px-3 py-1.5 border border-gray-900 bg-gray-900 text-white text-xs font-semibold disabled:opacity-60"
+                              className="mt-2 px-3 py-1.5 border border-gray-900 bg-gray-900 text-white text-xs font-semibold disabled:opacity-60"
                             >
-                              {actionLoadingId === history.id
+                              {actionLoadingId === event.id
                                 ? "Atualizando..."
-                                : history.queueType === "progresso"
-                                  ? "Desbloquear"
-                                  : "Resolver"}
+                                : event.queueType === "progresso"
+                                  ? "Desbloquear aluno"
+                                  : "Marcar como atendido"}
                             </button>
-                          ) : (
-                            <span className="text-xs text-gray-500">{history.status ?? "-"}</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
             )}
           </div>
         </>

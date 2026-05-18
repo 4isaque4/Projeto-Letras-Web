@@ -254,6 +254,17 @@ painelRouter.get("/dashboard/admin", async (_req, res) => {
       const studentRows = progressByStudent.get(student.id) ?? [];
       return daysSince(getStudentLastInteraction(studentRows)) <= 0;
     });
+    // B3 2026-05-17: KPI principal "Ativos 7d" (decisao 8).
+    const active7d = students.filter((student) => {
+      const studentRows = progressByStudent.get(student.id) ?? [];
+      const days = daysSince(getStudentLastInteraction(studentRows));
+      return days >= 0 && days <= 7;
+    });
+    // B3 2026-05-17: KPI "Aulas concluidas hoje" (decisao 8).
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const lessonsCompletedToday = progress.filter(
+      (row) => row.completed_at && String(row.completed_at).startsWith(todayKey),
+    ).length;
 
     const scores = progress
       .map((row) => Number(row.score))
@@ -306,8 +317,16 @@ painelRouter.get("/dashboard/admin", async (_req, res) => {
       };
     });
 
+    const vinculosPendentes = links.filter((link) => link.status === "pendente").length;
+
     res.json({
       kpis: {
+        // KPIs operacionais primarios (decisao 8 do escopo 2026-05-17)
+        ativos7d: active7d.length,
+        vinculosPendentes,
+        filaAjudaAgora: lockedStudents.length + supportRequests.length,
+        aulasConcluidasHoje: lessonsCompletedToday,
+        // KPIs secundarios (mantidos para detalhe e back-compat)
         totalAlfabetizandos: students.length,
         ativosHoje: activeToday.length,
         travados: lockedStudents.length,
@@ -317,7 +336,6 @@ painelRouter.get("/dashboard/admin", async (_req, res) => {
         totalTutores: tutors.length,
         pedidosAbertos: supportRequests.length,
         travasAbertas: lockedStudents.length,
-        vinculosPendentes: links.filter((link) => link.status === "pendente").length,
         notificacoesNaoLidas: notifications.length,
       },
       chartData,
