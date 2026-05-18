@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import KPICard from "../../components/KPICard";
 import StateDisplay from "../../components/StateDisplay";
-import { Users, UserCheck, AlertCircle, Clock, Target, Timer } from "lucide-react";
+import { Users, UserCheck, AlertCircle, Clock, Target, Timer, CheckCircle2, BookOpenCheck } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { apiGet } from "../../core/api/client";
 import { useRealtimeStatus } from "../../core/realtime/useRealtimeStatus";
 
 interface DashboardKpis {
+  // KPIs operacionais primarios (decisao 8 do escopo 2026-05-17)
+  ativos7d: number;
+  vinculosPendentes: number;
+  filaAjudaAgora: number;
+  aulasConcluidasHoje: number;
+  // KPIs secundarios
   totalAlfabetizandos: number;
   ativosHoje: number;
   travados: number;
@@ -15,7 +21,6 @@ interface DashboardKpis {
   tempoMedioRespostaHoras: number;
   pedidosAbertos?: number;
   travasAbertas?: number;
-  vinculosPendentes?: number;
   notificacoesNaoLidas?: number;
 }
 
@@ -34,6 +39,10 @@ interface DashboardResponse {
 }
 
 const EMPTY_KPIS: DashboardKpis = {
+  ativos7d: 0,
+  vinculosPendentes: 0,
+  filaAjudaAgora: 0,
+  aulasConcluidasHoje: 0,
   totalAlfabetizandos: 0,
   ativosHoje: 0,
   travados: 0,
@@ -42,7 +51,6 @@ const EMPTY_KPIS: DashboardKpis = {
   tempoMedioRespostaHoras: 0,
   pedidosAbertos: 0,
   travasAbertas: 0,
-  vinculosPendentes: 0,
   notificacoesNaoLidas: 0,
 };
 
@@ -136,26 +144,55 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
-        <KPICard title="Total Alfabetizandos" value={kpis.totalAlfabetizandos} icon={Users} />
-        <KPICard
-          title="Ativos Hoje"
-          value={kpis.ativosHoje}
-          icon={UserCheck}
-          subtitle={`${kpis.totalAlfabetizandos > 0 ? Math.round((kpis.ativosHoje / kpis.totalAlfabetizandos) * 100) : 0}% do total`}
-        />
-        <KPICard title="Travados" value={kpis.travasAbertas ?? kpis.travados} icon={AlertCircle} subtitle="Requerem atencao" />
-        <KPICard title="Pedidos Abertos" value={kpis.pedidosAbertos ?? 0} icon={Clock} subtitle="Ajuda" />
-        <KPICard title="Vinculos Pendentes" value={kpis.vinculosPendentes ?? 0} icon={UserCheck} />
-        <KPICard title="Notificacoes" value={kpis.notificacoesNaoLidas ?? 0} icon={AlertCircle} subtitle="Nao lidas" />
-        <KPICard title="Inativos 7d" value={kpis.inativos7d} icon={Clock} />
-        <KPICard title="Media de Acerto" value={`${kpis.mediaAcerto.toFixed(2)}%`} icon={Target} />
-        <KPICard
-          title="Tempo Medio Resposta"
-          value={`${kpis.tempoMedioRespostaHoras.toFixed(2)}h`}
-          icon={Timer}
-          subtitle="Tutores"
-        />
+      <div>
+        <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
+          Operacional do dia
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KPICard
+            title="Ativos (7 dias)"
+            value={kpis.ativos7d}
+            icon={UserCheck}
+            subtitle={`${kpis.totalAlfabetizandos > 0 ? Math.round((kpis.ativos7d / kpis.totalAlfabetizandos) * 100) : 0}% da base`}
+          />
+          <KPICard
+            title="Vinculos pendentes"
+            value={kpis.vinculosPendentes}
+            icon={Users}
+            subtitle="Aguardando aprovacao"
+          />
+          <KPICard
+            title="Fila de ajuda agora"
+            value={kpis.filaAjudaAgora}
+            icon={AlertCircle}
+            subtitle="Bloqueados + ajuda"
+          />
+          <KPICard
+            title="Aulas concluidas hoje"
+            value={kpis.aulasConcluidasHoje}
+            icon={CheckCircle2}
+            subtitle="Total no dia"
+          />
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
+          Metricas complementares
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <KPICard title="Total alfabetizandos" value={kpis.totalAlfabetizandos} icon={Users} />
+          <KPICard title="Ativos hoje" value={kpis.ativosHoje} icon={BookOpenCheck} />
+          <KPICard title="Inativos 7d+" value={kpis.inativos7d} icon={Clock} />
+          <KPICard title="Notificacoes nao lidas" value={kpis.notificacoesNaoLidas ?? 0} icon={AlertCircle} />
+          <KPICard title="Media de acerto" value={`${kpis.mediaAcerto.toFixed(1)}%`} icon={Target} />
+          <KPICard
+            title="Tempo medio resposta"
+            value={`${kpis.tempoMedioRespostaHoras.toFixed(1)}h`}
+            icon={Timer}
+            subtitle="Tutores"
+          />
+        </div>
       </div>
 
       <div className="border border-gray-300 bg-white p-6">

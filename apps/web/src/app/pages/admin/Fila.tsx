@@ -29,13 +29,22 @@ interface QueueResponse {
   items: QueueItem[];
 }
 
+// B3 2026-05-17: fila em 3 abas (decisao 7 do escopo).
+type QueueTab = "bloqueados" | "ajuda" | "vinculos";
+
+const QUEUE_TYPE_TO_TAB: Record<string, QueueTab> = {
+  progresso: "bloqueados",
+  ajuda: "ajuda",
+  vinculo: "vinculos",
+};
+
 export default function Fila() {
   const realtime = useRealtimeStatus();
   const [items, setItems] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
+  const [activeTab, setActiveTab] = useState<QueueTab>("bloqueados");
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [actionReason, setActionReason] = useState("");
@@ -74,18 +83,37 @@ export default function Fila() {
     void loadQueue({ silent: true });
   }, [loadQueue, realtime.lastOperationalEventAt]);
 
-  const typeOptions = useMemo(() => {
-    return [...new Set(items.map((item) => item.tipo).filter(Boolean))];
-  }, [items]);
-
   const statusOptions = useMemo(() => {
     return [...new Set(items.map((item) => item.status).filter(Boolean))];
   }, [items]);
+
+  const tabCounts = useMemo(() => {
+    const counts: Record<QueueTab, number> = { bloqueados: 0, ajuda: 0, vinculos: 0 };
+    for (const item of items) {
+      const tab = QUEUE_TYPE_TO_TAB[String(item.queueType ?? "")];
+      if (tab) counts[tab] += 1;
+    }
+    return counts;
+  }, [items]);
+
+  // Auto-seleciona aba com itens na primeira carga, mas nao sobrescreve escolha manual.
+  const [tabAutoPickDone, setTabAutoPickDone] = useState(false);
+  useEffect(() => {
+    if (tabAutoPickDone || loading) return;
+    const firstWithItems = (["bloqueados", "ajuda", "vinculos"] as QueueTab[]).find((tab) => tabCounts[tab] > 0);
+    if (firstWithItems && firstWithItems !== activeTab) {
+      setActiveTab(firstWithItems);
+    }
+    setTabAutoPickDone(true);
+  }, [activeTab, loading, tabAutoPickDone, tabCounts]);
 
   const filteredItems = useMemo(() => {
     const needle = query.trim().toLowerCase();
 
     return items.filter((item) => {
+      const matchTab = QUEUE_TYPE_TO_TAB[String(item.queueType ?? "")] === activeTab;
+      if (!matchTab) return false;
+
       const matchQuery =
         !needle ||
         [item.aluno, item.tipo, item.etapa, item.atividade].some((value) =>
@@ -94,12 +122,11 @@ export default function Fila() {
             .includes(needle),
         );
 
-      const matchType = !typeFilter || item.tipo === typeFilter;
       const matchStatus = !statusFilter || item.status === statusFilter;
 
-      return matchQuery && matchType && matchStatus;
+      return matchQuery && matchStatus;
     });
-  }, [items, query, statusFilter, typeFilter]);
+  }, [items, query, statusFilter, activeTab]);
 
   const selectedItem = useMemo(() => {
     if (!selectedId) {
@@ -180,50 +207,76 @@ export default function Fila() {
         </div>
       ) : null}
 
-      <div className="border border-gray-300 bg-white p-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">Buscar</label>
-          <div className="border border-gray-300 bg-gray-50 px-3 py-2 flex items-center gap-2">
-            <Search className="w-4 h-4 text-gray-500" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Aluno, etapa, atividade..."
-              className="w-full bg-transparent text-sm focus:outline-none"
-            />
+      <div className="border border-gray-300 bg-white">
+        <nav className="flex border-b border-gray-300" role="tablist" aria-label="Tipo de item da fila">
+          {([
+            { key: "bloqueados", label: "Bloqueados" },
+            { key: "ajuda", label: "Pedidos de ajuda" },
+            { key: "vinculos", label: "Vinculos pendentes" },
+          ] as Array<{ key: QueueTab; label: string }>).map((tab) => {
+            const isActive = activeTab === tab.key;
+            const count = tabCounts[tab.key];
+            return (
+              <button
+                key={tab.key}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => {
+                  setActiveTab(tab.key);
+                  setSelectedId("");
+                }}
+                className={`flex-1 px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                  isActive
+                    ? "border-gray-900 text-gray-900 bg-white"
+                    : "border-transparent text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {tab.label}
+                <span
+                  className={`ml-2 inline-flex items-center justify-center min-w-6 h-5 px-1.5 text-xs rounded-full ${
+                    count > 0
+                      ? isActive
+                        ? "bg-gray-900 text-white"
+                        : "bg-gray-200 text-gray-700"
+                      : "bg-gray-100 text-gray-400"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Buscar</label>
+            <div className="border border-gray-300 bg-gray-50 px-3 py-2 flex items-center gap-2">
+              <Search className="w-4 h-4 text-gray-500" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Aluno, etapa, atividade..."
+                className="w-full bg-transparent text-sm focus:outline-none"
+              />
+            </div>
           </div>
-        </div>
 
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">Tipo</label>
-          <select
-            value={typeFilter}
-            onChange={(event) => setTypeFilter(event.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 bg-gray-50 text-sm"
-          >
-            <option value="">Todos</option>
-            {typeOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">Status</label>
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 bg-gray-50 text-sm"
-          >
-            <option value="">Todos</option>
-            {statusOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          <div>
+            <label className="block text-xs text-gray-600 mb-1">Status</label>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 bg-gray-50 text-sm"
+            >
+              <option value="">Todos</option>
+              {statusOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
