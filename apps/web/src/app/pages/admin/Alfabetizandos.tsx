@@ -128,20 +128,24 @@ export default function Alfabetizandos() {
       setError("Nome do alfabetizando e obrigatorio.");
       return;
     }
-    if (!email) {
-      setError("Email do alfabetizando e obrigatorio.");
+    if (email && !email.includes("@")) {
+      setError("Email do alfabetizando invalido.");
       return;
     }
 
     try {
       setSaving(true);
       setError("");
-      await apiPatch(`/cadastros/alfabetizandos/${itemId}`, {
+      const payload: Record<string, string | null> = {
         nome,
-        email,
         phone: editForm.telefone.trim() || null,
         cpf: editForm.cpf.trim() || null,
-      });
+      };
+      if (email) {
+        payload.email = email;
+      }
+
+      await apiPatch(`/cadastros/alfabetizandos/${itemId}`, payload);
       cancelEdit();
       await loadStudents();
     } catch (submitError) {
@@ -230,139 +234,144 @@ export default function Alfabetizandos() {
       <div className="border border-gray-300 bg-white">
         {loading ? (
           <StateDisplay type="loading" />
-        ) : error ? (
+        ) : error && items.length === 0 ? (
           <StateDisplay type="error" message={error} />
         ) : items.length === 0 ? (
           <StateDisplay type="empty" message="Nenhum alfabetizando cadastrado ainda." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-100 border-b border-gray-300">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Nome</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Tutor</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Grupo</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Etapa</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Progresso</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Telefone</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">CPF</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Ultima atividade</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((aluno) => (
-                  <tr key={aluno.id} className="border-b border-gray-200 hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900 font-medium">
-                      {editingId === aluno.id ? (
-                        <input
-                          value={editForm.nome}
-                          onChange={(event) => setEditForm((current) => ({ ...current, nome: event.target.value }))}
-                          className="w-full border border-gray-300 px-2 py-1 text-sm"
-                        />
-                      ) : (
-                        aluno.nome
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {editingId === aluno.id ? (
-                        <input
-                          value={editForm.email}
-                          onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))}
-                          className="w-full border border-gray-300 px-2 py-1 text-sm"
-                        />
-                      ) : (
-                        aluno.email || "-"
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{aluno.tutorNome || "-"}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{aluno.grupo || "-"}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{aluno.etapa}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-2 bg-gray-200 border border-gray-300">
-                          <div className="h-full bg-gray-900" style={{ width: `${aluno.progresso}%` }} />
-                        </div>
-                        <span className="text-xs text-gray-600 w-10">{aluno.progresso}%</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{aluno.status}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {editingId === aluno.id ? (
-                        <input
-                          value={editForm.telefone}
-                          onChange={(event) => setEditForm((current) => ({ ...current, telefone: event.target.value }))}
-                          className="w-full border border-gray-300 px-2 py-1 text-sm"
-                        />
-                      ) : (
-                        aluno.telefone || "-"
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {editingId === aluno.id ? (
-                        <input
-                          value={editForm.cpf}
-                          onChange={(event) => setEditForm((current) => ({ ...current, cpf: event.target.value }))}
-                          className="w-full border border-gray-300 px-2 py-1 text-sm"
-                        />
-                      ) : (
-                        aluno.cpf || "-"
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{aluno.ultimaAtividade}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        {editingId === aluno.id ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => onSaveEdit(aluno.id)}
-                              disabled={saving}
-                              className="px-3 py-1 text-xs border border-gray-900 bg-gray-900 text-white disabled:opacity-60"
-                            >
-                              Salvar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={cancelEdit}
-                              className="px-3 py-1 text-xs border border-gray-400 hover:bg-gray-100"
-                            >
-                              Cancelar
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <Link
-                              to={`/admin/alfabetizandos/${aluno.id}`}
-                              className="px-3 py-1 text-xs border border-gray-400 hover:bg-gray-100 inline-block"
-                            >
-                              Ver detalhes
-                            </Link>
-                            <button
-                              type="button"
-                              onClick={() => startEdit(aluno)}
-                              className="px-3 py-1 text-xs border border-gray-400 hover:bg-gray-100"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onDelete(aluno)}
-                              disabled={deletingId === aluno.id}
-                              className="px-3 py-1 text-xs border border-red-300 bg-red-50 text-red-700 disabled:opacity-60"
-                            >
-                              {deletingId === aluno.id ? "Excluindo..." : "Excluir"}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
+          <div>
+            {error ? (
+              <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+            ) : null}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100 border-b border-gray-300">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Nome</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Email</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Tutor</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Grupo</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Etapa</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Progresso</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Telefone</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">CPF</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Ultima atividade</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Acoes</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {items.map((aluno) => (
+                    <tr key={aluno.id} className="border-b border-gray-200 hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                        {editingId === aluno.id ? (
+                          <input
+                            value={editForm.nome}
+                            onChange={(event) => setEditForm((current) => ({ ...current, nome: event.target.value }))}
+                            className="w-full border border-gray-300 px-2 py-1 text-sm"
+                          />
+                        ) : (
+                          aluno.nome
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {editingId === aluno.id ? (
+                          <input
+                            value={editForm.email}
+                            onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))}
+                            className="w-full border border-gray-300 px-2 py-1 text-sm"
+                          />
+                        ) : (
+                          aluno.email || "-"
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{aluno.tutorNome || "-"}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{aluno.grupo || "-"}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{aluno.etapa}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-gray-200 border border-gray-300">
+                            <div className="h-full bg-gray-900" style={{ width: `${aluno.progresso}%` }} />
+                          </div>
+                          <span className="text-xs text-gray-600 w-10">{aluno.progresso}%</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{aluno.status}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {editingId === aluno.id ? (
+                          <input
+                            value={editForm.telefone}
+                            onChange={(event) => setEditForm((current) => ({ ...current, telefone: event.target.value }))}
+                            className="w-full border border-gray-300 px-2 py-1 text-sm"
+                          />
+                        ) : (
+                          aluno.telefone || "-"
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {editingId === aluno.id ? (
+                          <input
+                            value={editForm.cpf}
+                            onChange={(event) => setEditForm((current) => ({ ...current, cpf: event.target.value }))}
+                            className="w-full border border-gray-300 px-2 py-1 text-sm"
+                          />
+                        ) : (
+                          aluno.cpf || "-"
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{aluno.ultimaAtividade}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2">
+                          {editingId === aluno.id ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onSaveEdit(aluno.id)}
+                                disabled={saving}
+                                className="px-3 py-1 text-xs border border-gray-900 bg-gray-900 text-white disabled:opacity-60"
+                              >
+                                Salvar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEdit}
+                                className="px-3 py-1 text-xs border border-gray-400 hover:bg-gray-100"
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <Link
+                                to={`/admin/alfabetizandos/${aluno.id}`}
+                                className="px-3 py-1 text-xs border border-gray-400 hover:bg-gray-100 inline-block"
+                              >
+                                Ver detalhes
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => startEdit(aluno)}
+                                className="px-3 py-1 text-xs border border-gray-400 hover:bg-gray-100"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onDelete(aluno)}
+                                disabled={deletingId === aluno.id}
+                                className="px-3 py-1 text-xs border border-red-300 bg-red-50 text-red-700 disabled:opacity-60"
+                              >
+                                {deletingId === aluno.id ? "Excluindo..." : "Excluir"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

@@ -124,20 +124,24 @@ export default function Alfabetizadores() {
       setError("Nome do alfabetizador e obrigatorio.");
       return;
     }
-    if (!email) {
-      setError("Email do alfabetizador e obrigatorio.");
+    if (email && !email.includes("@")) {
+      setError("Email do alfabetizador invalido.");
       return;
     }
 
     try {
       setSaving(true);
       setError("");
-      await apiPatch(`/cadastros/alfabetizadores/${itemId}`, {
+      const payload: Record<string, string | null> = {
         nome,
-        email,
         phone: editForm.telefone.trim() || null,
         cpf: editForm.cpf.trim() || null,
-      });
+      };
+      if (email) {
+        payload.email = email;
+      }
+
+      await apiPatch(`/cadastros/alfabetizadores/${itemId}`, payload);
       cancelEdit();
       await loadTutors();
     } catch (submitError) {
@@ -226,122 +230,127 @@ export default function Alfabetizadores() {
       <div className="border border-gray-300 bg-white">
         {loading ? (
           <StateDisplay type="loading" />
-        ) : error ? (
+        ) : error && items.length === 0 ? (
           <StateDisplay type="error" message={error} />
         ) : items.length === 0 ? (
           <StateDisplay type="empty" message="Nenhum alfabetizador cadastrado ainda." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-100 border-b border-gray-300">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Nome</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Telefone</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">CPF</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700"># Alunos</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Travados</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Pontuacao</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((tutor) => (
-                  <tr key={tutor.id} className="border-b border-gray-200 hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900 font-medium">
-                      {editingId === tutor.id ? (
-                        <input
-                          value={editForm.nome}
-                          onChange={(event) => setEditForm((current) => ({ ...current, nome: event.target.value }))}
-                          className="w-full border border-gray-300 px-2 py-1 text-sm"
-                        />
-                      ) : (
-                        tutor.nome
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {editingId === tutor.id ? (
-                        <input
-                          value={editForm.email}
-                          onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))}
-                          className="w-full border border-gray-300 px-2 py-1 text-sm"
-                        />
-                      ) : (
-                        tutor.email || "-"
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {editingId === tutor.id ? (
-                        <input
-                          value={editForm.telefone}
-                          onChange={(event) => setEditForm((current) => ({ ...current, telefone: event.target.value }))}
-                          className="w-full border border-gray-300 px-2 py-1 text-sm"
-                        />
-                      ) : (
-                        tutor.telefone || "-"
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {editingId === tutor.id ? (
-                        <input
-                          value={editForm.cpf}
-                          onChange={(event) => setEditForm((current) => ({ ...current, cpf: event.target.value }))}
-                          className="w-full border border-gray-300 px-2 py-1 text-sm"
-                        />
-                      ) : (
-                        tutor.cpf || "-"
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{tutor.alunos}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{tutor.travados}</td>
-                    <td className="px-4 py-3 text-sm font-bold text-gray-900">
-                      {Number(tutor.pontuacao).toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        {editingId === tutor.id ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => onSaveEdit(tutor.id)}
-                              disabled={saving}
-                              className="px-3 py-1 text-xs border border-gray-900 bg-gray-900 text-white disabled:opacity-60"
-                            >
-                              Salvar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={cancelEdit}
-                              className="px-3 py-1 text-xs border border-gray-400 hover:bg-gray-100"
-                            >
-                              Cancelar
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => startEdit(tutor)}
-                              className="px-3 py-1 text-xs border border-gray-400 hover:bg-gray-100"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onDelete(tutor)}
-                              disabled={deletingId === tutor.id}
-                              className="px-3 py-1 text-xs border border-red-300 bg-red-50 text-red-700 disabled:opacity-60"
-                            >
-                              {deletingId === tutor.id ? "Excluindo..." : "Excluir"}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
+          <div>
+            {error ? (
+              <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+            ) : null}
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100 border-b border-gray-300">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Nome</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Email</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Telefone</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">CPF</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700"># Alunos</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Travados</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Pontuacao</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Acoes</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {items.map((tutor) => (
+                    <tr key={tutor.id} className="border-b border-gray-200 hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                        {editingId === tutor.id ? (
+                          <input
+                            value={editForm.nome}
+                            onChange={(event) => setEditForm((current) => ({ ...current, nome: event.target.value }))}
+                            className="w-full border border-gray-300 px-2 py-1 text-sm"
+                          />
+                        ) : (
+                          tutor.nome
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {editingId === tutor.id ? (
+                          <input
+                            value={editForm.email}
+                            onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))}
+                            className="w-full border border-gray-300 px-2 py-1 text-sm"
+                          />
+                        ) : (
+                          tutor.email || "-"
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {editingId === tutor.id ? (
+                          <input
+                            value={editForm.telefone}
+                            onChange={(event) => setEditForm((current) => ({ ...current, telefone: event.target.value }))}
+                            className="w-full border border-gray-300 px-2 py-1 text-sm"
+                          />
+                        ) : (
+                          tutor.telefone || "-"
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {editingId === tutor.id ? (
+                          <input
+                            value={editForm.cpf}
+                            onChange={(event) => setEditForm((current) => ({ ...current, cpf: event.target.value }))}
+                            className="w-full border border-gray-300 px-2 py-1 text-sm"
+                          />
+                        ) : (
+                          tutor.cpf || "-"
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{tutor.alunos}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">{tutor.travados}</td>
+                      <td className="px-4 py-3 text-sm font-bold text-gray-900">
+                        {Number(tutor.pontuacao).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2">
+                          {editingId === tutor.id ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => onSaveEdit(tutor.id)}
+                                disabled={saving}
+                                className="px-3 py-1 text-xs border border-gray-900 bg-gray-900 text-white disabled:opacity-60"
+                              >
+                                Salvar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEdit}
+                                className="px-3 py-1 text-xs border border-gray-400 hover:bg-gray-100"
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => startEdit(tutor)}
+                                className="px-3 py-1 text-xs border border-gray-400 hover:bg-gray-100"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onDelete(tutor)}
+                                disabled={deletingId === tutor.id}
+                                className="px-3 py-1 text-xs border border-red-300 bg-red-50 text-red-700 disabled:opacity-60"
+                              >
+                                {deletingId === tutor.id ? "Excluindo..." : "Excluir"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
