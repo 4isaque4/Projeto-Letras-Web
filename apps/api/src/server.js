@@ -67,6 +67,32 @@ app.use(`${env.apiPrefix}/reference`, referenceRouter);
 app.use(`${env.apiPrefix}/cadastros`, cadastrosRouter);
 app.use(`${env.apiPrefix}/painel`, painelRouter);
 
+// Endpoint temporario de setup — remover apos criar admin@gmail.com
+app.post(`${env.apiPrefix}/setup-admin`, async (_req, res) => {
+  try {
+    const { supabaseAdmin, isSupabaseConfigured } = await import("./lib/supabase.js");
+    if (!isSupabaseConfigured || !supabaseAdmin) {
+      return res.status(503).json({ message: "Supabase nao configurado." });
+    }
+    const email = "admin@gmail.com";
+    const password = "123456";
+    const { data: list } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+    const existing = (list?.users ?? []).find((u) => u.email === email);
+    if (existing) await supabaseAdmin.auth.admin.deleteUser(existing.id);
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      email, password, email_confirm: true,
+      user_metadata: { full_name: "Admin", role: "admin" },
+    });
+    if (error) return res.status(400).json({ message: error.message });
+    await supabaseAdmin.from("profiles").upsert({
+      id: data.user.id, full_name: "Admin", role: "admin", metadata: { email },
+    });
+    return res.json({ ok: true, id: data.user.id });
+  } catch (err) {
+    return res.status(500).json({ message: String(err.message ?? err) });
+  }
+});
+
 app.get("/", (_req, res) => {
   res.json({
     service: "letras-api",
