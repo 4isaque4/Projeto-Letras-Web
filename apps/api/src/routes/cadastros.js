@@ -23,41 +23,67 @@ export const cadastrosRouter = Router();
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 // Resolve um educator ID (pode ser CUID do NestJS ou UUID do Supabase) para o
-// UUID do Supabase, consultando /auth/educators/me e depois o profile por email.
+// UUID do Supabase.
+//
+// Estratégia 1: consulta a tabela "Educator" do NestJS/Prisma (que pode estar
+//   no mesmo banco Supabase) e retorna supabaseAuthUserId.
+// Estratégia 2: chama internamente /auth/educators/me nas portas conhecidas
+//   do NestJS para obter o email, depois busca o profile por email.
 async function resolveSupabaseTutorId(rawId, authHeader, supabaseClient) {
   if (!rawId) return null;
   if (UUID_PATTERN.test(rawId)) return rawId; // já é UUID Supabase
 
-  // É um CUID do NestJS — tenta resolver via /auth/educators/me
+  // Estratégia 1: tabela Educator do NestJS/Prisma no mesmo banco
+  try {
+    const { data: educator } = await supabaseClient
+      .from("Educator")
+      .select("supabaseAuthUserId")
+      .eq("id", rawId)
+      .maybeSingle();
+
+    if (educator?.supabaseAuthUserId && UUID_PATTERN.test(educator.supabaseAuthUserId)) {
+      return educator.supabaseAuthUserId;
+    }
+  } catch {
+    // Tabela não existe neste banco — tenta estratégia 2
+  }
+
+  // Estratégia 2: chama /auth/educators/me via porta interna do NestJS
   const token = String(authHeader ?? "").replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
 
-  try {
-    const resp = await fetch("https://painel.letras.cloud/api/v1/auth/educators/me", {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(4000),
-    });
+  const nestPorts = [3000, 8082, 8080];
+  for (const port of nestPorts) {
+    try {
+      const resp = await fetch(`http://127.0.0.1:${port}/auth/educators/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(2000),
+      });
 
-    if (!resp.ok) return null;
+      if (!resp.ok) continue;
 
-    const data = await resp.json();
-    const email = String(data?.educator?.email ?? "").trim().toLowerCase();
-    if (!email) return null;
+      const data = await resp.json();
+      const email = String(data?.educator?.email ?? "").trim().toLowerCase();
+      if (!email) continue;
 
-    const { data: profiles } = await supabaseClient
-      .from("profiles")
-      .select("id, metadata")
-      .eq("role", "tutor");
+      // Busca o profile Supabase pelo email no metadata
+      const { data: profiles } = await supabaseClient
+        .from("profiles")
+        .select("id, metadata")
+        .eq("role", "tutor");
 
-    const found = (profiles ?? []).find((p) => {
-      const pEmail = String(p.metadata?.email ?? "").trim().toLowerCase();
-      return pEmail && pEmail === email;
-    });
+      const found = (profiles ?? []).find((p) => {
+        const pEmail = String(p.metadata?.email ?? "").trim().toLowerCase();
+        return pEmail && pEmail === email;
+      });
 
-    return found?.id ?? null;
-  } catch {
-    return null;
+      if (found?.id) return found.id;
+    } catch {
+      // Tenta a próxima porta
+    }
   }
+
+  return null;
 }
 
 function mapById(items) {
