@@ -348,7 +348,7 @@ cadastrosRouter.delete("/alfabetizadores/:id", async (req, res) => {
 
 cadastrosRouter.get("/alfabetizandos", async (req, res) => {
   try {
-    const tutorId = String(req.query.tutorId ?? "").trim();
+    const tutorId = String(req.query.tutorId ?? req.query.educatorId ?? "").trim();
     const students = await getProfiles({ role: "alfabetizando" });
     const studentMap = mapById(students);
 
@@ -674,14 +674,62 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
 
 cadastrosRouter.post("/alfabetizandos", async (req, res) => {
   try {
+    // Aceita tanto o formato do painel web (nome/email/password) quanto
+    // o formato do app mobile (displayName/cpfOrPassport/phoneDigits).
+    const fullName = String(
+      req.body?.fullName ?? req.body?.displayName ?? req.body?.nome ?? ""
+    ).trim();
+
+    const cpf = String(
+      req.body?.cpf ?? req.body?.cpfOrPassport ?? ""
+    ).trim();
+
+    const phone = String(
+      req.body?.phone ?? req.body?.phoneDigits ?? req.body?.telefone ?? ""
+    ).trim();
+
+    let email = String(req.body?.email ?? "").trim().toLowerCase();
+    let password = String(req.body?.password ?? "").trim();
+
+    // Se email/senha não vieram (formato mobile), auto-gera a partir do CPF/telefone.
+    if (!email || !email.includes("@")) {
+      const identifier = (cpf || phone)
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .slice(-16)
+        .toLowerCase() || Date.now().toString(36);
+      email = `aluno.${identifier}@mobile.letras.local`;
+    }
+
+    if (password.length < 6) {
+      const identifier = (cpf || phone)
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .slice(-16) || Date.now().toString(36);
+      password = `Letras@${identifier}`;
+    }
+
     const data = await createAuthUserWithProfile({
-      email: req.body?.email,
-      password: req.body?.password,
-      fullName: req.body?.fullName ?? req.body?.nome,
-      phone: req.body?.phone,
-      cpf: req.body?.cpf,
+      email,
+      password,
+      fullName,
+      phone: phone || undefined,
+      cpf: cpf || undefined,
       role: "alfabetizando",
     });
+
+    // Se vier educatorId (fluxo mobile do educador), cria o vínculo automaticamente.
+    const educatorId = String(req.body?.educatorId ?? "").trim();
+    if (educatorId && data?.id) {
+      try {
+        await createTutorStudentLink({
+          tutorId: educatorId,
+          studentId: data.id,
+          status: "confirmado",
+          requestedBy: educatorId,
+        });
+      } catch {
+        // Vínculo falhou mas o cadastro foi criado — não bloqueia o retorno.
+      }
+    }
 
     res.status(201).json(data);
   } catch (error) {

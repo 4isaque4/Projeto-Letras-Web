@@ -3,9 +3,11 @@ import express from "express";
 import { createServer } from "node:http";
 import { env } from "./config/env.js";
 import { installDashboardRealtimeServer } from "./realtime/dashboardRealtime.js";
+import { authRouter } from "./routes/auth.js";
 import { cadastrosRouter } from "./routes/cadastros.js";
 import { healthRouter } from "./routes/health.js";
 import { painelRouter } from "./routes/painel.js";
+import { referenceRouter } from "./routes/reference.js";
 
 const app = express();
 const allowAnyOrigin = env.corsOrigins.includes("*");
@@ -60,6 +62,8 @@ app.use(
 app.use(express.json({ limit: "1mb" }));
 
 app.use(healthRouter);
+app.use(`${env.apiPrefix}/auth`, authRouter);
+app.use(`${env.apiPrefix}/reference`, referenceRouter);
 app.use(`${env.apiPrefix}/cadastros`, cadastrosRouter);
 app.use(`${env.apiPrefix}/painel`, painelRouter);
 
