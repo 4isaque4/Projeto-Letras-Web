@@ -126,3 +126,43 @@ authRouter.get("/educators/me", async (req, res) => {
     return res.status(err.status ?? 500).json({ message: err.message ?? "Erro interno." });
   }
 });
+
+// POST /auth/setup-admin — cria ou recria a conta admin@gmail.com no Supabase
+authRouter.post("/setup-admin", async (req, res) => {
+  try {
+    const client = requireSupabase();
+    const email = "admin@gmail.com";
+    const password = "123456";
+
+    // Remove conta existente se houver (ignora erro)
+    const { data: list } = await client.auth.admin.listUsers({ perPage: 1000 });
+    const existing = (list?.users ?? []).find((u) => u.email === email);
+    if (existing) {
+      await client.auth.admin.deleteUser(existing.id);
+    }
+
+    // Cria conta admin no Supabase Auth
+    const { data, error } = await client.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { full_name: "Admin", role: "admin" },
+    });
+
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    // Garante entrada na tabela profiles
+    await client.from("profiles").upsert({
+      id: data.user.id,
+      full_name: "Admin",
+      role: "admin",
+      metadata: { email },
+    });
+
+    return res.json({ ok: true, id: data.user.id, email });
+  } catch (err) {
+    return res.status(500).json({ message: err.message ?? "Erro interno." });
+  }
+});
