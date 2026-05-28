@@ -3,6 +3,7 @@ import { afterEach, describe, it } from "node:test";
 import {
   __setSupabaseAdminForTests,
   createSupportRequest,
+  deleteProfileRecord,
   updateActivityProgressStatus,
   upsertActivityProgressFromMobile,
 } from "./letrasDataService.js";
@@ -158,6 +159,32 @@ describe("mobile-web support and lock contracts", () => {
       true,
     );
   });
+
+  it("deletes a mobile-only educator even when its id is UUID-shaped", async () => {
+    const mobileEducatorId = "44444444-4444-4444-8444-444444444444";
+    const supabase = new FakeSupabase({
+      Educator: [
+        {
+          id: mobileEducatorId,
+          name: "Tutor Teste",
+          email: "teste@example.com",
+          cpf: "12345678901",
+          phoneDigits: "11999999999",
+          supabaseAuthUserId: null,
+        },
+      ],
+    });
+    __setSupabaseAdminForTests(supabase);
+
+    const result = await deleteProfileRecord({
+      profileId: mobileEducatorId,
+      role: "tutor",
+    });
+
+    assert.equal(result.deleted, true);
+    assert.equal(result.id, mobileEducatorId);
+    assert.equal(supabase.rows("Educator").length, 0);
+  });
 });
 
 function createProgressSupabase(overrides = {}) {
@@ -252,6 +279,11 @@ class FakeQuery {
     return this;
   }
 
+  delete() {
+    this.mode = "delete";
+    return this;
+  }
+
   upsert(payload, options = {}) {
     this.mode = "upsert";
     this.payload = payload;
@@ -323,6 +355,13 @@ class FakeQuery {
         table.push(row);
         rows = [row];
       }
+    } else if (this.mode === "delete") {
+      rows = this.applyFilters(table);
+      const rowsToDelete = new Set(rows);
+      this.client.tables.set(
+        this.tableName,
+        table.filter((row) => !rowsToDelete.has(row)),
+      );
     } else {
       rows = this.applyFilters(table);
     }

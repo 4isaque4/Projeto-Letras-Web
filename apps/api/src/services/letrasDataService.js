@@ -4125,6 +4125,54 @@ export async function deleteProfileRecord({ profileId, role }) {
     }
 
     if (!existingProfile) {
+      if (normalizedRole === "tutor") {
+        const existingEducator = await resolveMobileEducatorByAnyId(normalizedProfileId);
+        if (!existingEducator?.id) {
+          throw new HttpError(404, "Perfil nao encontrado.");
+        }
+
+        const { error } = await client
+          .from("Educator")
+          .delete()
+          .eq("id", String(existingEducator.id));
+
+        if (error && !isOptionalSourceMissing(error)) {
+          throw new HttpError(400, `Falha ao excluir alfabetizador mobile: ${error.message}`);
+        }
+
+        return { id: String(existingEducator.id), deleted: true };
+      }
+
+      if (normalizedRole === "alfabetizando") {
+        const { data: existingLearner, error: mobileLearnerReadError } = await client
+          .from("LearnerProfile")
+          .select("id")
+          .eq("id", normalizedProfileId)
+          .maybeSingle();
+
+        if (mobileLearnerReadError && !isOptionalSourceMissing(mobileLearnerReadError)) {
+          throw new HttpError(
+            400,
+            `Falha ao buscar alfabetizando mobile: ${mobileLearnerReadError.message}`,
+          );
+        }
+
+        if (!existingLearner) {
+          throw new HttpError(404, "Perfil nao encontrado.");
+        }
+
+        const { error } = await client
+          .from("LearnerProfile")
+          .delete()
+          .eq("id", normalizedProfileId);
+
+        if (error && !isOptionalSourceMissing(error)) {
+          throw new HttpError(400, `Falha ao excluir alfabetizando mobile: ${error.message}`);
+        }
+
+        return { id: normalizedProfileId, deleted: true };
+      }
+
       throw new HttpError(404, "Perfil nao encontrado.");
     }
 
