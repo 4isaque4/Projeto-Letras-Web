@@ -57,7 +57,7 @@ export default function Login() {
         </div>
 
         <div className="border-2 border-gray-300 bg-white p-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-6">T1. Login</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-6">Entrar</h2>
 
           {status === "loading" && !isSubmitting && (
             <div className="mb-4 border border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-700">

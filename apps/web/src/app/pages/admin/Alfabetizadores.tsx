@@ -121,7 +121,7 @@ export default function Alfabetizadores() {
     const nome = editForm.nome.trim();
     const email = editForm.email.trim();
     if (!nome) {
-      setError("Nome do alfabetizador e obrigatorio.");
+      setError("Nome do alfabetizador e obrigatório.");
       return;
     }
     if (email && !email.includes("@")) {
@@ -180,8 +180,8 @@ export default function Alfabetizadores() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">T6. Alfabetizadores</h1>
-        <p className="text-sm text-gray-600 mt-1">Gestao de tutores e desempenho</p>
+        <h1 className="text-2xl font-bold text-gray-900">Alfabetizadores</h1>
+        <p className="text-sm text-gray-600 mt-1">Gestão de tutores e desempenho</p>
       </div>
 
       <form onSubmit={onCreateTutor} className="border border-gray-300 bg-white p-4 space-y-3">
@@ -249,8 +249,8 @@ export default function Alfabetizadores() {
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">CPF</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700"># Alunos</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Travados</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Pontuacao</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Acoes</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Pontuação</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Ações</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -94,7 +94,7 @@ export default function Ranking() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">T11. Pontuacao e Ranking</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Pontuação e Ranking</h1>
         <p className="text-sm text-gray-600 mt-1">Ranking consolidado com base no progresso real</p>
       </div>
 

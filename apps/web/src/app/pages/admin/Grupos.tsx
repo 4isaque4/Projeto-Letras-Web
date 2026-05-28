@@ -52,8 +52,8 @@ export default function Grupos() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">T8. Grupos</h1>
-          <p className="text-sm text-gray-600 mt-1">Visao consolidada dos grupos de alfabetizacao</p>
+          <h1 className="text-2xl font-bold text-gray-900">Grupos</h1>
+          <p className="text-sm text-gray-600 mt-1">Visão consolidada dos grupos de alfabetização</p>
         </div>
         <button
           onClick={loadGroups}

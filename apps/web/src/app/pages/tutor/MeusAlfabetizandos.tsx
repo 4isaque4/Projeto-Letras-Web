@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import StateDisplay from "../../components/StateDisplay";
-import { apiGet } from "../../core/api/client";
+import { apiGet, apiPost } from "../../core/api/client";
 import { useAuth } from "../../core/auth/AuthProvider";
 
 interface StudentItem {
@@ -19,6 +19,26 @@ interface StudentsResponse {
   items: StudentItem[];
 }
 
+interface StudentCreateForm {
+  nome: string;
+  email: string;
+  password: string;
+  telefone: string;
+  cpf: string;
+}
+
+interface CreatedStudent {
+  id: string;
+}
+
+const EMPTY_CREATE_FORM: StudentCreateForm = {
+  nome: "",
+  email: "",
+  password: "",
+  telefone: "",
+  cpf: "",
+};
+
 export default function MeusAlfabetizandos() {
   const { user } = useAuth();
   const [items, setItems] = useState<StudentItem[]>([]);
@@ -26,47 +46,97 @@ export default function MeusAlfabetizandos() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [createForm, setCreateForm] = useState<StudentCreateForm>(EMPTY_CREATE_FORM);
+  const [saving, setSaving] = useState(false);
+  const [createMessage, setCreateMessage] = useState("");
 
-  useEffect(() => {
+  const loadStudents = useCallback(async () => {
     if (!user?.id) {
       setLoading(false);
-      setError("Tutor nao autenticado.");
+      setError("Tutor não autenticado.");
       return;
     }
 
-    let active = true;
-
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError("");
-        const response = (await apiGet(
-          `/cadastros/alfabetizandos?tutorId=${encodeURIComponent(user.id)}`,
-        )) as StudentsResponse;
-
-        if (!active) {
-          return;
-        }
-
-        setItems(response.items ?? []);
-      } catch (fetchError) {
-        if (!active) {
-          return;
-        }
-        setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar alfabetizandos.");
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    };
-
-    load();
-
-    return () => {
-      active = false;
-    };
+    try {
+      setLoading(true);
+      setError("");
+      const response = (await apiGet(
+        `/cadastros/alfabetizandos?tutorId=${encodeURIComponent(user.id)}`,
+      )) as StudentsResponse;
+      setItems(response.items ?? []);
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar alfabetizandos.");
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
+
+  useEffect(() => {
+    void loadStudents();
+  }, [loadStudents]);
+
+  const onCreateStudent = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!user?.id) {
+      setError("Tutor não autenticado.");
+      return;
+    }
+
+    const nome = createForm.nome.trim();
+    const cpf = createForm.cpf.trim();
+    const telefone = createForm.telefone.trim();
+    const emailInformado = createForm.email.trim();
+    const senhaInformada = createForm.password.trim();
+
+    if (!nome) {
+      setError("Informe o nome do alfabetizando.");
+      return;
+    }
+
+    // CPF identifica o alfabetizando no mobile. Sem CPF não dá pra vincular depois.
+    if (!cpf) {
+      setError("Informe o CPF do alfabetizando.");
+      return;
+    }
+
+    // Backend exige email/senha pra criar usuário no Supabase Auth.
+    // Pro fluxo do alfabetizando (que usa CPF/telefone), geramos automaticamente
+    // se o tutor não informar.
+    const cpfDigits = cpf.replace(/[^0-9]/g, "") || `aluno${Date.now()}`;
+    const email = emailInformado || `aluno.${cpfDigits}@mobile.letras.local`;
+    const password = senhaInformada || `Letras@${cpfDigits}`;
+
+    try {
+      setSaving(true);
+      setError("");
+      setCreateMessage("");
+
+      const created = (await apiPost("/cadastros/alfabetizandos", {
+        nome,
+        email,
+        password,
+        phone: telefone || undefined,
+        cpf: cpf || undefined,
+      })) as CreatedStudent;
+
+      // Vincula automaticamente o alfabetizando ao tutor logado.
+      await apiPost("/cadastros/vinculos", {
+        tutorId: user.id,
+        studentId: created.id,
+        status: "confirmado",
+        requestedBy: user.id,
+      });
+
+      setCreateForm(EMPTY_CREATE_FORM);
+      setCreateMessage(`Alfabetizando "${nome}" cadastrado e vinculado.`);
+      await loadStudents();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Falha ao cadastrar alfabetizando.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const statusOptions = useMemo(() => {
     return [...new Set(items.map((item) => item.status).filter(Boolean))];
@@ -127,10 +197,74 @@ export default function MeusAlfabetizandos() {
           <p className="text-2xl font-bold text-gray-900">{summary.travados}</p>
         </div>
         <div className="border border-gray-300 bg-white p-4">
-          <p className="text-xs text-gray-500 mb-1">Media de Progresso</p>
+          <p className="text-xs text-gray-500 mb-1">Média de Progresso</p>
           <p className="text-2xl font-bold text-gray-900">{summary.mediaProgresso}%</p>
         </div>
       </div>
+
+      <form onSubmit={onCreateStudent} className="border border-gray-300 bg-white p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Cadastrar alfabetizando</p>
+            <p className="text-xs text-gray-600">
+              O vínculo é criado automaticamente com você como alfabetizador responsável.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+          <input
+            value={createForm.nome}
+            onChange={(event) => setCreateForm((current) => ({ ...current, nome: event.target.value }))}
+            placeholder="Nome completo *"
+            className="border border-gray-300 px-3 py-2 text-sm"
+            required
+          />
+          <input
+            value={createForm.cpf}
+            onChange={(event) => setCreateForm((current) => ({ ...current, cpf: event.target.value }))}
+            placeholder="CPF *"
+            className="border border-gray-300 px-3 py-2 text-sm"
+            required
+          />
+          <input
+            value={createForm.telefone}
+            onChange={(event) => setCreateForm((current) => ({ ...current, telefone: event.target.value }))}
+            placeholder="Telefone"
+            className="border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <details className="text-xs text-gray-600">
+          <summary className="cursor-pointer select-none">Opções avançadas (email e senha de acesso)</summary>
+          <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+            <input
+              value={createForm.email}
+              onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))}
+              placeholder="Email (deixe em branco para gerar automaticamente)"
+              className="border border-gray-300 px-3 py-2 text-sm"
+              type="email"
+            />
+            <input
+              value={createForm.password}
+              onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))}
+              placeholder="Senha (mínimo 6 caracteres ou gerar automaticamente)"
+              className="border border-gray-300 px-3 py-2 text-sm"
+              type="text"
+            />
+          </div>
+        </details>
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={saving}
+            className="border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {saving ? "Cadastrando..." : "Cadastrar alfabetizando"}
+          </button>
+          {createMessage ? (
+            <span className="text-xs text-emerald-700">{createMessage}</span>
+          ) : null}
+        </div>
+      </form>
 
       <div className="border border-gray-300 bg-white p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
@@ -176,8 +310,8 @@ export default function MeusAlfabetizandos() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Etapa</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">% Progresso</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Status</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Ultima atividade</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Acoes</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Última atividade</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Ações</th>
                 </tr>
               </thead>
               <tbody>

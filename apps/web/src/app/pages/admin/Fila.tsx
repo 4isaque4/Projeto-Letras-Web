@@ -190,7 +190,7 @@ export default function Fila() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">T9. Fila de Atendimento</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Fila de Atendimento</h1>
           <p className="text-sm text-gray-600 mt-1">Pedidos e bloqueios preventivos em tempo real</p>
         </div>
         <button
