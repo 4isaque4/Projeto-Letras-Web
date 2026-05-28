@@ -176,8 +176,8 @@ export default function AlfabetizandoDetalhe() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900">T5. Detalhe do Alfabetizando</h1>
-          <p className="text-sm text-gray-600 mt-1">Acompanhamento completo do progresso e historico</p>
+          <h1 className="text-2xl font-bold text-gray-900">Detalhe do Alfabetizando</h1>
+          <p className="text-sm text-gray-600 mt-1">Acompanhamento completo do progresso e histórico</p>
         </div>
         {detail?.status === "travado" && (
           <div className="px-4 py-2 border border-gray-900 bg-gray-900 text-white flex items-center gap-2 text-sm">
@@ -294,7 +294,7 @@ export default function AlfabetizandoDetalhe() {
 
           <div className="border border-gray-300 bg-white">
             <div className="p-4 border-b border-gray-300">
-              <h3 className="font-bold text-gray-900">Submissoes (Fotos/Audios)</h3>
+              <h3 className="font-bold text-gray-900">Submissões (Fotos/Áudios)</h3>
             </div>
             {detail.submissoes.length === 0 ? (
               <StateDisplay type="empty" message="Sem submissoes pendentes ou aprovadas." />

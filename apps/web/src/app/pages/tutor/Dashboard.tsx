@@ -119,16 +119,16 @@ export default function TutorDashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">T3. Dashboard (Alfabetizador)</h1>
-        <p className="text-sm text-gray-600 mt-1">Visao geral dos seus alfabetizandos e atendimentos</p>
+        <h1 className="text-2xl font-bold text-gray-900">Meu Dashboard</h1>
+        <p className="text-sm text-gray-600 mt-1">Visão geral dos seus alfabetizandos e atendimentos</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <KPICard title="Meus Alunos Ativos" value={response.kpis.ativosHoje} icon={Users} subtitle={`de ${response.kpis.meusAlunosTotal} total`} />
-        <KPICard title="Travados" value={response.kpis.travados} icon={AlertCircle} subtitle="Requerem atencao" />
+        <KPICard title="Travados" value={response.kpis.travados} icon={AlertCircle} subtitle="Requerem atenção" />
         <KPICard title="Ajuda Aberta" value={response.kpis.ajudasAbertas ?? response.kpis.pedidosAbertos} icon={Inbox} subtitle="Aguardando resposta" />
-        <KPICard title="Vinculos Pendentes" value={response.kpis.vinculosPendentes ?? 0} icon={Inbox} />
-        <KPICard title="Notificacoes" value={response.kpis.notificacoesNaoLidas ?? 0} icon={AlertCircle} subtitle="Nao lidas" />
+        <KPICard title="Vínculos Pendentes" value={response.kpis.vinculosPendentes ?? 0} icon={Inbox} />
+        <KPICard title="Notificações" value={response.kpis.notificacoesNaoLidas ?? 0} icon={AlertCircle} subtitle="Não lidas" />
         <KPICard
           title="Alunos em risco"
           value={Math.max(0, response.kpis.meusAlunosTotal - response.kpis.ativosHoje)}
@@ -168,7 +168,7 @@ export default function TutorDashboard() {
 
         <div className="border border-gray-300 bg-white">
           <div className="p-4 border-b border-gray-300">
-            <h3 className="font-bold text-gray-900">Alunos que Mais Evoluiram</h3>
+            <h3 className="font-bold text-gray-900">Alunos que Mais Evoluíram</h3>
             <p className="text-xs text-gray-600 mt-1">Top desempenho por pontuacao acumulada</p>
           </div>
 
@@ -201,7 +201,7 @@ export default function TutorDashboard() {
             <p className="text-2xl font-bold text-gray-900">{response.resumoSemanal.pedidosAtendidos}</p>
           </div>
           <div className="p-4 border border-gray-300 bg-gray-50">
-            <p className="text-xs text-gray-500 mb-1">Tempo Medio de Resposta</p>
+            <p className="text-xs text-gray-500 mb-1">Tempo Médio de Resposta</p>
             <p className="text-2xl font-bold text-gray-900">
               {response.resumoSemanal.tempoMedioRespostaHoras.toFixed(2)}h
             </p>
@@ -211,7 +211,7 @@ export default function TutorDashboard() {
             <p className="text-2xl font-bold text-gray-900">{response.resumoSemanal.alunosDesbloqueados}</p>
           </div>
           <div className="p-4 border border-gray-300 bg-gray-50">
-            <p className="text-xs text-gray-500 mb-1">Submissoes Aprovadas</p>
+            <p className="text-xs text-gray-500 mb-1">Submissões Aprovadas</p>
             <p className="text-2xl font-bold text-gray-900">{response.resumoSemanal.submissoesAprovadas}</p>
           </div>
         </div>

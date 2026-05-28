@@ -118,8 +118,8 @@ export default function AdminDashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">T2. Dashboard (Admin)</h1>
-          <p className="text-sm text-gray-600 mt-1">Visao geral do sistema de alfabetizacao</p>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-sm text-gray-600 mt-1">Visão geral do sistema de alfabetização</p>
         </div>
 
         <div className="flex items-center gap-2 border border-gray-300 bg-white">
@@ -156,10 +156,10 @@ export default function AdminDashboard() {
             subtitle={`${kpis.totalAlfabetizandos > 0 ? Math.round((kpis.ativos7d / kpis.totalAlfabetizandos) * 100) : 0}% da base`}
           />
           <KPICard
-            title="Vinculos pendentes"
+            title="Vínculos pendentes"
             value={kpis.vinculosPendentes}
             icon={Users}
-            subtitle="Aguardando aprovacao"
+            subtitle="Aguardando aprovação"
           />
           <KPICard
             title="Fila de ajuda agora"
@@ -168,7 +168,7 @@ export default function AdminDashboard() {
             subtitle="Bloqueados + ajuda"
           />
           <KPICard
-            title="Aulas concluidas hoje"
+            title="Aulas concluídas hoje"
             value={kpis.aulasConcluidasHoje}
             icon={CheckCircle2}
             subtitle="Total no dia"
@@ -178,16 +178,16 @@ export default function AdminDashboard() {
 
       <div>
         <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-          Metricas complementares
+          Métricas complementares
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <KPICard title="Total alfabetizandos" value={kpis.totalAlfabetizandos} icon={Users} />
           <KPICard title="Ativos hoje" value={kpis.ativosHoje} icon={BookOpenCheck} />
           <KPICard title="Inativos 7d+" value={kpis.inativos7d} icon={Clock} />
-          <KPICard title="Notificacoes nao lidas" value={kpis.notificacoesNaoLidas ?? 0} icon={AlertCircle} />
-          <KPICard title="Media de acerto" value={`${kpis.mediaAcerto.toFixed(1)}%`} icon={Target} />
+          <KPICard title="Notificações não lidas" value={kpis.notificacoesNaoLidas ?? 0} icon={AlertCircle} />
+          <KPICard title="Média de acerto" value={`${kpis.mediaAcerto.toFixed(1)}%`} icon={Target} />
           <KPICard
-            title="Tempo medio resposta"
+            title="Tempo médio resposta"
             value={`${kpis.tempoMedioRespostaHoras.toFixed(1)}h`}
             icon={Timer}
             subtitle="Tutores"
@@ -219,7 +219,7 @@ export default function AdminDashboard() {
           <h3 className="text-lg font-bold text-gray-900">Alertas Criticos</h3>
         </div>
         {alertas.length === 0 ? (
-          <StateDisplay type="empty" message="Nenhum alerta critico no momento." />
+          <StateDisplay type="empty" message="Nenhum alerta crítico no momento." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">

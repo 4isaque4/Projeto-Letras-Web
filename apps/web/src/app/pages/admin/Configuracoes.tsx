@@ -253,8 +253,8 @@ export default function Configuracoes() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">T13. Configuracoes</h1>
-        <p className="mt-1 text-sm text-gray-600">Parametros do perfil e operacao do painel web ({userRoleLabel})</p>
+        <h1 className="text-2xl font-bold text-gray-900">Configurações</h1>
+        <p className="mt-1 text-sm text-gray-600">Parâmetros do perfil e operação do painel web ({userRoleLabel})</p>
       </div>
 
       {error ? (

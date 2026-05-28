@@ -95,8 +95,8 @@ export default function Relatorios() {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">T12. Relatorios</h1>
-          <p className="text-sm text-gray-600 mt-1">Analise de inatividade para gestao de apoio</p>
+          <h1 className="text-2xl font-bold text-gray-900">Relatórios</h1>
+          <p className="text-sm text-gray-600 mt-1">Análise de inatividade para gestão de apoio</p>
         </div>
         <div className="flex items-center gap-2">
           <button

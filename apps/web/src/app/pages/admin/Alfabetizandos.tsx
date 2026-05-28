@@ -125,7 +125,7 @@ export default function Alfabetizandos() {
     const nome = editForm.nome.trim();
     const email = editForm.email.trim();
     if (!nome) {
-      setError("Nome do alfabetizando e obrigatorio.");
+      setError("Nome do alfabetizando e obrigatório.");
       return;
     }
     if (email && !email.includes("@")) {
@@ -184,8 +184,8 @@ export default function Alfabetizandos() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">T4. Lista de Alfabetizandos</h1>
-        <p className="text-sm text-gray-600 mt-1">Gestao de todos os alunos do sistema</p>
+        <h1 className="text-2xl font-bold text-gray-900">Alfabetizandos</h1>
+        <p className="text-sm text-gray-600 mt-1">Gestão de todos os alunos do sistema</p>
       </div>
 
       <form onSubmit={onCreateStudent} className="border border-gray-300 bg-white p-4 space-y-3">
@@ -256,8 +256,8 @@ export default function Alfabetizandos() {
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Telefone</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">CPF</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Ultima atividade</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Acoes</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Última atividade</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Ações</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -42,7 +42,7 @@ export default function Vinculos() {
       const response = (await apiGet("/cadastros/vinculos")) as LinksResponse;
       setLinks(response ?? EMPTY_LINKS);
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar vinculos.");
+      setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar vínculos.");
     } finally {
       setLoading(false);
     }
@@ -75,7 +75,7 @@ export default function Vinculos() {
         });
         await loadLinks();
       } catch (updateError) {
-        setError(updateError instanceof Error ? updateError.message : "Falha ao atualizar vinculo.");
+        setError(updateError instanceof Error ? updateError.message : "Falha ao atualizar vínculo.");
       } finally {
         setUpdatingId("");
       }
@@ -86,8 +86,8 @@ export default function Vinculos() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">T7. Vinculos e Convites</h1>
-        <p className="text-sm text-gray-600 mt-1">Gestao de solicitacoes de vinculo aluno-tutor</p>
+        <h1 className="text-2xl font-bold text-gray-900">Vínculos e Convites</h1>
+        <p className="text-sm text-gray-600 mt-1">Gestão de solicitações de vínculo aluno-tutor</p>
       </div>
 
       <div className="flex items-center gap-2 border border-gray-300 bg-white px-4 py-3">
@@ -140,7 +140,7 @@ export default function Vinculos() {
         ) : error ? (
           <StateDisplay type="error" message={error} />
         ) : filtered.length === 0 ? (
-          <StateDisplay type="empty" message="Nenhum vinculo para os filtros aplicados." />
+          <StateDisplay type="empty" message="Nenhum vínculo para os filtros aplicados." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -155,7 +155,7 @@ export default function Vinculos() {
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Motivo</th>
                   )}
                   {activeTab === "pendentes" && (
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Acoes</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Ações</th>
                   )}
                 </tr>
               </thead>
