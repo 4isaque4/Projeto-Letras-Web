@@ -8,6 +8,7 @@ import {
   formatRelativeTime,
   getActivityProgress,
   getEducatorNotifications,
+  getMobileLearnerSessionState,
   getLearningActivities,
   getLearningModules,
   getProfiles,
@@ -404,6 +405,55 @@ cadastrosRouter.delete("/alfabetizadores/:id", async (req, res) => {
     });
 
     res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+cadastrosRouter.get("/sessoes-bloqueadas", async (req, res) => {
+  try {
+    const rawId = String(req.query.tutorId ?? req.query.educatorId ?? "").trim();
+    const { supabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
+    const client = isSupabaseConfigured && supabaseAdmin ? supabaseAdmin : null;
+    const tutorId = client
+      ? (await resolveSupabaseTutorId(rawId, req.headers.authorization, client)) ?? rawId
+      : rawId;
+
+    if (!tutorId) {
+      res.json([]);
+      return;
+    }
+
+    const [students, links] = await Promise.all([
+      getProfiles({ role: "alfabetizando" }),
+      getTutorStudentLinks(),
+    ]);
+
+    const confirmedStudentIds = new Set(
+      links
+        .filter((item) => item.status === "confirmado" && item.tutor_id === tutorId)
+        .map((item) => item.student_id),
+    );
+
+    const linkedStudents = students.filter((student) => confirmedStudentIds.has(student.id));
+    const sessionChecks = await Promise.all(
+      linkedStudents.map(async (student) => ({
+        student,
+        session: await getMobileLearnerSessionState(student.id),
+      })),
+    );
+
+    const items = sessionChecks
+      .filter((item) => item.session?.sessionState?.isLocked)
+      .map(({ student, session }) => ({
+        id: student.id,
+        displayName: student.full_name,
+        phoneDigits: student.phone ?? null,
+        session,
+      }));
+
+    res.json(items);
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });
