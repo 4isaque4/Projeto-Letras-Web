@@ -489,6 +489,9 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
       return {
         id: student.id,
         nome: student.full_name,
+        displayName: student.full_name,        // alias para o app mobile do educador
+        phoneDigits: student.phone ?? null,     // alias para o app mobile do educador
+        learnerThemes: [],                      // painel nao tem temas por aluno ainda
         email: extractProfileEmail(student),
         grupo:
           typeof student.metadata?.group_name === "string" && student.metadata.group_name.length > 0
