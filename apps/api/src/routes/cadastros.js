@@ -22,6 +22,44 @@ export const cadastrosRouter = Router();
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// Resolve um educator ID (pode ser CUID do NestJS ou UUID do Supabase) para o
+// UUID do Supabase, consultando /auth/educators/me e depois o profile por email.
+async function resolveSupabaseTutorId(rawId, authHeader, supabaseClient) {
+  if (!rawId) return null;
+  if (UUID_PATTERN.test(rawId)) return rawId; // já é UUID Supabase
+
+  // É um CUID do NestJS — tenta resolver via /auth/educators/me
+  const token = String(authHeader ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+
+  try {
+    const resp = await fetch("https://painel.letras.cloud/api/v1/auth/educators/me", {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(4000),
+    });
+
+    if (!resp.ok) return null;
+
+    const data = await resp.json();
+    const email = String(data?.educator?.email ?? "").trim().toLowerCase();
+    if (!email) return null;
+
+    const { data: profiles } = await supabaseClient
+      .from("profiles")
+      .select("id, metadata")
+      .eq("role", "tutor");
+
+    const found = (profiles ?? []).find((p) => {
+      const pEmail = String(p.metadata?.email ?? "").trim().toLowerCase();
+      return pEmail && pEmail === email;
+    });
+
+    return found?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function mapById(items) {
   return new Map(items.map((item) => [item.id, item]));
 }
@@ -348,7 +386,12 @@ cadastrosRouter.delete("/alfabetizadores/:id", async (req, res) => {
 
 cadastrosRouter.get("/alfabetizandos", async (req, res) => {
   try {
-    const tutorId = String(req.query.tutorId ?? req.query.educatorId ?? "").trim();
+    const rawId = String(req.query.tutorId ?? req.query.educatorId ?? "").trim();
+    const { supabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
+    const client = isSupabaseConfigured && supabaseAdmin ? supabaseAdmin : null;
+    const tutorId = client
+      ? (await resolveSupabaseTutorId(rawId, req.headers.authorization, client)) ?? rawId
+      : rawId;
     const students = await getProfiles({ role: "alfabetizando" });
     const studentMap = mapById(students);
 
@@ -717,15 +760,23 @@ cadastrosRouter.post("/alfabetizandos", async (req, res) => {
     });
 
     // Se vier educatorId (fluxo mobile do educador), cria o vínculo automaticamente.
-    const educatorId = String(req.body?.educatorId ?? "").trim();
-    if (educatorId && data?.id) {
+    const rawEducatorId = String(req.body?.educatorId ?? "").trim();
+    if (rawEducatorId && data?.id) {
       try {
-        await createTutorStudentLink({
-          tutorId: educatorId,
-          studentId: data.id,
-          status: "confirmado",
-          requestedBy: educatorId,
-        });
+        const { supabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
+        const client = isSupabaseConfigured && supabaseAdmin ? supabaseAdmin : null;
+        const supabaseTutorId = client
+          ? (await resolveSupabaseTutorId(rawEducatorId, req.headers.authorization, client)) ?? rawEducatorId
+          : rawEducatorId;
+
+        if (UUID_PATTERN.test(supabaseTutorId)) {
+          await createTutorStudentLink({
+            tutorId: supabaseTutorId,
+            studentId: data.id,
+            status: "confirmado",
+            requestedBy: supabaseTutorId,
+          });
+        }
       } catch {
         // Vínculo falhou mas o cadastro foi criado — não bloqueia o retorno.
       }
