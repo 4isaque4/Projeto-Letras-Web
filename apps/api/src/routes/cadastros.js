@@ -570,6 +570,49 @@ cadastrosRouter.post("/alfabetizandos/provisionar-mobile", async (req, res) => {
   }
 });
 
+// Busca alfabetizando por CPF/passaporte ou telefone — usado pelo app mobile
+// no fluxo de aprendiz retornante (LearnerCpfLoginView).
+cadastrosRouter.get("/alfabetizandos/buscar", async (req, res) => {
+  try {
+    const cpfOrPassport = String(req.query.cpfOrPassport ?? "").trim();
+    const phoneDigits = String(req.query.phoneDigits ?? "").trim();
+
+    if (!cpfOrPassport && !phoneDigits) {
+      return res.status(400).json({ message: "Forneça cpfOrPassport ou phoneDigits para buscar." });
+    }
+
+    const students = await getProfiles({ role: "alfabetizando" });
+
+    const found = students.find((s) => {
+      if (cpfOrPassport) {
+        const profileCpf = String(s.cpf ?? "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+        const searchCpf = cpfOrPassport.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+        if (profileCpf && profileCpf === searchCpf) return true;
+      }
+      if (phoneDigits) {
+        const profilePhone = String(s.phone ?? "").replace(/\D/g, "");
+        const searchPhone = phoneDigits.replace(/\D/g, "");
+        if (profilePhone && profilePhone === searchPhone) return true;
+      }
+      return false;
+    });
+
+    if (!found) {
+      return res.status(404).json({ message: "Cadastro não encontrado. Verifique os dados ou entre em contato com seu educador." });
+    }
+
+    return res.json({
+      id: found.id,
+      displayName: found.full_name,
+      cpfOrPassport: found.cpf ?? null,
+      phoneDigits: found.phone ?? null,
+    });
+  } catch (error) {
+    const httpError = toHttpError(error);
+    return res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
 cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
   try {
     const studentId = String(req.params.id ?? "").trim();
