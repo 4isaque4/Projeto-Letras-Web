@@ -67,6 +67,21 @@ app.use(`${env.apiPrefix}/reference`, referenceRouter);
 app.use(`${env.apiPrefix}/cadastros`, cadastrosRouter);
 app.use(`${env.apiPrefix}/painel`, painelRouter);
 
+// Endpoint temporario: recriar perfil deletado acidentalmente
+app.post(`${env.apiPrefix}/fix-profile`, async (req, res) => {
+  try {
+    const { supabaseAdmin, isSupabaseConfigured } = await import("./lib/supabase.js");
+    if (!isSupabaseConfigured || !supabaseAdmin) return res.status(503).json({ message: "Supabase nao configurado." });
+    const { id, email, fullName, role } = req.body ?? {};
+    if (!id) return res.status(400).json({ message: "id obrigatorio." });
+    const { error } = await supabaseAdmin.from("profiles").upsert({ id, full_name: fullName || "Usuario", role: role || "tutor", metadata: { email: email || "" } });
+    if (error) return res.status(400).json({ message: error.message });
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ message: String(err.message ?? err) });
+  }
+});
+
 
 app.get("/", (_req, res) => {
   res.json({
