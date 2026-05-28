@@ -242,10 +242,26 @@ painelRouter.get("/dashboard/admin", async (_req, res) => {
     ]);
 
     const progressByStudent = groupProgressByStudent(progress);
-    const lockedStudents = students.filter((student) => {
+    const lockedByProgressStudents = students.filter((student) => {
       const studentRows = progressByStudent.get(student.id) ?? [];
       return studentRows.some((row) => row.status === "travado");
     });
+    const mobileLockedSessions = (
+      await Promise.all(
+        students.map(async (student) => ({
+          student,
+          session: await getMobileLearnerSessionState(student.id),
+        })),
+      )
+    ).filter((item) => item.session?.sessionState?.isLocked);
+    const lockedStudentById = new Map();
+    for (const student of lockedByProgressStudents) {
+      lockedStudentById.set(student.id, student);
+    }
+    for (const item of mobileLockedSessions) {
+      lockedStudentById.set(item.student.id, item.student);
+    }
+    const lockedStudents = [...lockedStudentById.values()];
     const inactiveStudents = students.filter((student) => {
       const studentRows = progressByStudent.get(student.id) ?? [];
       return daysSince(getStudentLastInteraction(studentRows)) > 7;
@@ -996,6 +1012,31 @@ painelRouter.get("/fila", async (_req, res) => {
         };
       });
 
+    const lockedProgressStudentIds = new Set(
+      progress.filter((row) => row.status === "travado").map((row) => row.student_id),
+    );
+    const mobileLockedSessions = (
+      await Promise.all(
+        students.map(async (student) => ({
+          student,
+          session: await getMobileLearnerSessionState(student.id),
+        })),
+      )
+    ).filter((item) => item.session?.sessionState?.isLocked && !lockedProgressStudentIds.has(item.student.id));
+    const mobileLockedItems = mobileLockedSessions.map(({ student, session }) => ({
+      id: `mobile-lock-${student.id}`,
+      queueType: "progresso",
+      tipo: "Aluno travado",
+      aluno: student.full_name ?? "Sem nome",
+      etapa: "Etapa 1",
+      atividade: session?.sessionState?.currentActivityId ?? session?.sessionState?.currentView ?? "Tela atual",
+      status: "travado",
+      tempo: formatRelativeTime(session?.sessionState?.updatedAt || session?.updatedAt || session?.createdAt),
+      prioridade: "alta",
+      studentId: student.id,
+      metadata: session?.sessionState?.statePayload ?? null,
+    }));
+
     const supportQueueItems = supportRequests.map((request) => {
       const activityId = request.activity_id || request.current_activity_id;
       const activity = activityId ? activityById.get(activityId) : null;
@@ -1022,8 +1063,8 @@ painelRouter.get("/fila", async (_req, res) => {
     });
 
     res.json({
-      total: pendingLinks.length + lockedProgress.length + supportQueueItems.length,
-      items: [...supportQueueItems, ...pendingLinks, ...lockedProgress].slice(0, 200),
+      total: pendingLinks.length + lockedProgress.length + mobileLockedItems.length + supportQueueItems.length,
+      items: [...supportQueueItems, ...pendingLinks, ...lockedProgress, ...mobileLockedItems].slice(0, 200),
     });
   } catch (error) {
     const httpError = toHttpError(error);
