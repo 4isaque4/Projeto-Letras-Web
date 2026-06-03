@@ -877,6 +877,26 @@ painelRouter.post("/progress", async (req, res) => {
   }
 });
 
+painelRouter.get("/progress/:learnerProfileId", async (req, res) => {
+  try {
+    const { learnerProfileId } = req.params;
+    if (!learnerProfileId) {
+      return res.status(400).json({ message: "learnerProfileId obrigatorio." });
+    }
+    const client = requireSupabase();
+    const { data, error } = await client
+      .from("activity_progress")
+      .select("activity_id")
+      .eq("student_id", learnerProfileId)
+      .eq("status", "concluido");
+    if (error) throw new HttpError(500, `Falha ao buscar progresso: ${error.message}`);
+    res.json({ completedActivityIds: (data ?? []).map((r) => r.activity_id) });
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
 painelRouter.post("/support-requests", async (req, res) => {
   try {
     const result = await createSupportRequest({
