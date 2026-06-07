@@ -28,6 +28,7 @@ export interface TextBlock {
   type: "text";
   content: string;
   audience: BlockAudience;
+  narrationAudioUrl?: string;
 }
 
 export interface ImageBlock {
@@ -476,11 +477,36 @@ function TextBlockEditor({
   block: TextBlock;
   onChange: (updates: Partial<TextBlock>) => void;
 }) {
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [ttsError, setTtsError] = useState<string | null>(null);
+  const showTts = block.audience === "learner" || block.audience === "both";
+
   const AUDIENCE_OPTIONS: { value: BlockAudience; label: string; icon: React.ReactNode }[] = [
     { value: "educator", label: "Para o alfabetizador", icon: <User className="h-3.5 w-3.5" /> },
     { value: "learner", label: "Para o alfabetizando", icon: <MessageSquare className="h-3.5 w-3.5" /> },
     { value: "both", label: "Para ambos", icon: <Users className="h-3.5 w-3.5" /> },
   ];
+
+  const handleGenerateAudio = async () => {
+    const text = block.content.trim();
+    if (!text || isGenerating) return;
+    setIsGenerating(true);
+    setTtsError(null);
+    try {
+      const res = await fetch("/api/v1/painel/tts/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Falha ao gerar áudio");
+      onChange({ narrationAudioUrl: data.url });
+    } catch (err) {
+      setTtsError(err instanceof Error ? err.message : "Erro desconhecido");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   return (
     <div className="space-y-2">
@@ -509,11 +535,46 @@ function TextBlockEditor({
           block.audience === "educator"
             ? "Orientações para o alfabetizador... (ex.: Mostre a letra A e peça ao aluno que identifique objetos na sala cujo nome começa com ela.)"
             : block.audience === "learner"
-              ? "Fala sugerida para o alfabetizando... (ex.: Ouça o áudio e toque na imagem correta.)"
+              ? "Fala para o alfabetizando ouvir no app... (ex.: Olá! Vamos aprender a letra A hoje.)"
               : "Texto para ambos..."
         }
         className="w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-700 focus:outline-none"
       />
+
+      {showTts && (
+        <div className="space-y-1.5 border-t border-slate-100 pt-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void handleGenerateAudio()}
+              disabled={!block.content.trim() || isGenerating}
+              className="flex items-center gap-1.5 border border-emerald-600 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Volume2 className="h-3.5 w-3.5" />
+              {isGenerating ? "Gerando áudio..." : "Converter texto em áudio"}
+            </button>
+            {block.narrationAudioUrl && (
+              <button
+                type="button"
+                onClick={() => onChange({ narrationAudioUrl: "" })}
+                title="Remover áudio gerado"
+                className="text-slate-400 hover:text-red-500"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          {block.narrationAudioUrl && (
+            <audio src={block.narrationAudioUrl} controls className="h-8 w-full" />
+          )}
+          {ttsError && (
+            <p className="text-xs text-red-600">{ttsError}</p>
+          )}
+          <p className="text-xs text-slate-400">
+            O áudio gerado substitui o texto na tela do alfabetizando — ele ouve em vez de ler.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

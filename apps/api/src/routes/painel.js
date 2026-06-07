@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import { supabaseAdmin } from "../lib/supabase.js";
 import {
   createContentAsset,
   createSupportRequest,
@@ -1474,5 +1475,51 @@ painelRouter.patch("/configuracoes/sistema", async (req, res) => {
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+// ─── TTS: converte texto em áudio e armazena no bucket cms-audios ────────────
+
+painelRouter.post("/tts/generate", async (req, res) => {
+  const { text, lang = "pt-BR" } = req.body ?? {};
+  if (!text || typeof text !== "string" || !text.trim()) {
+    return res.status(400).json({ error: "text obrigatório" });
+  }
+
+  const trimmed = text.trim().slice(0, 500);
+
+  try {
+    // Google Translate TTS (sem chave de API, adequado para MVP)
+    const ttsUrl =
+      `https://translate.google.com/translate_tts` +
+      `?ie=UTF-8&q=${encodeURIComponent(trimmed)}&tl=${encodeURIComponent(lang)}&client=tw-ob&ttsspeed=0.8`;
+
+    const ttsResponse = await fetch(ttsUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
+        Referer: "https://translate.google.com/",
+      },
+    });
+
+    if (!ttsResponse.ok) {
+      return res.status(502).json({ error: "Serviço TTS indisponível temporariamente" });
+    }
+
+    const audioBuffer = Buffer.from(await ttsResponse.arrayBuffer());
+    const fileName = `narration/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp3`;
+
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from("cms-audios")
+      .upload(fileName, audioBuffer, { contentType: "audio/mpeg", upsert: false });
+
+    if (uploadError) throw uploadError;
+
+    const { data: urlData } = supabaseAdmin.storage.from("cms-audios").getPublicUrl(fileName);
+
+    return res.json({ url: urlData.publicUrl });
+  } catch (err) {
+    console.error("[TTS] generate error:", err);
+    return res.status(500).json({ error: "Falha ao gerar áudio" });
   }
 });
