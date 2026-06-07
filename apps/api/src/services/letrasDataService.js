@@ -1183,7 +1183,7 @@ export async function getPanelLearningActivities({ ids, publishedOnly = false } 
   }
 
   if (publishedOnly) {
-    query = query.eq("is_published", true);
+    query = query.neq("is_published", false);
   }
 
   return runQuery(query, "Falha ao listar atividades do CMS");
