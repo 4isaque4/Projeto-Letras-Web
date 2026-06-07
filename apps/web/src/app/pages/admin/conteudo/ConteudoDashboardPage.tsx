@@ -6,6 +6,7 @@ import {
   FileImage,
   FileVideo,
   Folder,
+  Globe,
   Image as ImageIcon,
   Layers,
   LayoutGrid,
@@ -18,6 +19,7 @@ import {
   Upload,
   Video,
   Volume2,
+  EyeOff,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { useConfirm } from "../../../components/ConfirmDialog";
@@ -132,7 +134,7 @@ function CompactAudioPlayer({ url }: { url: string }) {
 export default function ConteudoDashboardPage() {
   const navigate = useNavigate();
   const confirm = useConfirm();
-  const { data, loading, error, busy, uploadAsset, cmsThemes, deleteActivity } = useConteudoData();
+  const { data, loading, error, busy, uploadAsset, cmsThemes, deleteActivity, updateActivity } = useConteudoData();
   const [uploadThemeId, setUploadThemeId] = useState("");
   const [uploadStatus, setUploadStatus] = useState<"rascunho" | "publicado" | "arquivado">(
     "publicado",
@@ -353,6 +355,29 @@ export default function ConteudoDashboardPage() {
                       >
                         {activity.is_published ? "Publicada" : "Rascunho"}
                       </span>
+
+                      <button
+                        type="button"
+                        disabled={busy === `activity-update-${activity.id}`}
+                        onClick={() => {
+                          void updateActivity({
+                            activityId: activity.id,
+                            isPublished: !activity.is_published,
+                          });
+                        }}
+                        title={activity.is_published ? "Despublicar aula" : "Publicar aula"}
+                        className={`flex items-center gap-1 border px-2 py-1 text-xs font-medium disabled:opacity-50 ${
+                          activity.is_published
+                            ? "border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700"
+                            : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                        }`}
+                      >
+                        {activity.is_published ? (
+                          <><EyeOff className="h-3.5 w-3.5" />Despublicar</>
+                        ) : (
+                          <><Globe className="h-3.5 w-3.5" />Publicar</>
+                        )}
+                      </button>
 
                       <button
                         type="button"

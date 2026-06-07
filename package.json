@@ -23,5 +23,11 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.101.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@tailwindcss/oxide",
+      "esbuild"
+    ]
   }
 }
