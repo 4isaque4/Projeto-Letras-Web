@@ -38,6 +38,18 @@ interface StudentEditForm {
   cpf: string;
 }
 
+function applyCpfMask(value: string): string {
+  const d = value.replace(/\D/g, '').slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
+function isValidCpfFormat(cpf: string): boolean {
+  return /^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(cpf.trim());
+}
+
 const EMPTY_CREATE_FORM: StudentCreateForm = {
   nome: "",
   email: "",
@@ -85,6 +97,11 @@ export default function Alfabetizandos() {
       setError("Preencha nome, email e senha para criar um alfabetizando.");
       return;
     }
+    const cpf = createForm.cpf.trim();
+    if (cpf && !isValidCpfFormat(cpf)) {
+      setError("CPF inválido. Use o formato 000.000.000-00.");
+      return;
+    }
 
     try {
       setSaving(true);
@@ -130,6 +147,11 @@ export default function Alfabetizandos() {
     }
     if (email && !email.includes("@")) {
       setError("Email do alfabetizando invalido.");
+      return;
+    }
+    const cpf = editForm.cpf.trim();
+    if (cpf && !isValidCpfFormat(cpf)) {
+      setError("CPF inválido. Use o formato 000.000.000-00.");
       return;
     }
 
@@ -217,8 +239,9 @@ export default function Alfabetizandos() {
           />
           <input
             value={createForm.cpf}
-            onChange={(event) => setCreateForm((current) => ({ ...current, cpf: event.target.value }))}
-            placeholder="CPF"
+            onChange={(event) => setCreateForm((current) => ({ ...current, cpf: applyCpfMask(event.target.value) }))}
+            placeholder="000.000.000-00"
+            maxLength={14}
             className="border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
@@ -312,7 +335,9 @@ export default function Alfabetizandos() {
                         {editingId === aluno.id ? (
                           <input
                             value={editForm.cpf}
-                            onChange={(event) => setEditForm((current) => ({ ...current, cpf: event.target.value }))}
+                            onChange={(event) => setEditForm((current) => ({ ...current, cpf: applyCpfMask(event.target.value) }))}
+                            placeholder="000.000.000-00"
+                            maxLength={14}
                             className="w-full border border-gray-300 px-2 py-1 text-sm"
                           />
                         ) : (
