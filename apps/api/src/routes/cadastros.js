@@ -14,6 +14,7 @@ import {
   getProfiles,
   getSupportRequests,
   getTutorStudentLinks,
+  setMobileLearnerSessionLockState,
   toHttpError,
   updateProfileRecord,
   updateTutorStudentLink,
@@ -454,6 +455,22 @@ cadastrosRouter.get("/sessoes-bloqueadas", async (req, res) => {
       }));
 
     res.json(items);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+// Chamado pelo app mobile do educador para bloquear/desbloquear a sessão de um aluno.
+cadastrosRouter.put("/sessions/:learnerId/lock", async (req, res) => {
+  try {
+    const { learnerId } = req.params;
+    const isLocked = Boolean(req.body?.isLocked);
+    if (!learnerId) {
+      return res.status(400).json({ message: "learnerId obrigatorio." });
+    }
+    await setMobileLearnerSessionLockState(learnerId, isLocked);
+    res.json({ learnerId, isLocked });
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });
