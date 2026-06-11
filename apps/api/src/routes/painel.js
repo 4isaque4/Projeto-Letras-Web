@@ -884,8 +884,7 @@ painelRouter.get("/progress/:learnerProfileId", async (req, res) => {
     if (!learnerProfileId) {
       return res.status(400).json({ message: "learnerProfileId obrigatorio." });
     }
-    const client = requireSupabase();
-    const { data, error } = await client
+    const { data, error } = await supabaseAdmin
       .from("activity_progress")
       .select("activity_id")
       .eq("student_id", learnerProfileId)
