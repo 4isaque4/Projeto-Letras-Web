@@ -19,6 +19,7 @@ import {
   updateProfileRecord,
   updateTutorStudentLink,
 } from "../services/letrasDataService.js";
+import { emitLearnerLockChanged } from "../realtime/dashboardRealtime.js";
 
 export const cadastrosRouter = Router();
 
@@ -470,6 +471,9 @@ cadastrosRouter.put("/sessions/:learnerId/lock", async (req, res) => {
       return res.status(400).json({ message: "learnerId obrigatorio." });
     }
     await setMobileLearnerSessionLockState(learnerId, isLocked);
+    // Notifica o mobile do aluno em tempo real para que a UI desbloqueie
+    // imediatamente, sem esperar o poll de 10 s.
+    emitLearnerLockChanged(learnerId, isLocked);
     res.json({ learnerId, isLocked });
   } catch (error) {
     const httpError = toHttpError(error);
