@@ -64,7 +64,10 @@ Divisão macro da jornada: Etapa 1 (tutoriais, base), Etapa 2 (reconhecimento de
 Decisões tomadas em reuniões ou no planejamento do MVP que condicionam o código:
 
 - **POC em modo individual**: sem suporte a grupos na POC atual. Não sugira features de grupo antes de confirmar.
-- **App mobile separado do app do alfabetizador**: estratégia atual mantém **dois apps Expo distintos** (alfabetizador, alfabetizando). Avaliação técnica ainda em curso, mas a tendência de curto prazo é manter separado.
+- **App mobile único** (reunião 11/06/2026): uma só versão do app para os dois perfis. O alfabetizador sempre inicia e configura o app no celular do alfabetizando; o alfabetizando abre direto na visão dele, sem tela de seleção de perfil. Supera a avaliação anterior de manter dois apps Expo distintos. Ver [docs/meetings/ata-reuniao-validacao-etapa1-gamificacao-2026-06-11.md](docs/meetings/ata-reuniao-validacao-etapa1-gamificacao-2026-06-11.md).
+- **Nomenclatura oficial** (reunião 11/06/2026): "alfabetizador" e "alfabetizando" em toda copy visível; nunca "educador"/"aprendiz" (aceitos só em código interno).
+- **Hierarquia de conteúdo** (reunião 11/06/2026): **Tema → Etapa → Módulo → Tela**. A etapa vem acima do módulo (cada etapa tem seus módulos próprios); o wizard do painel ainda precisa ser invertido para refletir isso. A unidade exibida no app chama-se "tela" ("tela X de Y da etapa"), não "aula" — aula é o conjunto.
+- **Tema é travado durante a jornada**: uma vez iniciada a alfabetização não se troca de tema; a troca só é permitida entre etapas concluídas.
 - **Cabeçalho das telas de aula**: sempre exibir o nome do alfabetizando.
 - **Progresso visível**: percentual ou "tela X de Y" dentro da etapa.
 - **Cidade/UF**: campo operacional para futura realocação de alfabetizador.
