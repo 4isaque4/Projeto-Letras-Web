@@ -15,6 +15,7 @@ pnpm-debug.log*
 
 # Temporary workspace artifacts
 .tmp_*/
+tmp/
 .run-logs/
 infra/supabase/.temp/
 .playwright-cli/
