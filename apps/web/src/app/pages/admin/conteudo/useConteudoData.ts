@@ -38,6 +38,7 @@ interface UpdateModuleInput {
   title?: string;
   description?: string;
   stageNumber?: number;
+  stageId?: string;
   sortOrder?: number;
   isActive?: boolean;
 }
@@ -310,6 +311,7 @@ export function useConteudoData() {
           title: input.title,
           description: input.description,
           stageNumber: input.stageNumber,
+          stageId: input.stageId,
           sortOrder: input.sortOrder,
           isActive: input.isActive,
         });

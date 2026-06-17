@@ -15,6 +15,7 @@ export interface ModuleItem {
   theme_id: string;
   title: string;
   stage_number: number;
+  stage_id?: string;
   sort_order?: number;
   description?: string | null;
 }

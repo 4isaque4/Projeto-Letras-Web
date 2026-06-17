@@ -1992,7 +1992,11 @@ export default function ConteudoCriarPage() {
     setThemeMode("existing");
 
     const moduleItem = data.modules.find((m) => m.id === activity.module_id);
-    if (moduleItem) setSelectedThemeId(moduleItem.theme_id);
+    if (moduleItem) {
+      setSelectedThemeId(moduleItem.theme_id);
+      if (moduleItem.stage_id) setSelectedStageId(moduleItem.stage_id);
+      if (moduleItem.stage_number) setNewModuleStage(moduleItem.stage_number as 1 | 2 | 3);
+    }
 
     const parsed = parseInstructions(activity.instructions);
     if (parsed && "tutorNotes" in parsed && typeof parsed.tutorNotes === "string") {
