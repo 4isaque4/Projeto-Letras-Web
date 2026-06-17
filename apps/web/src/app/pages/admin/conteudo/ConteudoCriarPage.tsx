@@ -1275,9 +1275,12 @@ function OrgSection({
   setNewModuleTitle,
   newModuleStage,
   setNewModuleStage,
+  selectedStageId,
+  setSelectedStageId,
   titulo,
   setTitulo,
   themes,
+  stages,
   modulesForTheme,
 }: {
   isEditing?: boolean;
@@ -1295,11 +1298,16 @@ function OrgSection({
   setNewModuleTitle: (v: string) => void;
   newModuleStage: 1 | 2 | 3;
   setNewModuleStage: (v: 1 | 2 | 3) => void;
+  selectedStageId: string;
+  setSelectedStageId: (v: string) => void;
   titulo: string;
   setTitulo: (v: string) => void;
   themes: { id: string; title: string }[];
+  stages: { id: string; theme_id: string; title: string; stage_number: number }[];
   modulesForTheme: { id: string; title: string; stage_number?: number }[];
 }) {
+  const stagesForTheme = stages.filter((s) => s.theme_id === selectedThemeId);
+
   if (isEditing) {
     const themeName = themes.find((t) => t.id === selectedThemeId)?.title ?? "—";
     const moduleEntry = modulesForTheme.find((m) => m.id === selectedModuleId);
@@ -1465,14 +1473,27 @@ function OrgSection({
                   Etapa 1 = tutoriais e base · Etapa 2 = reconhecimento de letras · Etapa 3 = leitura.
                 </p>
                 <select
-                  value={newModuleStage}
-                  onChange={(e) => setNewModuleStage(Number(e.target.value) as 1 | 2 | 3)}
+                  value={selectedStageId}
+                  onChange={(e) => {
+                    const stageId = e.target.value;
+                    setSelectedStageId(stageId);
+                    const s = stagesForTheme.find((st) => st.id === stageId);
+                    if (s) setNewModuleStage(s.stage_number as 1 | 2 | 3);
+                  }}
                   className="w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                 >
-                  <option value={1}>Etapa 1</option>
-                  <option value={2}>Etapa 2</option>
-                  <option value={3}>Etapa 3</option>
+                  <option value="">Selecione a etapa...</option>
+                  {stagesForTheme.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.title}
+                    </option>
+                  ))}
                 </select>
+                {stagesForTheme.length === 0 && selectedThemeId && themeMode === "existing" && (
+                  <p className="text-[10px] text-amber-600">
+                    Aviso: Nenhuma etapa configurada para este tema. O módulo será salvo com Etapa 2 por padrão.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -1634,6 +1655,7 @@ interface ConteudoCriarDraft {
   selectedModuleId: string;
   newModuleTitle: string;
   newModuleStage: 1 | 2 | 3;
+  selectedStageId?: string;
   titulo: string;
   letraAlvo: string;
   instrAudioFileName?: string | null;
@@ -1815,6 +1837,7 @@ export default function ConteudoCriarPage() {
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [newModuleTitle, setNewModuleTitle] = useState("");
   const [newModuleStage, setNewModuleStage] = useState<1 | 2 | 3>(2);
+  const [selectedStageId, setSelectedStageId] = useState("");
   const [titulo, setTitulo] = useState("");
 
   // match-letter
@@ -1864,6 +1887,7 @@ export default function ConteudoCriarPage() {
       selectedModuleId,
       newModuleTitle,
       newModuleStage,
+      selectedStageId,
       titulo,
       letraAlvo,
       instrAudioFileName: instrAudioFile?.name ?? null,
@@ -1893,6 +1917,7 @@ export default function ConteudoCriarPage() {
     setSelectedModuleId(draft.selectedModuleId || "");
     setNewModuleTitle(draft.newModuleTitle || "");
     setNewModuleStage([1, 2, 3].includes(Number(draft.newModuleStage)) ? draft.newModuleStage : 2);
+    setSelectedStageId(draft.selectedStageId || "");
     setTitulo(draft.titulo || "");
     setLetraAlvo(draft.letraAlvo || "");
     setInstrAudioFile(null);
@@ -2136,6 +2161,7 @@ export default function ConteudoCriarPage() {
     selectedModuleId,
     newModuleTitle,
     newModuleStage,
+    selectedStageId,
     titulo,
     letraAlvo,
     instrAudioFile,
@@ -2345,7 +2371,12 @@ export default function ConteudoCriarPage() {
       let moduleId = selectedModuleId;
       if (moduleMode === "new") {
         if (!newModuleTitle.trim()) throw new Error("Informe o nome do módulo.");
-        const m = await createModule({ themeId, title: newModuleTitle.trim(), stageNumber: newModuleStage });
+        const m = await createModule({
+          themeId,
+          title: newModuleTitle.trim(),
+          stageNumber: newModuleStage,
+          stageId: selectedStageId || undefined,
+        });
         if (!m) throw new Error("Não foi possível criar o módulo.");
         moduleId = m.id;
       }
@@ -2575,9 +2606,12 @@ export default function ConteudoCriarPage() {
             setNewModuleTitle={setNewModuleTitle}
             newModuleStage={newModuleStage}
             setNewModuleStage={setNewModuleStage}
+            selectedStageId={selectedStageId}
+            setSelectedStageId={setSelectedStageId}
             titulo={titulo}
             setTitulo={setTitulo}
             themes={data.themes}
+            stages={data.stages}
             modulesForTheme={modulesForTheme}
           />
 
