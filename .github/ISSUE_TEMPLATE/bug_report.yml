@@ -1,45 +1,46 @@
-name: "Bug Report"
-description: "Reporte de erro em frontend, backend ou integracao."
+name: Bug
+description: Reportar erro ou regressao do Letras
 title: "[BUG] "
 labels:
   - type:bug
   - status:backlog
 body:
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto
+      description: Onde aconteceu e qual usuario/perfil foi afetado?
+    validations:
+      required: true
+  - type: textarea
+    id: passos
+    attributes:
+      label: Passos para reproduzir
+      description: Liste o caminho ate o erro.
+      placeholder: "1. Acessar...\n2. Clicar...\n3. Observar..."
+    validations:
+      required: true
+  - type: textarea
+    id: esperado
+    attributes:
+      label: Comportamento esperado
+    validations:
+      required: true
+  - type: textarea
+    id: evidencias
+    attributes:
+      label: Evidencias
+      description: Prints, logs, links de PR/commit ou mensagens de erro.
   - type: dropdown
     id: area
     attributes:
-      label: Area afetada
+      label: Area
       options:
-        - Frontend
-        - Backend
-        - Fullstack
-        - Infra
+        - Painel web
+        - API
+        - Supabase/migrations
+        - Integracao web-mobile
+        - Realtime/sync
+        - Outro
     validations:
       required: true
-  - type: textarea
-    id: steps
-    attributes:
-      label: Passos para reproduzir
-      placeholder: |
-        1. Abrir pagina X
-        2. Clicar em Y
-        3. Ver erro Z
-    validations:
-      required: true
-  - type: textarea
-    id: expected
-    attributes:
-      label: Resultado esperado
-    validations:
-      required: true
-  - type: textarea
-    id: current
-    attributes:
-      label: Resultado atual
-    validations:
-      required: true
-  - type: textarea
-    id: logs
-    attributes:
-      label: Logs, prints e contexto tecnico
-      description: Cole stack trace, payload, status code ou screenshot.

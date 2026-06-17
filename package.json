@@ -7,6 +7,7 @@
     "packages/*"
   ],
   "scripts": {
+    "prepare": "node tools/quality/install-git-hooks.mjs",
     "dev": "concurrently -k -n web,api -c cyan,magenta \"pnpm --filter @letras/web dev\" \"pnpm --filter @letras/api dev\"",
     "dev:local": "pnpm dev",
     "dev:web": "pnpm --filter @letras/web dev",
@@ -15,6 +16,13 @@
     "build": "pnpm --filter @letras/web build",
     "build:web": "pnpm --filter @letras/web build",
     "build:front": "pnpm run build:web",
+    "test": "pnpm --filter @letras/api test",
+    "quality": "node tools/quality/check-production-env.mjs && node tools/quality/check-product-copy.mjs",
+    "check:fast": "pnpm quality && pnpm test",
+    "check": "pnpm quality && pnpm test && pnpm build",
+    "hooks:install": "node tools/quality/install-git-hooks.mjs",
+    "review:uncommitted": "node tools/quality/codex-review.mjs --uncommitted",
+    "review:commit": "node tools/quality/codex-review.mjs --commit",
     "mobile:manifest": "node tools/scripts/generate-mobile-screen-manifest.mjs",
     "conteudo:importar-video-aula": "node tools/scripts/import-video-aula-real.mjs"
   },

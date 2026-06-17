@@ -48,8 +48,18 @@ export interface Blueprint {
   module_code: string | null;
 }
 
+export interface Stage {
+  id: string;
+  theme_id: string;
+  stage_number: number;
+  title: string;
+  description?: string | null;
+  sort_order?: number;
+}
+
 export interface ConteudoData {
   themes: Theme[];
+  stages: Stage[];
   modules: ModuleItem[];
   activities: Activity[];
   assets: Asset[];
@@ -65,6 +75,7 @@ export interface ConteudoData {
 
 export const EMPTY_DATA: ConteudoData = {
   themes: [],
+  stages: [],
   modules: [],
   activities: [],
   assets: [],

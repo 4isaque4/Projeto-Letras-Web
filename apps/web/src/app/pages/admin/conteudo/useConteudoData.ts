@@ -28,6 +28,7 @@ interface CreateModuleInput {
   title: string;
   description?: string;
   stageNumber?: number;
+  stageId?: string;
   sortOrder?: number;
 }
 
@@ -150,6 +151,7 @@ interface ResetCmsContentResponse {
 function normalizeData(payload: Partial<ConteudoData>): ConteudoData {
   return {
     themes: payload.themes ?? [],
+    stages: payload.stages ?? [],
     modules: payload.modules ?? [],
     activities: payload.activities ?? [],
     assets: payload.assets ?? [],
@@ -277,6 +279,9 @@ export function useConteudoData() {
           stageNumber: toInt(input.stageNumber ?? 1, 1),
           isActive: true,
         };
+        if (input.stageId) {
+          payload.stageId = input.stageId;
+        }
         if (input.sortOrder !== undefined) {
           payload.sortOrder = toInt(input.sortOrder, 0);
         }

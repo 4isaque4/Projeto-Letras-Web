@@ -1148,7 +1148,7 @@ export async function getLearningActivities({ ids } = {}) {
       ? (() => {
           let query = client
             .from("learning_activities")
-            .select("id, module_id, type, title, instructions, sort_order, is_published, created_at, updated_at");
+            .select("id, module_id, type, title, instructions, sort_order, is_published, hint_video_id, created_at, updated_at");
 
           if (ids) {
             query = query.in("id", uuidIds);
@@ -1176,7 +1176,7 @@ export async function getPanelLearningActivities({ ids, publishedOnly = false } 
   const client = requireSupabase();
   let query = client
     .from("learning_activities")
-    .select("id, module_id, type, title, instructions, sort_order, is_published, created_at, updated_at");
+    .select("id, module_id, type, title, instructions, sort_order, is_published, hint_video_id, created_at, updated_at");
 
   if (ids) {
     query = query.in("id", uuidIds);
@@ -1202,7 +1202,7 @@ export async function getLearningModules({ ids } = {}) {
       ? (() => {
           let query = client
             .from("learning_modules")
-            .select("id, theme_id, stage_number, title, description, sort_order, is_active, created_at, updated_at");
+            .select("id, theme_id, stage_number, stage_id, intro_video_id, title, description, sort_order, is_active, created_at, updated_at");
 
           if (ids) {
             query = query.in("id", uuidIds);
@@ -1288,6 +1288,231 @@ export async function getContentAssets() {
       .order("created_at", { ascending: false }),
     "Falha ao listar assets",
   );
+}
+
+const MEDIA_LIBRARY_SELECT =
+  "id, slug, title, description, kind, bucket, storage_path, public_url, duration_sec, tags, metadata, is_active, created_at, updated_at";
+
+const LEARNING_STAGES_SELECT =
+  "id, theme_id, stage_number, title, description, intro_video_id, sort_order, is_active, metadata, created_at, updated_at";
+
+export async function getMediaLibrary({ kind } = {}) {
+  const client = requireSupabase();
+  let query = client
+    .from("media_library")
+    .select(MEDIA_LIBRARY_SELECT)
+    .eq("is_active", true)
+    .order("created_at", { ascending: false });
+
+  if (kind) {
+    query = query.eq("kind", normalizeText(kind));
+  }
+
+  return runQuery(query, "Falha ao listar biblioteca de midias");
+}
+
+export async function createMediaLibraryItem({
+  slug,
+  title,
+  description,
+  kind,
+  bucket,
+  storagePath,
+  publicUrl,
+  durationSec,
+  tags,
+  metadata,
+}) {
+  const client = requireSupabase();
+  const normalizedTitle = normalizeText(title);
+  if (!normalizedTitle) throw new HttpError(400, "Titulo e obrigatorio.");
+
+  const payload = {
+    title: normalizedTitle,
+    description: normalizeNullableText(description),
+    kind: normalizeText(kind) || "geral",
+    bucket: normalizeText(bucket) || "cms-videos",
+    storage_path: normalizeNullableText(storagePath),
+    public_url: normalizeNullableText(publicUrl),
+    duration_sec: durationSec !== undefined ? normalizeInteger(durationSec, null) : null,
+    tags: Array.isArray(tags) ? tags.filter(Boolean) : [],
+    metadata: metadata && typeof metadata === "object" ? metadata : {},
+    is_active: true,
+  };
+
+  const normalizedSlug = slug ? normalizeText(slug) : null;
+  if (normalizedSlug) payload.slug = normalizedSlug;
+
+  const { data, error } = await client
+    .from("media_library")
+    .insert(payload)
+    .select(MEDIA_LIBRARY_SELECT)
+    .single();
+
+  if (error) {
+    if (error.code === "23505") throw new HttpError(400, "Ja existe um item de midia com este slug.");
+    throw new HttpError(400, `Falha ao criar item de midia: ${error.message}`);
+  }
+  return data;
+}
+
+export async function updateMediaLibraryItem({
+  mediaId,
+  slug,
+  title,
+  description,
+  kind,
+  bucket,
+  storagePath,
+  publicUrl,
+  durationSec,
+  tags,
+  metadata,
+  isActive,
+}) {
+  const client = requireSupabase();
+  const normalizedId = normalizeText(mediaId);
+  if (!isUuid(normalizedId)) throw new HttpError(400, "mediaId invalido.");
+
+  const payload = {};
+  if (slug !== undefined) payload.slug = normalizeNullableText(slug);
+  if (title !== undefined) {
+    const t = normalizeText(title);
+    if (!t) throw new HttpError(400, "Titulo nao pode ficar vazio.");
+    payload.title = t;
+  }
+  if (description !== undefined) payload.description = normalizeNullableText(description);
+  if (kind !== undefined) payload.kind = normalizeText(kind) || "geral";
+  if (bucket !== undefined) payload.bucket = normalizeText(bucket) || "cms-videos";
+  if (storagePath !== undefined) payload.storage_path = normalizeNullableText(storagePath);
+  if (publicUrl !== undefined) payload.public_url = normalizeNullableText(publicUrl);
+  if (durationSec !== undefined) payload.duration_sec = normalizeInteger(durationSec, null);
+  if (tags !== undefined) payload.tags = Array.isArray(tags) ? tags.filter(Boolean) : [];
+  if (metadata !== undefined) payload.metadata = metadata && typeof metadata === "object" ? metadata : {};
+  if (isActive !== undefined) payload.is_active = normalizeBoolean(isActive, true);
+
+  if (Object.keys(payload).length === 0) throw new HttpError(400, "Nenhum campo valido para atualizar.");
+
+  const { data, error } = await client
+    .from("media_library")
+    .update(payload)
+    .eq("id", normalizedId)
+    .select(MEDIA_LIBRARY_SELECT)
+    .maybeSingle();
+
+  if (error) throw new HttpError(400, `Falha ao atualizar item de midia: ${error.message}`);
+  if (!data) throw new HttpError(404, "Item de midia nao encontrado.");
+  return data;
+}
+
+export async function deleteMediaLibraryItem({ mediaId }) {
+  const client = requireSupabase();
+  const normalizedId = normalizeText(mediaId);
+  if (!isUuid(normalizedId)) throw new HttpError(400, "mediaId invalido.");
+
+  const { error } = await client.from("media_library").delete().eq("id", normalizedId);
+  if (error) throw new HttpError(400, `Falha ao deletar item de midia: ${error.message}`);
+  return { id: normalizedId, deleted: true };
+}
+
+export async function getLearningStages({ themeId } = {}) {
+  const client = requireSupabase();
+  let query = client
+    .from("learning_stages")
+    .select(LEARNING_STAGES_SELECT)
+    .order("sort_order", { ascending: true });
+
+  if (themeId) query = query.eq("theme_id", normalizeText(themeId));
+
+  return runQuery(query, "Falha ao listar etapas");
+}
+
+export async function createLearningStage({
+  themeId,
+  stageNumber,
+  title,
+  description,
+  introVideoId,
+  sortOrder,
+  isActive,
+}) {
+  const client = requireSupabase();
+  const normalizedThemeId = normalizeText(themeId);
+  const normalizedTitle = normalizeText(title);
+  if (!normalizedThemeId) throw new HttpError(400, "themeId e obrigatorio.");
+  if (!normalizedTitle) throw new HttpError(400, "Titulo da etapa e obrigatorio.");
+  if (!stageNumber) throw new HttpError(400, "stageNumber e obrigatorio.");
+
+  await ensureThemeExists(normalizedThemeId);
+
+  const payload = {
+    theme_id: normalizedThemeId,
+    stage_number: Math.max(1, normalizeInteger(stageNumber, 1)),
+    title: normalizedTitle,
+    description: normalizeNullableText(description),
+    intro_video_id: introVideoId ? normalizeText(introVideoId) : null,
+    sort_order: normalizeInteger(sortOrder, 0),
+    is_active: normalizeBoolean(isActive, true),
+  };
+
+  const { data, error } = await client
+    .from("learning_stages")
+    .insert(payload)
+    .select(LEARNING_STAGES_SELECT)
+    .single();
+
+  if (error) {
+    if (error.code === "23505") throw new HttpError(400, "Ja existe uma etapa com este numero para este tema.");
+    throw new HttpError(400, `Falha ao criar etapa: ${error.message}`);
+  }
+  return data;
+}
+
+export async function updateLearningStage({
+  stageId,
+  title,
+  description,
+  introVideoId,
+  sortOrder,
+  isActive,
+}) {
+  const client = requireSupabase();
+  const normalizedId = normalizeText(stageId);
+  if (!isUuid(normalizedId)) throw new HttpError(400, "stageId invalido.");
+
+  const payload = {};
+  if (title !== undefined) {
+    const t = normalizeText(title);
+    if (!t) throw new HttpError(400, "Titulo nao pode ficar vazio.");
+    payload.title = t;
+  }
+  if (description !== undefined) payload.description = normalizeNullableText(description);
+  if (introVideoId !== undefined) payload.intro_video_id = introVideoId ? normalizeText(introVideoId) : null;
+  if (sortOrder !== undefined) payload.sort_order = normalizeInteger(sortOrder, 0);
+  if (isActive !== undefined) payload.is_active = normalizeBoolean(isActive, true);
+
+  if (Object.keys(payload).length === 0) throw new HttpError(400, "Nenhum campo valido para atualizar.");
+
+  const { data, error } = await client
+    .from("learning_stages")
+    .update(payload)
+    .eq("id", normalizedId)
+    .select(LEARNING_STAGES_SELECT)
+    .maybeSingle();
+
+  if (error) throw new HttpError(400, `Falha ao atualizar etapa: ${error.message}`);
+  if (!data) throw new HttpError(404, "Etapa nao encontrada.");
+  return data;
+}
+
+export async function deleteLearningStage({ stageId }) {
+  const client = requireSupabase();
+  const normalizedId = normalizeText(stageId);
+  if (!isUuid(normalizedId)) throw new HttpError(400, "stageId invalido.");
+
+  const { error } = await client.from("learning_stages").delete().eq("id", normalizedId);
+  if (error) throw new HttpError(400, `Falha ao deletar etapa: ${error.message}`);
+  return { id: normalizedId, deleted: true };
 }
 
 export async function getSyncEvents({ limit = 100 } = {}) {
@@ -2393,6 +2618,8 @@ export async function createLearningModule({
   stageNumber,
   sortOrder,
   isActive,
+  stageId,
+  introVideoId,
 }) {
   const client = requireSupabase();
   const normalizedThemeId = normalizeText(themeId);
@@ -2439,12 +2666,14 @@ export async function createLearningModule({
     description: normalizeNullableText(description),
     sort_order: resolvedSortOrder,
     is_active: normalizeBoolean(isActive, true),
+    stage_id: stageId ? normalizeText(stageId) : null,
+    intro_video_id: introVideoId ? normalizeText(introVideoId) : null,
   };
 
   const { data, error } = await client
     .from("learning_modules")
     .insert(payload)
-    .select("id, theme_id, stage_number, title, description, sort_order, is_active, created_at, updated_at")
+    .select("id, theme_id, stage_number, stage_id, intro_video_id, title, description, sort_order, is_active, created_at, updated_at")
     .single();
 
   if (error) {
@@ -2481,6 +2710,8 @@ export async function updateLearningModule({
   stageNumber,
   sortOrder,
   isActive,
+  stageId,
+  introVideoId,
 }) {
   const client = requireSupabase();
   const normalizedModuleId = normalizeText(moduleId);
@@ -2538,6 +2769,14 @@ export async function updateLearningModule({
     payload.is_active = normalizeBoolean(isActive, existingModule.is_active ?? true);
   }
 
+  if (stageId !== undefined) {
+    payload.stage_id = stageId ? normalizeText(stageId) : null;
+  }
+
+  if (introVideoId !== undefined) {
+    payload.intro_video_id = introVideoId ? normalizeText(introVideoId) : null;
+  }
+
   if (Object.keys(payload).length === 0) {
     throw new HttpError(400, "Nenhum campo valido para atualizar no modulo.");
   }
@@ -2546,7 +2785,7 @@ export async function updateLearningModule({
     .from("learning_modules")
     .update(payload)
     .eq("id", normalizedModuleId)
-    .select("id, theme_id, stage_number, title, description, sort_order, is_active, created_at, updated_at")
+    .select("id, theme_id, stage_number, stage_id, intro_video_id, title, description, sort_order, is_active, created_at, updated_at")
     .maybeSingle();
 
   if (error) {
@@ -2687,6 +2926,7 @@ export async function updateLearningActivity({
   instructions,
   sortOrder,
   isPublished,
+  hintVideoId,
 }) {
   const client = requireSupabase();
   const normalizedActivityId = normalizeText(activityId);
@@ -2748,6 +2988,10 @@ export async function updateLearningActivity({
     payload.is_published = normalizeBoolean(isPublished, existingActivity.is_published ?? false);
   }
 
+  if (hintVideoId !== undefined) {
+    payload.hint_video_id = hintVideoId ? normalizeText(hintVideoId) : null;
+  }
+
   if (Object.keys(payload).length === 0) {
     throw new HttpError(400, "Nenhum campo valido para atualizar na atividade.");
   }
@@ -2756,7 +3000,7 @@ export async function updateLearningActivity({
     .from("learning_activities")
     .update(payload)
     .eq("id", normalizedActivityId)
-    .select("id, module_id, type, title, instructions, sort_order, is_published, created_at, updated_at")
+    .select("id, module_id, type, title, instructions, sort_order, is_published, hint_video_id, created_at, updated_at")
     .maybeSingle();
 
   if (error) {
@@ -3876,14 +4120,11 @@ export async function updateProfileRecord({
       throw new HttpError(404, "Perfil nao encontrado.");
     }
 
-    if (normalizedRole && existingProfile.role !== normalizedRole) {
-      throw new HttpError(
-        400,
-        `Perfil encontrado com role '${existingProfile.role}', diferente de '${normalizedRole}'.`,
-      );
-    }
-
     const payload = {};
+
+    if (normalizedRole && existingProfile.role !== normalizedRole) {
+      payload.role = normalizedRole;
+    }
     const currentMetadata =
       existingProfile.metadata &&
       typeof existingProfile.metadata === "object" &&

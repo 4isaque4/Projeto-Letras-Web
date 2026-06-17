@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+echo "[Letras] pre-push: rodando quality gate completo..."
+pnpm check

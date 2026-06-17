@@ -8,9 +8,13 @@ import {
   createLearningActivity,
   createLearningModule,
   createLearningTheme,
+  createLearningStage,
+  createMediaLibraryItem,
   deleteLearningActivity,
   deleteLearningModule,
   deleteLearningTheme,
+  deleteLearningStage,
+  deleteMediaLibraryItem,
   createMobileScreenBlueprint,
   daysSince,
   formatDateTime,
@@ -19,6 +23,8 @@ import {
   getContentAssets,
   getLearningActivities,
   getLearningModules,
+  getLearningStages,
+  getMediaLibrary,
   getPanelLearningActivities,
   getPanelLearningModules,
   getPanelLearningThemes,
@@ -40,6 +46,8 @@ import {
   updatePanelSystemSettings,
   updateLearningActivity,
   updateLearningModule,
+  updateLearningStage,
+  updateMediaLibraryItem,
   updateLearningTheme,
   updateTutorStudentLink,
   toHttpError,
@@ -517,28 +525,34 @@ painelRouter.get("/conteudo", async (req, res) => {
     const publishedOnly = ["1", "true", "yes"].includes(
       String(req.query?.published || "").trim().toLowerCase(),
     );
-    const [themes, modules, activities, assets, blueprints] = await Promise.all([
+    const [themes, stages, modules, activities, assets, blueprints, mediaLibrary] = await Promise.all([
       cmsOnly ? getPanelLearningThemes() : getLearningThemes(),
+      getLearningStages(),
       cmsOnly ? getPanelLearningModules() : getLearningModules(),
       cmsOnly
         ? getPanelLearningActivities({ publishedOnly })
         : getLearningActivities(),
       getContentAssets(),
       getMobileScreenBlueprints(),
+      getMediaLibrary(),
     ]);
 
     res.json({
       themes,
+      stages,
       modules,
       activities,
       assets,
       blueprints,
+      mediaLibrary,
       totals: {
         themes: themes.length,
+        stages: stages.length,
         modules: modules.length,
         activities: activities.length,
         assets: assets.length,
         blueprints: blueprints.length,
+        mediaLibrary: mediaLibrary.length,
       },
     });
   } catch (error) {
@@ -604,6 +618,8 @@ painelRouter.post("/conteudo/modulos", async (req, res) => {
       stageNumber: req.body?.stageNumber,
       sortOrder: req.body?.sortOrder,
       isActive: req.body?.isActive,
+      stageId: req.body?.stageId,
+      introVideoId: req.body?.introVideoId,
     });
 
     res.status(201).json(data);
@@ -623,6 +639,8 @@ painelRouter.patch("/conteudo/modulos/:id", async (req, res) => {
       stageNumber: req.body?.stageNumber,
       sortOrder: req.body?.sortOrder,
       isActive: req.body?.isActive,
+      stageId: req.body?.stageId,
+      introVideoId: req.body?.introVideoId,
     });
 
     res.json(data);
@@ -673,6 +691,7 @@ painelRouter.patch("/conteudo/atividades/:id", async (req, res) => {
       instructions: req.body?.instructions,
       sortOrder: req.body?.sortOrder,
       isPublished: req.body?.isPublished,
+      hintVideoId: req.body?.hintVideoId,
     });
 
     res.json(data);
@@ -688,6 +707,129 @@ painelRouter.delete("/conteudo/atividades/:id", async (req, res) => {
       activityId: req.params.id,
     });
 
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+// ── Etapas (learning_stages) ─────────────────────────────────────────────────
+
+painelRouter.get("/conteudo/etapas", async (req, res) => {
+  try {
+    const data = await getLearningStages({ themeId: req.query?.themeId });
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.post("/conteudo/etapas", async (req, res) => {
+  try {
+    const data = await createLearningStage({
+      themeId: req.body?.themeId,
+      stageNumber: req.body?.stageNumber,
+      title: req.body?.title,
+      description: req.body?.description,
+      introVideoId: req.body?.introVideoId,
+      sortOrder: req.body?.sortOrder,
+      isActive: req.body?.isActive,
+    });
+    res.status(201).json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.patch("/conteudo/etapas/:id", async (req, res) => {
+  try {
+    const data = await updateLearningStage({
+      stageId: req.params.id,
+      title: req.body?.title,
+      description: req.body?.description,
+      introVideoId: req.body?.introVideoId,
+      sortOrder: req.body?.sortOrder,
+      isActive: req.body?.isActive,
+    });
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.delete("/conteudo/etapas/:id", async (req, res) => {
+  try {
+    const data = await deleteLearningStage({ stageId: req.params.id });
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+// ── Biblioteca de mídias (media_library) ─────────────────────────────────────
+
+painelRouter.get("/conteudo/media-biblioteca", async (req, res) => {
+  try {
+    const data = await getMediaLibrary({ kind: req.query?.kind });
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.post("/conteudo/media-biblioteca", async (req, res) => {
+  try {
+    const data = await createMediaLibraryItem({
+      slug: req.body?.slug,
+      title: req.body?.title,
+      description: req.body?.description,
+      kind: req.body?.kind,
+      bucket: req.body?.bucket,
+      storagePath: req.body?.storagePath,
+      publicUrl: req.body?.publicUrl,
+      durationSec: req.body?.durationSec,
+      tags: req.body?.tags,
+      metadata: req.body?.metadata,
+    });
+    res.status(201).json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.patch("/conteudo/media-biblioteca/:id", async (req, res) => {
+  try {
+    const data = await updateMediaLibraryItem({
+      mediaId: req.params.id,
+      slug: req.body?.slug,
+      title: req.body?.title,
+      description: req.body?.description,
+      kind: req.body?.kind,
+      bucket: req.body?.bucket,
+      storagePath: req.body?.storagePath,
+      publicUrl: req.body?.publicUrl,
+      durationSec: req.body?.durationSec,
+      tags: req.body?.tags,
+      metadata: req.body?.metadata,
+      isActive: req.body?.isActive,
+    });
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.delete("/conteudo/media-biblioteca/:id", async (req, res) => {
+  try {
+    const data = await deleteMediaLibraryItem({ mediaId: req.params.id });
     res.json(data);
   } catch (error) {
     const httpError = toHttpError(error);

@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+echo "[Letras] pre-commit: validando qualidade de produto..."
+pnpm quality
