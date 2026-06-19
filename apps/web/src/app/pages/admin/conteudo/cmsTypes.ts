@@ -74,6 +74,25 @@ export interface ConteudoData {
   };
 }
 
+export type MediaLibraryKind = "tutorial" | "intro-etapa" | "intro-modulo" | "dica" | "geral";
+
+export interface MediaLibraryItem {
+  id: string;
+  slug: string | null;
+  title: string;
+  description: string | null;
+  kind: MediaLibraryKind | string;
+  bucket: string;
+  storage_path: string | null;
+  public_url: string | null;
+  duration_sec: number | null;
+  tags: string[];
+  metadata: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export const EMPTY_DATA: ConteudoData = {
   themes: [],
   stages: [],

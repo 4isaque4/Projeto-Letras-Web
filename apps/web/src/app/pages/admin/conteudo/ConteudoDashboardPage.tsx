@@ -216,6 +216,12 @@ export default function ConteudoDashboardPage() {
             desc: "Imagens, áudios e vídeos",
           },
           {
+            to: "/admin/conteudo/videos",
+            Icon: Video,
+            title: "Vídeos de orientação",
+            desc: "Tutoriais, dicas e intros",
+          },
+          {
             to: "/admin/conteudo/importar-telas",
             Icon: Upload,
             title: "Importar telas",

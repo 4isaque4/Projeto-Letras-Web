@@ -15,6 +15,7 @@ import Conteudo from "./pages/admin/Conteudo";
 import ConteudoBibliotecaPage from "./pages/admin/conteudo/ConteudoBibliotecaPage";
 import ConteudoImportarTelasPage from "./pages/admin/conteudo/ConteudoImportarTelasPage";
 import ConteudoCriarPage from "./pages/admin/conteudo/ConteudoCriarPage";
+import ConteudoVideosPage from "./pages/admin/conteudo/ConteudoVideosPage";
 import Ranking from "./pages/admin/Ranking";
 import Relatorios from "./pages/admin/Relatorios";
 import Configuracoes from "./pages/admin/Configuracoes";
@@ -46,6 +47,7 @@ export const router = createBrowserRouter([
       { path: "admin/conteudo/biblioteca", Component: ConteudoBibliotecaPage },
       { path: "admin/conteudo/importar-telas", Component: ConteudoImportarTelasPage },
       { path: "admin/conteudo/criar", Component: ConteudoCriarPage },
+      { path: "admin/conteudo/videos", Component: ConteudoVideosPage },
       { path: "admin/ranking", Component: Ranking },
       { path: "admin/relatorios", Component: Relatorios },
       { path: "admin/configuracoes", Component: Configuracoes },
