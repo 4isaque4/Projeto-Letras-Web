@@ -50,6 +50,8 @@ import {
   updateMediaLibraryItem,
   updateLearningTheme,
   updateTutorStudentLink,
+  getTutorialCompletions,
+  upsertTutorialCompletion,
   toHttpError,
   updateContentAsset,
   uploadContentAssetFile,
@@ -837,6 +839,33 @@ painelRouter.delete("/conteudo/media-biblioteca/:id", async (req, res) => {
   }
 });
 
+// ── Tutoriais (media_library kind=tutorial + tutorial_completions) ─────────────
+
+painelRouter.get("/tutoriais", async (req, res) => {
+  try {
+    const data = await getTutorialCompletions({ educatorId: req.query?.educatorId });
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.post("/tutoriais/:mediaId/progresso", async (req, res) => {
+  try {
+    const data = await upsertTutorialCompletion({
+      educatorId: req.body?.educatorId,
+      mediaId: req.params.mediaId,
+      positionSec: req.body?.positionSec,
+      markCompleted: Boolean(req.body?.markCompleted),
+    });
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
 painelRouter.post("/conteudo/reset", async (req, res) => {
   try {
     const data = await resetCmsContent({
@@ -1033,6 +1062,36 @@ painelRouter.get("/progress/:learnerProfileId", async (req, res) => {
       .eq("status", "concluido");
     if (error) throw new HttpError(500, `Falha ao buscar progresso: ${error.message}`);
     res.json({ completedActivityIds: (data ?? []).map((r) => r.activity_id) });
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.get("/score/:learnerId", async (req, res) => {
+  try {
+    const { learnerId } = req.params;
+    if (!learnerId) return res.status(400).json({ message: "learnerId obrigatorio." });
+
+    const { data, error } = await supabaseAdmin
+      .from("activity_progress")
+      .select("score, status")
+      .eq("student_id", learnerId);
+
+    if (error) throw new HttpError(500, `Falha ao buscar pontuacao: ${error.message}`);
+
+    const rows = data ?? [];
+    const completedRows = rows.filter((r) => r.status === "concluido");
+    const totalPoints = completedRows
+      .map((r) => Number(r.score))
+      .filter((v) => Number.isFinite(v) && v > 0)
+      .reduce((a, b) => a + b, 0);
+
+    res.json({
+      totalPoints: Math.round(totalPoints),
+      completedCount: completedRows.length,
+      totalActivities: rows.length,
+    });
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });

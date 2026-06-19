@@ -4955,6 +4955,88 @@ export async function updateTutorStudentLink(id, updates) {
   return data;
 }
 
+// ─── Tutorial Completions ─────────────────────────────────────────────────────
+
+const TUTORIAL_COMPLETIONS_SELECT =
+  "id, educator_id, media_id, completed_at, position_sec, watch_count, created_at, updated_at";
+
+export async function getTutorialCompletions({ educatorId } = {}) {
+  const client = requireSupabase();
+  if (!educatorId) throw new HttpError(400, "educatorId e obrigatorio.");
+
+  const { data, error } = await client
+    .from("media_library")
+    .select(
+      `${MEDIA_LIBRARY_SELECT},
+       tutorial_completions!left(${TUTORIAL_COMPLETIONS_SELECT})`,
+    )
+    .eq("kind", "tutorial")
+    .eq("is_active", true)
+    .order("created_at", { ascending: true });
+
+  if (error) throw new HttpError(400, `Falha ao listar tutoriais: ${error.message}`);
+
+  return (data ?? []).map((item) => {
+    const completion = Array.isArray(item.tutorial_completions)
+      ? item.tutorial_completions.find((c) => c.educator_id === educatorId) ?? null
+      : null;
+    return {
+      id: item.id,
+      slug: item.slug,
+      title: item.title,
+      description: item.description,
+      kind: item.kind,
+      duration_sec: item.duration_sec,
+      public_url: item.public_url,
+      tags: item.tags,
+      metadata: item.metadata,
+      completion: completion
+        ? {
+            completed_at: completion.completed_at,
+            position_sec: completion.position_sec,
+            watch_count: completion.watch_count,
+            is_completed: completion.completed_at !== null,
+          }
+        : null,
+    };
+  });
+}
+
+export async function upsertTutorialCompletion({
+  educatorId,
+  mediaId,
+  positionSec,
+  markCompleted,
+}) {
+  const client = requireSupabase();
+  const normalizedEducatorId = normalizeText(educatorId);
+  const normalizedMediaId = normalizeText(mediaId);
+  if (!isUuid(normalizedEducatorId)) throw new HttpError(400, "educatorId invalido.");
+  if (!isUuid(normalizedMediaId)) throw new HttpError(400, "mediaId invalido.");
+
+  const now = new Date().toISOString();
+  const payload = {
+    educator_id: normalizedEducatorId,
+    media_id: normalizedMediaId,
+    position_sec: typeof positionSec === "number" ? positionSec : 0,
+    updated_at: now,
+  };
+
+  if (markCompleted) payload.completed_at = now;
+
+  const { data, error } = await client
+    .from("tutorial_completions")
+    .upsert(payload, {
+      onConflict: "educator_id,media_id",
+      ignoreDuplicates: false,
+    })
+    .select(TUTORIAL_COMPLETIONS_SELECT)
+    .single();
+
+  if (error) throw new HttpError(400, `Falha ao salvar progresso de tutorial: ${error.message}`);
+  return data;
+}
+
 export function toHttpError(error) {
   if (error instanceof HttpError) {
     return error;
