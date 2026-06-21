@@ -68,6 +68,16 @@ const KIND_ORDER: MediaLibraryKind[] = [
   "geral",
 ];
 
+function isSafeUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
 function fmtDuration(sec: number | null): string {
   if (!sec) return "—";
   const m = Math.floor(sec / 60);
@@ -109,10 +119,15 @@ function EditModal({ item, onClose, onSaved }: EditModalProps) {
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const trimmedUrl = url.trim() || null;
+    if (trimmedUrl && !isSafeUrl(trimmedUrl)) {
+      setError("URL inválida. Use apenas https:// ou http://.");
+      return;
+    }
     setSaving(true);
     try {
       const updated = await patchMediaItem(item.id, {
-        publicUrl: url.trim() || null,
+        publicUrl: trimmedUrl,
         durationSec: dur ? parseInt(dur, 10) : null,
       });
       onSaved(updated);
@@ -259,15 +274,17 @@ function ItemRow({ item, onEdit }: ItemRowProps) {
               <CheckCircle size={11} />
               Configurado
             </span>
-            <a
-              href={item.public_url!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              title="Abrir vídeo"
-            >
-              <ExternalLink size={14} />
-            </a>
+            {isSafeUrl(item.public_url) ? (
+              <a
+                href={item.public_url!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                title="Abrir vídeo"
+              >
+                <ExternalLink size={14} />
+              </a>
+            ) : null}
           </>
         ) : (
           <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
