@@ -190,9 +190,10 @@ authRouter.post("/educators/register", async (req, res) => {
       ? String(email).toLowerCase().trim()
       : `tutor.${cpfDigits}@letras.app`;
 
-    const resolvedPassword = password && String(password).trim().length >= 6
+    const { randomBytes } = await import("node:crypto");
+    const resolvedPassword = password && String(password).trim().length >= 8
       ? String(password).trim()
-      : `Letras@${Date.now().toString().slice(-8)}`;
+      : randomBytes(16).toString("base64url");
 
     const { data: userData, error: authError } = await client.auth.admin.createUser({
       email: resolvedEmail,
