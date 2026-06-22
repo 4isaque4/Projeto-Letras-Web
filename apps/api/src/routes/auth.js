@@ -27,19 +27,23 @@ function toEducatorProfile(profile, email) {
 }
 
 // POST /auth/educators/login
+// Suporta dois modos:
+//   1. identifier (CPF ou email) + password → signInWithPassword via Supabase Auth
+//   2. identifier (CPF) sem password        → passwordless: gera magic-link e verifica OTP
 authRouter.post("/educators/login", async (req, res) => {
   try {
     const client = requireSupabase();
     const identifier = String(req.body?.identifier ?? "").trim();
     const password = String(req.body?.password ?? "").trim();
 
-    if (!identifier || !password) {
+    if (!identifier) {
       return res.status(400).json({ message: "Credenciais obrigatorias." });
     }
 
+    // ── Resolve email a partir do CPF ───────────────────────────────────────
     let email = identifier.toLowerCase();
+    let profileFromCpf = null;
 
-    // Se parece CPF, busca o email cadastrado no perfil
     if (!email.includes("@")) {
       const cpfDigits = identifier.replace(/\D/g, "");
       const { data: profiles } = await client
@@ -47,43 +51,77 @@ authRouter.post("/educators/login", async (req, res) => {
         .select("id, full_name, phone, cpf, role, metadata")
         .eq("role", "tutor");
 
-      const found = (profiles ?? []).find((p) => {
+      profileFromCpf = (profiles ?? []).find((p) => {
         const profileCpf = String(p.cpf ?? "").replace(/\D/g, "");
         return profileCpf.length > 0 && profileCpf === cpfDigits;
       });
 
-      if (!found) {
+      if (!profileFromCpf) {
         return res.status(401).json({ message: "Educador nao encontrado pelo CPF informado." });
       }
 
-      email = found.metadata?.email ?? null;
+      email = profileFromCpf.metadata?.email ?? null;
       if (!email) {
         return res.status(401).json({ message: "Email nao cadastrado para este CPF." });
       }
     }
 
-    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    // ── Modo 1: com senha ───────────────────────────────────────────────────
+    if (password) {
+      const { data, error } = await client.auth.signInWithPassword({ email, password });
 
-    if (error || !data?.session) {
-      return res.status(401).json({ message: "Email ou senha invalidos." });
+      if (error || !data?.session) {
+        return res.status(401).json({ message: "Email ou senha invalidos." });
+      }
+
+      const { data: profile } = await client
+        .from("profiles")
+        .select("id, full_name, phone, cpf, role, metadata, created_at")
+        .eq("id", data.user.id)
+        .single();
+
+      if (!profile || profile.role !== "tutor") {
+        return res.status(403).json({ message: "Acesso restrito a alfabetizadores." });
+      }
+
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      return res.json({
+        token: data.session.access_token,
+        expiresAt,
+        educator: toEducatorProfile(profile, data.user.email),
+      });
     }
 
-    const { data: profile } = await client
-      .from("profiles")
-      .select("id, full_name, phone, cpf, role, metadata, created_at")
-      .eq("id", data.user.id)
-      .single();
+    // ── Modo 2: passwordless via CPF (magic-link interno) ───────────────────
+    const { data: linkData, error: linkError } = await client.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+    });
 
-    if (!profile || profile.role !== "tutor") {
+    if (linkError || !linkData?.properties?.email_otp) {
+      return res.status(401).json({ message: "Nao foi possivel autenticar com este CPF." });
+    }
+
+    const { data: otpData, error: otpError } = await client.auth.verifyOtp({
+      email,
+      token: linkData.properties.email_otp,
+      type: "email",
+    });
+
+    if (otpError || !otpData?.session) {
+      return res.status(401).json({ message: "Falha ao verificar identidade. Tente novamente." });
+    }
+
+    const profileRow = profileFromCpf ?? null;
+    if (!profileRow || profileRow.role !== "tutor") {
       return res.status(403).json({ message: "Acesso restrito a alfabetizadores." });
     }
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-
     return res.json({
-      token: data.session.access_token,
+      token: otpData.session.access_token,
       expiresAt,
-      educator: toEducatorProfile(profile, data.user.email),
+      educator: toEducatorProfile(profileRow, email),
     });
   } catch (err) {
     return res.status(err.status ?? 500).json({ message: err.message ?? "Erro interno." });

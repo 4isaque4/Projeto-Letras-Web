@@ -150,6 +150,26 @@ function toStageLabel(stageNumber) {
   return `Etapa ${Math.floor(normalized)}`;
 }
 
+const SCREEN_NAME_LABELS = {
+  LearnerLessonScreen: "Tela de aula",
+  LearnerLessonScreenView: "Tela de aula",
+  LearnerLessonActivity: "Exercício",
+  LearnerLessonActivityView: "Exercício",
+  LearnerHome: "Início do alfabetizando",
+  LearnerHomeView: "Início do alfabetizando",
+  EducatorHome: "Início do alfabetizador",
+  EducatorHomeView: "Início do alfabetizador",
+  EducatorLearningMode: "Modo de aula",
+  EducatorLearningModeView: "Modo de aula",
+  EducatorEtapaOrientacoes: "Orientações de etapa",
+  EducatorEtapaOrientacoesView: "Orientações de etapa",
+};
+
+function toActivityLabel(currentView) {
+  if (!currentView) return "Tela atual";
+  return SCREEN_NAME_LABELS[currentView] ?? currentView;
+}
+
 function getStudentLastInteraction(progressRows) {
   return progressRows
     .map((row) => row.last_interacted_at || row.completed_at || row.updated_at || row.created_at)
@@ -1269,7 +1289,7 @@ painelRouter.get("/fila", async (_req, res) => {
         tipo: "Pedido de ajuda",
         aluno: studentById.get(request.student_id)?.full_name ?? "Sem nome",
         etapa: module ? toStageLabel(module.stage_number ?? 1) : "Atendimento",
-        atividade: activity?.title ?? request.current_view ?? "Tela atual",
+        atividade: activity?.title ?? toActivityLabel(request.current_view),
         status: request.status,
         tempo: formatRelativeTime(request.requested_at || request.created_at),
         prioridade: request.priority || "alta",
