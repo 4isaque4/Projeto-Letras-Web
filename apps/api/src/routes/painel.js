@@ -52,6 +52,7 @@ import {
   updateTutorStudentLink,
   getTutorialCompletions,
   upsertTutorialCompletion,
+  HttpError,
   toHttpError,
   updateContentAsset,
   uploadContentAssetFile,
@@ -859,11 +860,16 @@ painelRouter.delete("/conteudo/media-biblioteca/:id", async (req, res) => {
   }
 });
 
+const ALLOWED_STORAGE_BUCKETS = new Set(["cms-videos", "cms-images", "cms-audios", "mobile-blueprints"]);
+
 // Lista arquivos de um bucket do Supabase Storage (usado pelo seletor de vídeo)
 painelRouter.get("/conteudo/storage-files", async (req, res) => {
   try {
     const bucket = String(req.query?.bucket ?? "cms-videos");
     const folder = String(req.query?.folder ?? "media-library");
+    if (!ALLOWED_STORAGE_BUCKETS.has(bucket)) {
+      return res.status(400).json({ message: `Bucket inválido. Permitidos: ${[...ALLOWED_STORAGE_BUCKETS].join(", ")}.` });
+    }
     const { data, error } = await supabaseAdmin.storage
       .from(bucket)
       .list(folder, { limit: 500, sortBy: { column: "name", order: "asc" } });

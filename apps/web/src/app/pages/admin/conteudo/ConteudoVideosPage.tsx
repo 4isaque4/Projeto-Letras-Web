@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { AlertCircle, ArrowLeft, Check, Upload, Video, X } from "lucide-react";
-import { apiGet, apiPatch } from "../../../core/api/client";
+import { apiGet, apiPatch, apiPostFormData } from "../../../core/api/client";
+import StateDisplay from "../../components/StateDisplay";
 import type { MediaLibraryItem } from "./cmsTypes";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -115,18 +116,13 @@ function AssignModal({ item, onClose, onAssigned }: AssignModalProps) {
     setActionError(null);
     setUploading(true);
     try {
-      const apiBase =
-        (import.meta as unknown as { env: Record<string, string> }).env.VITE_API_BASE_URL ??
-        "/api/v1";
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch(`${apiBase}/painel/conteudo/media-biblioteca/${item.id}/upload`, {
-        method: "POST",
-        body: form,
-      });
-      const body = await res.json().catch(() => ({})) as { message?: string };
-      if (!res.ok) throw new Error(body.message ?? "Falha ao enviar arquivo");
-      onAssigned(body as unknown as MediaLibraryItem);
+      const updated = await apiPostFormData(
+        `/painel/conteudo/media-biblioteca/${item.id}/upload`,
+        form,
+      ) as MediaLibraryItem;
+      onAssigned(updated);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Erro ao enviar");
     } finally {
@@ -370,14 +366,14 @@ export default function ConteudoVideosPage() {
           </p>
         </div>
 
-        {loading && (
-          <p className="py-12 text-center text-sm text-gray-500">Carregando…</p>
-        )}
-        {error && (
-          <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
+        {loading && <StateDisplay type="loading" />}
+        {error && <StateDisplay type="error" message={error} />}
+
+        {!loading && !error && items.length === 0 && (
+          <StateDisplay type="empty" message="Nenhum vídeo cadastrado na biblioteca." />
         )}
 
-        {!loading && !error && (
+        {!loading && !error && items.length > 0 && (
           <div className="flex flex-col gap-5">
             {Array.from(grouped.entries()).map(([kind, kindItems]) => {
               if (kindItems.length === 0) return null;
