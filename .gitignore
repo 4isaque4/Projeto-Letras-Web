@@ -32,3 +32,9 @@ artifacts/
 Thumbs.db
 .idea/
 .vscode/
+
+# Binários grandes (vídeos, zips de referência)
+*.zip
+*.mov
+*.mp4
+docs/insumos/design-etapa1/fotos-etapa-1-referencia/
