@@ -1406,6 +1406,39 @@ function OrgSection({
           )}
         </div>
 
+        {/* Etapa — entre Tema e Módulo, conforme hierarquia Tema → Etapa → Módulo */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-slate-700">Etapa</label>
+          <p className="text-xs text-slate-500">
+            Etapa 1 = tutoriais e base · Etapa 2 = reconhecimento de letras · Etapa 3 = leitura.
+          </p>
+          <select
+            title="Selecionar etapa"
+            value={selectedStageId}
+            onChange={(e) => {
+              const stageId = e.target.value;
+              setSelectedStageId(stageId);
+              setSelectedModuleId("");
+              const s = stagesForTheme.find((st) => st.id === stageId);
+              if (s) setNewModuleStage(s.stage_number as 1 | 2 | 3);
+            }}
+            disabled={(themeMode === "existing" && !selectedThemeId) || stagesForTheme.length === 0}
+            className="w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-50"
+          >
+            <option value="">Selecione a etapa...</option>
+            {stagesForTheme.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.title}
+              </option>
+            ))}
+          </select>
+          {stagesForTheme.length === 0 && selectedThemeId && themeMode === "existing" && (
+            <p className="text-[10px] text-slate-500">
+              Nenhuma etapa configurada para este tema.
+            </p>
+          )}
+        </div>
+
         <div className="space-y-2">
           <label className="text-sm font-medium text-slate-700">Módulo</label>
           <div className="flex gap-4 text-sm">
@@ -1431,71 +1464,30 @@ function OrgSection({
             </label>
           </div>
           {moduleMode === "existing" ? (
-            <>
-              <select
-                value={selectedModuleId}
-                onChange={(e) => setSelectedModuleId(e.target.value)}
-                disabled={themeMode === "existing" && !selectedThemeId}
-                className="w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-50"
-              >
-                <option value="">Selecione um módulo...</option>
-                {modulesForTheme.map((m) => (
+            <select
+              title="Selecionar módulo"
+              value={selectedModuleId}
+              onChange={(e) => setSelectedModuleId(e.target.value)}
+              disabled={!selectedStageId}
+              className="w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-50"
+            >
+              <option value="">Selecione um módulo...</option>
+              {modulesForTheme
+                .filter((m) => !selectedStageId || (typeof m.stage_number === "number" && m.stage_number === newModuleStage))
+                .map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.title}
-                    {typeof m.stage_number === "number" ? ` (Etapa ${m.stage_number})` : ""}
                   </option>
                 ))}
-              </select>
-              {(() => {
-                const m = modulesForTheme.find((mod) => mod.id === selectedModuleId);
-                if (!m || typeof m.stage_number !== "number") return null;
-                return (
-                  <p className="text-xs text-slate-500">
-                    Etapa do módulo: <span className="font-medium text-slate-700">Etapa {m.stage_number}</span>
-                  </p>
-                );
-              })()}
-            </>
+            </select>
           ) : (
-            <div className="space-y-2">
-              <input
-                type="text"
-                placeholder="Ex: Reconhecimento da letra A"
-                value={newModuleTitle}
-                onChange={(e) => setNewModuleTitle(e.target.value)}
-                className="w-full border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
-              />
-              <div className="space-y-1">
-                <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Etapa
-                </label>
-                <p className="text-xs text-slate-500">
-                  Etapa 1 = tutoriais e base · Etapa 2 = reconhecimento de letras · Etapa 3 = leitura.
-                </p>
-                <select
-                  value={selectedStageId}
-                  onChange={(e) => {
-                    const stageId = e.target.value;
-                    setSelectedStageId(stageId);
-                    const s = stagesForTheme.find((st) => st.id === stageId);
-                    if (s) setNewModuleStage(s.stage_number as 1 | 2 | 3);
-                  }}
-                  className="w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                >
-                  <option value="">Selecione a etapa...</option>
-                  {stagesForTheme.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.title}
-                    </option>
-                  ))}
-                </select>
-                {stagesForTheme.length === 0 && selectedThemeId && themeMode === "existing" && (
-                  <p className="text-[10px] text-amber-600">
-                    Aviso: Nenhuma etapa configurada para este tema. O módulo será salvo com Etapa 2 por padrão.
-                  </p>
-                )}
-              </div>
-            </div>
+            <input
+              type="text"
+              placeholder="Ex: Reconhecimento da letra A"
+              value={newModuleTitle}
+              onChange={(e) => setNewModuleTitle(e.target.value)}
+              className="w-full border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
+            />
           )}
         </div>
       </section>

@@ -4964,22 +4964,27 @@ export async function getTutorialCompletions({ educatorId } = {}) {
   const client = requireSupabase();
   if (!educatorId) throw new HttpError(400, "educatorId e obrigatorio.");
 
-  const { data, error } = await client
-    .from("media_library")
-    .select(
-      `${MEDIA_LIBRARY_SELECT},
-       tutorial_completions!left(${TUTORIAL_COMPLETIONS_SELECT})`,
-    )
-    .eq("kind", "tutorial")
-    .eq("is_active", true)
-    .order("created_at", { ascending: true });
+  const [{ data: mediaItems, error: mediaError }, { data: completions, error: completionsError }] =
+    await Promise.all([
+      client
+        .from("media_library")
+        .select(MEDIA_LIBRARY_SELECT)
+        .eq("kind", "tutorial")
+        .eq("is_active", true)
+        .order("created_at", { ascending: true }),
+      client
+        .from("tutorial_completions")
+        .select(TUTORIAL_COMPLETIONS_SELECT)
+        .eq("educator_id", educatorId),
+    ]);
 
-  if (error) throw new HttpError(400, `Falha ao listar tutoriais: ${error.message}`);
+  if (mediaError) throw new HttpError(400, `Falha ao listar tutoriais: ${mediaError.message}`);
+  if (completionsError) throw new HttpError(400, `Falha ao listar progressos: ${completionsError.message}`);
 
-  return (data ?? []).map((item) => {
-    const completion = Array.isArray(item.tutorial_completions)
-      ? item.tutorial_completions.find((c) => c.educator_id === educatorId) ?? null
-      : null;
+  const completionByMedia = new Map((completions ?? []).map((c) => [c.media_id, c]));
+
+  return (mediaItems ?? []).map((item) => {
+    const completion = completionByMedia.get(item.id) ?? null;
     return {
       id: item.id,
       slug: item.slug,

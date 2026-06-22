@@ -11,6 +11,7 @@ import { painelRouter } from "./routes/painel.js";
 import { referenceRouter } from "./routes/reference.js";
 import { sessionsRouter } from "./routes/sessions.js";
 import { getLearningThemes, toHttpError } from "./services/letrasDataService.js";
+import { supabaseAdmin } from "./lib/supabase.js";
 
 const app = express();
 const allowAnyOrigin = env.corsOrigins.includes("*");
@@ -71,6 +72,54 @@ app.use(`${env.apiPrefix}/cadastros`, cadastrosRouter);
 app.use(`${env.apiPrefix}/painel`, painelRouter);
 app.use(`${env.apiPrefix}/sessions`, sessionsRouter);
 app.use(`${env.apiPrefix}/learners`, learnersRouter);
+
+// GET /api/v1/scoring/me — pontuação do educador para o app mobile
+app.get(`${env.apiPrefix}/scoring/me`, async (req, res) => {
+  try {
+    if (!supabaseAdmin) return res.status(503).json({ message: "Supabase nao configurado." });
+    const educatorId = String(req.query?.educatorId ?? "").trim();
+    if (!educatorId) return res.status(400).json({ message: "educatorId e obrigatorio." });
+
+    const { data: links } = await supabaseAdmin
+      .from("tutor_student_links")
+      .select("student_id")
+      .eq("tutor_id", educatorId)
+      .eq("status", "confirmado");
+
+    const studentIds = (links ?? []).map((l) => l.student_id);
+    let recentEvents = [];
+    let totalScore = 0;
+
+    if (studentIds.length > 0) {
+      const { data: progressRows } = await supabaseAdmin
+        .from("activity_progress")
+        .select("id, learner_profile_id, activity_id, status, score, updated_at")
+        .in("learner_profile_id", studentIds)
+        .eq("status", "COMPLETED")
+        .order("updated_at", { ascending: false })
+        .limit(20);
+
+      recentEvents = (progressRows ?? []).map((p) => ({
+        learnerId: p.learner_profile_id,
+        activityId: p.activity_id,
+        score: p.score ?? 0,
+        completedAt: p.updated_at,
+      }));
+      totalScore = recentEvents.reduce((sum, e) => sum + (e.score ?? 0), 0);
+    }
+
+    return res.json({
+      totalScore,
+      lettersUnlocked: Math.min(Math.floor(totalScore / 100), 26),
+      phraseLength: Math.min(Math.floor(totalScore / 500) + 1, 10),
+      recentEvents,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    const httpError = toHttpError(err);
+    return res.status(httpError.status).json({ message: httpError.message });
+  }
+});
 
 // GET /api/v1/themes — lista temas para o onboarding do educador no mobile
 app.get(`${env.apiPrefix}/themes`, async (_req, res) => {
