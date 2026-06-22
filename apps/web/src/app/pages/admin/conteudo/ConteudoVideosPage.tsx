@@ -10,36 +10,20 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { env } from "../../../core/config/env";
+import { apiGet, apiPatch } from "../../../core/api/client";
 import type { MediaLibraryItem, MediaLibraryKind } from "./cmsTypes";
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
-const API = `${env.apiBaseUrl ?? "http://localhost:8082/api/v1"}`;
-
 async function fetchMediaLibrary(): Promise<MediaLibraryItem[]> {
-  const res = await fetch(`${API}/painel/conteudo/media-biblioteca`, {
-    credentials: "include",
-  });
-  if (!res.ok) throw new Error("Falha ao carregar vídeos");
-  return res.json();
+  return apiGet("/painel/conteudo/media-biblioteca");
 }
 
 async function patchMediaItem(
   id: string,
   payload: { publicUrl?: string | null; durationSec?: number | null },
 ): Promise<MediaLibraryItem> {
-  const res = await fetch(`${API}/painel/conteudo/media-biblioteca/${id}`, {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { message?: string }).message ?? "Erro ao salvar");
-  }
-  return res.json();
+  return apiPatch(`/painel/conteudo/media-biblioteca/${id}`, payload);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

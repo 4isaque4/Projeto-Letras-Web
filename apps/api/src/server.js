@@ -6,8 +6,11 @@ import { installDashboardRealtimeServer } from "./realtime/dashboardRealtime.js"
 import { authRouter } from "./routes/auth.js";
 import { cadastrosRouter } from "./routes/cadastros.js";
 import { healthRouter } from "./routes/health.js";
+import { learnersRouter } from "./routes/learners.js";
 import { painelRouter } from "./routes/painel.js";
 import { referenceRouter } from "./routes/reference.js";
+import { sessionsRouter } from "./routes/sessions.js";
+import { getLearningThemes, toHttpError } from "./services/letrasDataService.js";
 
 const app = express();
 const allowAnyOrigin = env.corsOrigins.includes("*");
@@ -66,6 +69,26 @@ app.use(`${env.apiPrefix}/auth`, authRouter);
 app.use(`${env.apiPrefix}/reference`, referenceRouter);
 app.use(`${env.apiPrefix}/cadastros`, cadastrosRouter);
 app.use(`${env.apiPrefix}/painel`, painelRouter);
+app.use(`${env.apiPrefix}/sessions`, sessionsRouter);
+app.use(`${env.apiPrefix}/learners`, learnersRouter);
+
+// GET /api/v1/themes — lista temas para o onboarding do educador no mobile
+app.get(`${env.apiPrefix}/themes`, async (_req, res) => {
+  try {
+    const themes = await getLearningThemes();
+    const mapped = (themes ?? []).map((t) => ({
+      id: t.id,
+      name: t.title ?? t.slug ?? "",
+      description: t.description ?? null,
+      createdAt: t.created_at ?? null,
+      updatedAt: t.updated_at ?? null,
+    }));
+    return res.json(mapped);
+  } catch (err) {
+    const httpError = toHttpError(err);
+    return res.status(httpError.status).json({ message: httpError.message });
+  }
+});
 
 
 

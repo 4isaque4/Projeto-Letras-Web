@@ -1,6 +1,6 @@
 import { env } from "../config/env";
 
-const DEFAULT_API_BASE_URL = "http://localhost:8080/api/v1";
+const DEFAULT_API_BASE_URL = "http://localhost:8082/api/v1";
 
 function normalizeBaseUrl(value: string) {
   if (!value) {

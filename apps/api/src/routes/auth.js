@@ -13,16 +13,23 @@ function requireSupabase() {
 }
 
 function toEducatorProfile(profile, email) {
+  const meta = profile.metadata ?? {};
   return {
     id: profile.id,
     fullName: profile.full_name ?? "",
-    email: email ?? profile.metadata?.email ?? null,
+    email: email ?? meta.email ?? null,
     cpf: profile.cpf ?? null,
     phoneDigits: profile.phone ?? null,
-    birthDate: profile.metadata?.birthDate ?? null,
-    uf: profile.metadata?.uf ?? null,
-    city: profile.metadata?.city ?? null,
-    photoUri: profile.metadata?.photoUri ?? null,
+    birthDate: meta.birthDate ?? null,
+    uf: meta.uf ?? null,
+    city: meta.city ?? null,
+    photoUri: meta.photoUri ?? null,
+    educationLevel: meta.educationLevel ?? null,
+    trainingArea: meta.trainingArea ?? null,
+    linkedin: meta.linkedin ?? null,
+    facebook: meta.facebook ?? null,
+    instagram: meta.instagram ?? null,
+    xHandle: meta.xHandle ?? null,
   };
 }
 
@@ -162,5 +169,179 @@ authRouter.get("/educators/me", async (req, res) => {
     });
   } catch (err) {
     return res.status(err.status ?? 500).json({ message: err.message ?? "Erro interno." });
+  }
+});
+
+// POST /auth/educators/register
+authRouter.post("/educators/register", async (req, res) => {
+  try {
+    const client = requireSupabase();
+    const {
+      fullName, email, password, cpf, phoneDigits, birthDate, uf, city, photoUri,
+      educationLevel, trainingArea, linkedin, facebook, instagram, xHandle,
+    } = req.body ?? {};
+
+    if (!fullName || (!email && !cpf)) {
+      return res.status(400).json({ message: "Nome completo e email ou CPF sao obrigatorios." });
+    }
+
+    const cpfDigits = cpf ? String(cpf).replace(/\D/g, "") : null;
+    const resolvedEmail = email
+      ? String(email).toLowerCase().trim()
+      : `tutor.${cpfDigits}@letras.app`;
+
+    const resolvedPassword = password && String(password).trim().length >= 6
+      ? String(password).trim()
+      : `Letras@${Date.now().toString().slice(-8)}`;
+
+    const { data: userData, error: authError } = await client.auth.admin.createUser({
+      email: resolvedEmail,
+      password: resolvedPassword,
+      email_confirm: true,
+      user_metadata: { full_name: String(fullName).trim(), role: "tutor" },
+    });
+
+    if (authError) {
+      const msg = authError.message ?? "";
+      if (msg.toLowerCase().includes("already") || msg.toLowerCase().includes("exists")) {
+        return res.status(409).json({ message: "Email ja cadastrado." });
+      }
+      return res.status(400).json({ message: msg || "Falha ao criar conta." });
+    }
+
+    const userId = userData?.user?.id;
+    if (!userId) {
+      return res.status(500).json({ message: "Falha ao obter usuario criado." });
+    }
+
+    const metadata = {
+      email: resolvedEmail,
+      ...(birthDate ? { birthDate } : {}),
+      ...(uf ? { uf } : {}),
+      ...(city ? { city } : {}),
+      ...(photoUri !== undefined ? { photoUri } : {}),
+      ...(educationLevel ? { educationLevel } : {}),
+      ...(trainingArea ? { trainingArea } : {}),
+      ...(linkedin ? { linkedin } : {}),
+      ...(facebook ? { facebook } : {}),
+      ...(instagram ? { instagram } : {}),
+      ...(xHandle ? { xHandle } : {}),
+    };
+
+    const { data: profile, error: profileError } = await client
+      .from("profiles")
+      .update({
+        full_name: String(fullName).trim(),
+        phone: phoneDigits ?? null,
+        cpf: cpfDigits,
+        role: "tutor",
+        metadata,
+      })
+      .eq("id", userId)
+      .select("id, full_name, phone, cpf, role, metadata, created_at, updated_at")
+      .single();
+
+    if (profileError) {
+      await client.auth.admin.deleteUser(userId).catch(() => {});
+      return res.status(500).json({ message: `Perfil nao criado: ${profileError.message}` });
+    }
+
+    const { data: linkData } = await client.auth.admin.generateLink({ type: "magiclink", email: resolvedEmail });
+    const { data: otpData } = await client.auth.verifyOtp({
+      email: resolvedEmail,
+      token: linkData?.properties?.email_otp ?? "",
+      type: "email",
+    });
+
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    return res.status(201).json({
+      token: otpData?.session?.access_token ?? "",
+      expiresAt,
+      educator: toEducatorProfile(profile, resolvedEmail),
+    });
+  } catch (err) {
+    return res.status(err.status ?? 500).json({ message: err.message ?? "Erro interno." });
+  }
+});
+
+// PATCH /auth/educators/profile
+authRouter.patch("/educators/profile", async (req, res) => {
+  try {
+    const client = requireSupabase();
+    const token = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+
+    if (!token) {
+      return res.status(401).json({ message: "Token nao informado." });
+    }
+
+    const { data: { user }, error: userError } = await client.auth.getUser(token);
+    if (userError || !user) {
+      return res.status(401).json({ message: "Sessao expirada ou invalida." });
+    }
+
+    const { data: existing } = await client
+      .from("profiles")
+      .select("id, full_name, phone, cpf, role, metadata")
+      .eq("id", user.id)
+      .single();
+
+    if (!existing || existing.role !== "tutor") {
+      return res.status(403).json({ message: "Acesso restrito." });
+    }
+
+    const {
+      fullName, cpf, phoneDigits, birthDate, uf, city, photoUri,
+      educationLevel, trainingArea, linkedin, facebook, instagram, xHandle,
+    } = req.body ?? {};
+
+    const existingMeta = existing.metadata ?? {};
+    const updatedMeta = {
+      ...existingMeta,
+      ...(birthDate !== undefined ? { birthDate } : {}),
+      ...(uf !== undefined ? { uf } : {}),
+      ...(city !== undefined ? { city } : {}),
+      ...(photoUri !== undefined ? { photoUri } : {}),
+      ...(educationLevel !== undefined ? { educationLevel } : {}),
+      ...(trainingArea !== undefined ? { trainingArea } : {}),
+      ...(linkedin !== undefined ? { linkedin } : {}),
+      ...(facebook !== undefined ? { facebook } : {}),
+      ...(instagram !== undefined ? { instagram } : {}),
+      ...(xHandle !== undefined ? { xHandle } : {}),
+    };
+
+    const updates = { metadata: updatedMeta };
+    if (fullName) updates.full_name = String(fullName).trim();
+    if (phoneDigits !== undefined) updates.phone = phoneDigits || null;
+    if (cpf !== undefined) updates.cpf = cpf ? String(cpf).replace(/\D/g, "") : null;
+
+    const { data: profile, error } = await client
+      .from("profiles")
+      .update(updates)
+      .eq("id", user.id)
+      .select("id, full_name, phone, cpf, role, metadata")
+      .single();
+
+    if (error) {
+      return res.status(400).json({ message: error.message ?? "Falha ao atualizar perfil." });
+    }
+
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    return res.json({ expiresAt, educator: toEducatorProfile(profile, user.email) });
+  } catch (err) {
+    return res.status(err.status ?? 500).json({ message: err.message ?? "Erro interno." });
+  }
+});
+
+// POST /auth/educators/logout
+authRouter.post("/educators/logout", async (req, res) => {
+  try {
+    const client = requireSupabase();
+    const token = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+    if (token) {
+      await client.auth.admin.signOut(token).catch(() => {});
+    }
+    return res.json({ ok: true });
+  } catch {
+    return res.json({ ok: true });
   }
 });
