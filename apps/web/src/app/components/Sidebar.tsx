@@ -1,15 +1,14 @@
 import { Link } from "react-router";
-import { 
-  LayoutDashboard, 
-  Users, 
-  UserCheck, 
-  Link2, 
-  UsersRound, 
-  Inbox, 
-  FileText, 
-  Trophy, 
-  FileBarChart, 
-  Settings 
+import {
+  LayoutDashboard,
+  Users,
+  UserCheck,
+  Link2,
+  Inbox,
+  FileText,
+  Trophy,
+  FileBarChart,
+  Settings
 } from "lucide-react";
 
 interface SidebarProps {
