@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { AlertCircle, ArrowLeft, Check, Upload, Video, X } from "lucide-react";
 import { apiGet, apiPatch, apiPostFormData } from "../../../core/api/client";
-import StateDisplay from "../../components/StateDisplay";
+import StateDisplay from "../../../components/StateDisplay";
 import type { MediaLibraryItem } from "./cmsTypes";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
