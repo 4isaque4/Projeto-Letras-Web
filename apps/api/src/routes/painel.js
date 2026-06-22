@@ -859,6 +859,60 @@ painelRouter.delete("/conteudo/media-biblioteca/:id", async (req, res) => {
   }
 });
 
+// Lista arquivos de um bucket do Supabase Storage (usado pelo seletor de vídeo)
+painelRouter.get("/conteudo/storage-files", async (req, res) => {
+  try {
+    const bucket = String(req.query?.bucket ?? "cms-videos");
+    const folder = String(req.query?.folder ?? "media-library");
+    const { data, error } = await supabaseAdmin.storage
+      .from(bucket)
+      .list(folder, { limit: 500, sortBy: { column: "name", order: "asc" } });
+    if (error) throw new Error(error.message);
+    const files = (data ?? [])
+      .filter((f) => f.id) // ignora sub-pastas (id=null)
+      .map((f) => ({
+        name: f.name,
+        sizeBytes: f.metadata?.size ?? 0,
+        mimetype: f.metadata?.mimetype ?? "",
+        updatedAt: f.updated_at,
+        publicUrl: supabaseAdmin.storage.from(bucket).getPublicUrl(`${folder}/${f.name}`).data.publicUrl,
+      }));
+    res.json(files);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+// Faz upload de um vídeo para cms-videos e atribui ao slot de media_library
+painelRouter.post("/conteudo/media-biblioteca/:id/upload", parseMultipartFile, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const file = req.file;
+    if (!file) return res.status(400).json({ message: "Arquivo não enviado." });
+
+    const ext = (file.originalname.split(".").pop() ?? "mp4").toLowerCase();
+    const storagePath = `media-library/${id}-${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from("cms-videos")
+      .upload(storagePath, file.buffer, { contentType: file.mimetype, upsert: true });
+    if (uploadError) throw new Error(uploadError.message);
+
+    const { data: urlData } = supabaseAdmin.storage.from("cms-videos").getPublicUrl(storagePath);
+    const data = await updateMediaLibraryItem({
+      mediaId: id,
+      publicUrl: urlData.publicUrl,
+      storagePath,
+      bucket: "cms-videos",
+    });
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
 // ── Tutoriais (media_library kind=tutorial + tutorial_completions) ─────────────
 
 painelRouter.get("/tutoriais", async (req, res) => {
