@@ -77,8 +77,23 @@ app.use(`${env.apiPrefix}/learners`, learnersRouter);
 app.get(`${env.apiPrefix}/scoring/me`, async (req, res) => {
   try {
     if (!supabaseAdmin) return res.status(503).json({ message: "Supabase nao configurado." });
-    const educatorId = String(req.query?.educatorId ?? "").trim();
-    if (!educatorId) return res.status(400).json({ message: "educatorId e obrigatorio." });
+
+    // Resolve educator via Bearer token; query param é aceito como fallback de leitura
+    // mas deve corresponder ao usuário autenticado
+    const token = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+    let educatorId = String(req.query?.educatorId ?? "").trim();
+
+    if (token) {
+      const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+      if (error || !user) return res.status(401).json({ message: "Sessao expirada ou invalida." });
+      // Rejeita se o educatorId da query não bate com o token autenticado
+      if (educatorId && educatorId !== user.id) {
+        return res.status(403).json({ message: "Acesso negado." });
+      }
+      educatorId = user.id;
+    }
+
+    if (!educatorId) return res.status(401).json({ message: "Autenticacao necessaria." });
 
     const { data: links } = await supabaseAdmin
       .from("tutor_student_links")
