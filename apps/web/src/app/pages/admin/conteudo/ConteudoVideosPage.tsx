@@ -278,31 +278,28 @@ function SlotRow({ item, onAssign, onRemove }: SlotRowProps) {
 
   return (
     <tr className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-      <td className="px-4 py-3 w-full">
+      <td className="px-4 py-3">
         <p className="text-sm font-medium text-gray-900">{item.title}</p>
         {item.description && (
           <p className="mt-0.5 text-xs leading-snug text-gray-500">{item.description}</p>
         )}
+        {hasVideo && (
+          <p className="mt-1 flex items-center gap-1 text-[11px] text-gray-500">
+            <Check size={11} className="shrink-0" />
+            <span className="truncate max-w-64" title={fileName}>{fileName}</span>
+          </p>
+        )}
       </td>
       <td className="px-4 py-3 text-right whitespace-nowrap align-middle">
-        {hasVideo ? (
-          <div className="flex items-center justify-end gap-3">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Check size={12} className="shrink-0 text-gray-500" />
-              <span
-                title={fileName}
-                className="max-w-36 truncate text-xs text-gray-600"
-              >
-                {fileName}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => onAssign(item)}
-              className="border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50"
-            >
-              Alterar
-            </button>
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => onAssign(item)}
+            className="border border-gray-900 bg-gray-900 px-3 py-1.5 text-xs text-white hover:bg-gray-700"
+          >
+            {hasVideo ? "Trocar vídeo" : "Selecionar vídeo"}
+          </button>
+          {hasVideo && (
             <button
               type="button"
               onClick={handleRemove}
@@ -311,16 +308,8 @@ function SlotRow({ item, onAssign, onRemove }: SlotRowProps) {
             >
               {removing ? "…" : "Remover"}
             </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onAssign(item)}
-            className="border border-gray-900 bg-gray-900 px-3 py-1.5 text-xs text-white hover:bg-gray-700"
-          >
-            Atribuir vídeo
-          </button>
-        )}
+          )}
+        </div>
       </td>
     </tr>
   );
@@ -376,8 +365,8 @@ export default function ConteudoVideosPage() {
         <div className="mb-6">
           <h1 className="text-xl font-semibold text-gray-900">Vídeos de Orientação</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Cada item abaixo representa um vídeo exibido em um momento específico da jornada. Clique em{" "}
-            <strong className="font-medium text-gray-800">Atribuir vídeo</strong> para escolher ou enviar o arquivo correspondente.
+            Cada item abaixo representa um vídeo exibido em um momento específico da jornada do alfabetizando. Clique em{" "}
+            <strong className="font-medium text-gray-800">Selecionar vídeo</strong> para escolher da biblioteca ou enviar um novo arquivo.
           </p>
         </div>
 
