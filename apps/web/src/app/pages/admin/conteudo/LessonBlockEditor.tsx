@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { apiPost } from "../../../core/api/client";
 import {
   AlignLeft,
   BookOpen,
@@ -493,13 +494,8 @@ function TextBlockEditor({
     setIsGenerating(true);
     setTtsError(null);
     try {
-      const res = await fetch("/api/v1/painel/tts/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      const data = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok || !data.url) throw new Error(data.error ?? "Falha ao gerar áudio");
+      const data = await apiPost("/painel/tts/generate", { text }) as { url?: string };
+      if (!data.url) throw new Error("Falha ao gerar áudio");
       onChange({ narrationAudioUrl: data.url });
     } catch (err) {
       setTtsError(err instanceof Error ? err.message : "Erro desconhecido");

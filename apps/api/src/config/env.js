@@ -46,3 +46,8 @@ export const env = {
   supabaseStoragePublicBaseUrl: process.env.SUPABASE_STORAGE_PUBLIC_BASE_URL ?? "",
   uploadMaxFileMb: readNumber(process.env.UPLOAD_MAX_FILE_MB, 100),
 };
+
+if (!env.supabaseUrl || !env.supabaseServiceRoleKey) {
+  console.error("[letras-api] ERRO: SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY sao obrigatorios.");
+  process.exit(1);
+}
