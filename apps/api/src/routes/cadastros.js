@@ -672,11 +672,27 @@ cadastrosRouter.get("/alfabetizandos/buscar", async (req, res) => {
       return res.status(404).json({ message: "Cadastro não encontrado. Verifique os dados ou entre em contato com seu educador." });
     }
 
+    // Resolve o alfabetizador que cadastrou o aluno (RN084) para habilitar o
+    // fluxo de vínculo no mobile (RN101): sem isto, o app não sabe a quem pedir
+    // vínculo e acabava liberando acesso direto indevidamente.
+    let educator = null;
+    const registrarId = found.metadata?.educatorId ?? null;
+    if (registrarId) {
+      try {
+        const tutors = await getProfiles({ role: "tutor" });
+        const tutor = tutors.find((t) => t.id === registrarId);
+        educator = { id: registrarId, name: tutor?.full_name ?? "Seu alfabetizador" };
+      } catch {
+        educator = { id: registrarId, name: "Seu alfabetizador" };
+      }
+    }
+
     return res.json({
       id: found.id,
       displayName: found.full_name,
       cpfOrPassport: found.cpf ?? null,
       phoneDigits: found.phone ?? null,
+      educator,
     });
   } catch (error) {
     const httpError = toHttpError(error);
