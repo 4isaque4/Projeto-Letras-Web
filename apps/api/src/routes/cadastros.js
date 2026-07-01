@@ -676,14 +676,27 @@ cadastrosRouter.get("/alfabetizandos/buscar", async (req, res) => {
     // fluxo de vínculo no mobile (RN101): sem isto, o app não sabe a quem pedir
     // vínculo e acabava liberando acesso direto indevidamente.
     let educator = null;
-    const registrarId = found.metadata?.educatorId ?? null;
-    if (registrarId) {
+    let educatorId = found.metadata?.educatorId ?? null;
+    if (!educatorId) {
+      // Sem educatorId no metadata: procura vínculo existente (confirmado > pendente).
+      try {
+        const links = (await getTutorStudentLinks()).filter((l) => l.student_id === found.id);
+        const chosen =
+          links.find((l) => l.status === "confirmado") ??
+          links.find((l) => l.status === "pendente") ??
+          links[0];
+        educatorId = chosen?.tutor_id ?? null;
+      } catch {
+        /* segue sem educator */
+      }
+    }
+    if (educatorId) {
       try {
         const tutors = await getProfiles({ role: "tutor" });
-        const tutor = tutors.find((t) => t.id === registrarId);
-        educator = { id: registrarId, name: tutor?.full_name ?? "Seu alfabetizador" };
+        const tutor = tutors.find((t) => t.id === educatorId);
+        educator = { id: educatorId, name: tutor?.full_name ?? "Seu alfabetizador" };
       } catch {
-        educator = { id: registrarId, name: "Seu alfabetizador" };
+        educator = { id: educatorId, name: "Seu alfabetizador" };
       }
     }
 
@@ -1047,5 +1060,91 @@ cadastrosRouter.patch("/vinculos/:id", async (req, res) => {
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+// ── Sessões de confirmação (vínculo) — shape esperado pelo app mobile ──────────
+// O mobile usa /cadastros/sessoes-confirmacao (o painel usa /vinculos). Mesmo
+// dado (tutor_student_links). RN101/RN097-100: aluno solicita → educador confirma.
+
+// POST: alfabetizando solicita vínculo ao alfabetizador que o cadastrou.
+cadastrosRouter.post("/sessoes-confirmacao", async (req, res) => {
+  try {
+    const learnerProfileId = req.body?.learnerProfileId ?? req.body?.studentId ?? req.body?.alfabetizandoId;
+    const educatorId = req.body?.educatorId ?? req.body?.tutorId ?? req.body?.alfabetizadorId;
+    if (!learnerProfileId || !educatorId) {
+      return res.status(400).json({ message: "learnerProfileId e educatorId são obrigatórios." });
+    }
+
+    // Se já existe um vínculo para o par, reaproveita (evita duplicar / erro de unique).
+    const existing = (await getTutorStudentLinks()).find(
+      (l) => l.tutor_id === educatorId && l.student_id === learnerProfileId,
+    );
+    const link = existing
+      ? existing
+      : await createTutorStudentLink({
+          tutorId: educatorId,
+          studentId: learnerProfileId,
+          status: "pendente",
+          requestedBy: "alfabetizando",
+        });
+
+    return res.status(existing ? 200 : 201).json({
+      id: link.id,
+      status: link.status,
+      requestedAt: link.requested_at ?? link.created_at ?? new Date().toISOString(),
+    });
+  } catch (error) {
+    const httpError = toHttpError(error);
+    return res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+// GET: alfabetizador lista pedidos de vínculo pendentes.
+cadastrosRouter.get("/sessoes-confirmacao", async (req, res) => {
+  try {
+    const educatorId = String(req.query?.educatorId ?? "").trim();
+    if (!educatorId) {
+      return res.status(400).json({ message: "educatorId é obrigatório." });
+    }
+    const pending = (await getTutorStudentLinks()).filter(
+      (l) => l.tutor_id === educatorId && l.status === "pendente",
+    );
+    const studentIds = [...new Set(pending.map((l) => l.student_id))];
+    const profiles = studentIds.length ? await getProfiles({ ids: studentIds }) : [];
+    const profileById = mapById(profiles);
+    const items = pending.map((l) => {
+      const s = profileById.get(l.student_id);
+      return {
+        id: l.id,
+        requestedAt: l.requested_at ?? l.created_at ?? null,
+        learnerProfile: {
+          id: l.student_id,
+          displayName: s?.full_name ?? "Sem nome",
+          cpfOrPassport: s?.cpf ?? null,
+        },
+      };
+    });
+    return res.json(items);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    return res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+// PATCH: alfabetizador confirma (CONFIRMED) ou nega (DENIED) um pedido.
+cadastrosRouter.patch("/sessoes-confirmacao/:id", async (req, res) => {
+  try {
+    const raw = String(req.body?.status ?? "").trim().toUpperCase();
+    const status = raw === "CONFIRMED" ? "confirmado" : raw === "DENIED" ? "negado" : raw.toLowerCase();
+    const data = await updateTutorStudentLink(req.params.id, {
+      status,
+      reason: req.body?.denialReason ?? req.body?.reason,
+      decidedBy: req.body?.decidedBy,
+    });
+    return res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    return res.status(httpError.status).json({ message: httpError.message });
   }
 });
