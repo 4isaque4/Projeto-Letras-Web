@@ -704,7 +704,7 @@ async function getMobileLearners({ ids, educatorIds } = {}) {
   const client = requireSupabase();
   let query = client
     .from("LearnerProfile")
-    .select("id, displayName, notes, educatorId, createdAt, updatedAt");
+    .select("id, displayName, notes, educatorId, cpfOrPassport, phoneDigits, createdAt, updatedAt");
 
   if (ids) {
     if (ids.length === 0) {
@@ -812,8 +812,8 @@ function mapMobileLearnerToProfile(item) {
     id: item.id,
     full_name: item.displayName,
     role: "alfabetizando",
-    phone: "",
-    cpf: "",
+    phone: item.phoneDigits ?? "",
+    cpf: item.cpfOrPassport ?? "",
     metadata: {
       source: "mobile_api",
       notes: item.notes ?? "",
@@ -3836,13 +3836,15 @@ async function upsertMobileEducatorRecord({ id, fullName, email, cpf, phone, pas
   }
 }
 
-async function upsertMobileLearnerRecord({ id, fullName, notes, educatorId }) {
+async function upsertMobileLearnerRecord({ id, fullName, notes, educatorId, cpf, phone }) {
   const client = requireSupabase();
   const payload = {
     id: String(id),
     displayName: normalizeText(fullName) || "Alfabetizando",
     notes: normalizeText(notes) || null,
     educatorId: normalizeText(educatorId) || null,
+    cpfOrPassport: normalizeNullableText(cpf),
+    phoneDigits: normalizeDigits(phone, 11),
   };
 
   const { error } = await client.from("LearnerProfile").upsert(payload, { onConflict: "id" });
@@ -3926,6 +3928,8 @@ async function syncPanelProfileToMobile({ profile, email, password }) {
       id: profile.id,
       fullName: profile.full_name,
       notes,
+      cpf: profile.cpf,
+      phone: profile.phone,
     });
   }
 }
@@ -4340,7 +4344,7 @@ export async function updateProfileRecord({
 
   const { data: existingLearner, error: readError } = await client
     .from("LearnerProfile")
-    .select("id, displayName, notes, educatorId, createdAt, updatedAt")
+    .select("id, displayName, notes, educatorId, cpfOrPassport, phoneDigits, createdAt, updatedAt")
     .eq("id", normalizedProfileId)
     .maybeSingle();
 
@@ -4377,6 +4381,14 @@ export async function updateProfileRecord({
     }
   }
 
+  if (phone !== undefined) {
+    payload.phoneDigits = normalizeDigits(phone, 11);
+  }
+
+  if (cpf !== undefined) {
+    payload.cpfOrPassport = normalizeNullableText(cpf);
+  }
+
   if (Object.keys(payload).length === 0) {
     throw new HttpError(400, "Nenhum campo valido para atualizar.");
   }
@@ -4385,7 +4397,7 @@ export async function updateProfileRecord({
     .from("LearnerProfile")
     .update(payload)
     .eq("id", normalizedProfileId)
-    .select("id, displayName, notes, educatorId, createdAt, updatedAt")
+    .select("id, displayName, notes, educatorId, cpfOrPassport, phoneDigits, createdAt, updatedAt")
     .maybeSingle();
 
   if (error && !isOptionalSourceMissing(error)) {
