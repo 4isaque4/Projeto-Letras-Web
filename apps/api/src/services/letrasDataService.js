@@ -3998,6 +3998,26 @@ async function runBestEffortMobileSync(context, operation) {
   }
 }
 
+// Localiza o id de um usuario de auth.users pelo e-mail. Usado para curar
+// cadastros orfaos: tentativas anteriores criavam o usuario em auth mas
+// falhavam ao gravar o profile, deixando o e-mail "ocupado" sem conta usavel.
+async function findAuthUserIdByEmail(client, email) {
+  const target = String(email || "").trim().toLowerCase();
+  if (!target) return null;
+  for (let page = 1; page <= 50; page += 1) {
+    const { data, error } = await client.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) return null;
+    const users = data?.users ?? [];
+    const found = users.find(
+      (user) => String(user?.email || "").trim().toLowerCase() === target,
+    );
+    if (found) return found.id;
+    // Para na primeira pagina vazia (nao assume que perPage foi respeitado).
+    if (users.length === 0) break;
+  }
+  return null;
+}
+
 export async function createAuthUserWithProfile({
   email,
   password,
@@ -4034,27 +4054,65 @@ export async function createAuthUserWithProfile({
     },
   });
 
+  let userId = userData?.user?.id;
+
   if (userError) {
-    throw new HttpError(400, `Falha ao criar usuario: ${userError.message}`);
+    // O e-mail ja pode estar ocupado por um usuario de uma tentativa anterior
+    // que falhou antes de gravar o profile (orfa). Se for esse o caso e o
+    // usuario nao tiver profile, reaproveitamos o id para completar o cadastro
+    // em vez de bloquear o recadastro. Se ja houver profile, e duplicata real.
+    const isDuplicate =
+      userError.status === 422 ||
+      /already (been )?registered|already exists|email_exists|duplicate/i.test(
+        userError.message || "",
+      );
+
+    if (!isDuplicate) {
+      throw new HttpError(400, `Falha ao criar usuario: ${userError.message}`);
+    }
+
+    const existingId = await findAuthUserIdByEmail(client, normalizedEmail);
+    if (!existingId) {
+      throw new HttpError(400, `Falha ao criar usuario: ${userError.message}`);
+    }
+
+    const { data: existingProfile } = await client
+      .from("profiles")
+      .select("id")
+      .eq("id", existingId)
+      .maybeSingle();
+
+    if (existingProfile) {
+      throw new HttpError(409, "Ja existe um cadastro com este e-mail/CPF.");
+    }
+
+    userId = existingId;
   }
 
-  const userId = userData?.user?.id;
   if (!userId) {
     throw new HttpError(500, "Nao foi possivel obter o usuario criado.");
   }
 
+  // Upsert (nao update): nao existe trigger que crie automaticamente a linha
+  // em public.profiles ao criar o usuario em auth.users, entao um .update()
+  // atinge 0 linhas e o .single() estoura PGRST116 ("Cannot coerce the result
+  // to a single JSON object"). O upsert por id cria o perfil quando ausente e
+  // atualiza quando ja existir (ex.: se um trigger for adicionado no futuro).
   const { data: profileData, error: profileError } = await client
     .from("profiles")
-    .update({
-      full_name: normalizedName,
-      phone: normalizeText(phone) || null,
-      cpf: normalizeText(cpf) || null,
-      metadata: {
-        email: normalizedEmail,
+    .upsert(
+      {
+        id: userId,
+        full_name: normalizedName,
+        phone: normalizeText(phone) || null,
+        cpf: normalizeText(cpf) || null,
+        metadata: {
+          email: normalizedEmail,
+        },
+        role,
       },
-      role,
-    })
-    .eq("id", userId)
+      { onConflict: "id" },
+    )
     .select("id, full_name, role, phone, cpf, metadata, created_at, updated_at")
     .single();
 
