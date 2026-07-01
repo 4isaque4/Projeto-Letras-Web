@@ -51,6 +51,7 @@ import {
   updateLearningTheme,
   updateTutorStudentLink,
   getTutorialCompletions,
+  getSupportVideos,
   upsertTutorialCompletion,
   HttpError,
   toHttpError,
@@ -925,6 +926,16 @@ painelRouter.get("/tutoriais", async (req, res) => {
   try {
     const data = await getTutorialCompletions({ educatorId: req.query?.educatorId });
     res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+// Vídeos de dica/apoio para o alfabetizando consultar (kind=dica).
+painelRouter.get("/dicas", async (_req, res) => {
+  try {
+    res.json(await getSupportVideos());
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });

@@ -5007,6 +5007,30 @@ export async function getTutorialCompletions({ educatorId } = {}) {
   });
 }
 
+// Vídeos de dica/apoio (kind=dica) que o alfabetizando pode consultar na aba
+// de tutoriais. Sem PII e sem progresso — apenas os clipes ativos.
+export async function getSupportVideos() {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("media_library")
+    .select(MEDIA_LIBRARY_SELECT)
+    .eq("kind", "dica")
+    .eq("is_active", true)
+    .order("created_at", { ascending: true });
+  if (error) throw new HttpError(400, `Falha ao listar dicas: ${error.message}`);
+  return (data ?? []).map((item) => ({
+    id: item.id,
+    slug: item.slug,
+    title: item.title,
+    description: item.description,
+    kind: item.kind,
+    duration_sec: item.duration_sec,
+    public_url: item.public_url,
+    tags: item.tags,
+    metadata: item.metadata,
+  }));
+}
+
 export async function upsertTutorialCompletion({
   educatorId,
   mediaId,
