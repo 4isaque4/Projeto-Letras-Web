@@ -1132,6 +1132,27 @@ cadastrosRouter.get("/sessoes-confirmacao", async (req, res) => {
   }
 });
 
+// GET /:id — status de um pedido (a tela de pendência do aluno faz polling).
+cadastrosRouter.get("/sessoes-confirmacao/:id", async (req, res) => {
+  try {
+    const link = (await getTutorStudentLinks()).find((l) => l.id === req.params.id);
+    if (!link) {
+      return res.status(404).json({ message: "Pedido não encontrado." });
+    }
+    const statusMap = { confirmado: "CONFIRMED", negado: "DENIED", pendente: "PENDING" };
+    return res.json({
+      id: link.id,
+      status: statusMap[link.status] ?? "PENDING",
+      learnerProfileId: link.student_id,
+      educatorId: link.tutor_id,
+      denialReason: link.reason ?? null,
+    });
+  } catch (error) {
+    const httpError = toHttpError(error);
+    return res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
 // PATCH: alfabetizador confirma (CONFIRMED) ou nega (DENIED) um pedido.
 cadastrosRouter.patch("/sessoes-confirmacao/:id", async (req, res) => {
   try {
