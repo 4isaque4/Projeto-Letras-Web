@@ -931,6 +931,30 @@ cadastrosRouter.post("/alfabetizandos", async (req, res) => {
       role: "alfabetizando",
     });
 
+    // Persiste dados complementares do cadastro mobile (a tela de confirmação
+    // de sessão do educador exibe nascimento/UF/cidade do alfabetizando).
+    const birthDate = String(req.body?.birthDate ?? "").trim();
+    const uf = String(req.body?.uf ?? "").trim();
+    const city = String(req.body?.city ?? "").trim();
+    const photoUri = String(req.body?.photoUri ?? "").trim();
+    if ((birthDate || uf || city || photoUri) && data?.id) {
+      try {
+        await updateProfileRecord({
+          profileId: data.id,
+          role: "alfabetizando",
+          metadata: {
+            ...(data.metadata ?? {}),
+            ...(birthDate ? { birthDate } : {}),
+            ...(uf ? { uf } : {}),
+            ...(city ? { city } : {}),
+            ...(photoUri ? { photoUri } : {}),
+          },
+        });
+      } catch {
+        // Metadados complementares são best-effort — não bloqueiam o cadastro.
+      }
+    }
+
     // Se vier educatorId (fluxo mobile do educador), cria o vínculo automaticamente.
     const rawEducatorId = String(req.body?.educatorId ?? "").trim();
     if (rawEducatorId && data?.id) {
@@ -1122,6 +1146,11 @@ cadastrosRouter.get("/sessoes-confirmacao", async (req, res) => {
           id: l.student_id,
           displayName: s?.full_name ?? "Sem nome",
           cpfOrPassport: s?.cpf ?? null,
+          // Tela de confirmação do educador exibe os dados completos do aluno.
+          phoneDigits: s?.phone ?? null,
+          birthDate: s?.metadata?.birthDate ?? null,
+          uf: s?.metadata?.uf ?? null,
+          city: s?.metadata?.city ?? null,
         },
       };
     });
