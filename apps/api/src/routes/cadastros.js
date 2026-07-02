@@ -1110,7 +1110,8 @@ cadastrosRouter.post("/sessoes-confirmacao", async (req, res) => {
           tutorId: educatorId,
           studentId: learnerProfileId,
           status: "pendente",
-          requestedBy: "alfabetizando",
+          // requested_by é FK para profiles.id — quem solicita é o aluno.
+          requestedBy: learnerProfileId,
         });
 
     return res.status(existing ? 200 : 201).json({
