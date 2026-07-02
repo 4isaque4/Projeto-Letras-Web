@@ -706,7 +706,13 @@ cadastrosRouter.get("/alfabetizandos/buscar", async (req, res) => {
     // fluxo de vínculo no mobile (RN101): sem isto, o app não sabe a quem pedir
     // vínculo e acabava liberando acesso direto indevidamente.
     let educator = null;
-    let educatorId = found.metadata?.educatorId ?? null;
+    // O educatorId pode estar no registro encontrado ou apenas no gêmeo
+    // legado do schema mobile (mesmo CPF/telefone) quando o aluno já foi
+    // migrado para o painel — o metadata do profile novo não o carrega.
+    let educatorId =
+      found.metadata?.educatorId ??
+      matches.find((m) => m.metadata?.educatorId)?.metadata?.educatorId ??
+      null;
 
     // Registros legados guardam o id CUID da tabela Educator (Prisma).
     // Vínculos (FK uuid -> profiles) exigem o UUID Supabase correspondente.
@@ -742,6 +748,28 @@ cadastrosRouter.get("/alfabetizandos/buscar", async (req, res) => {
         educator = { id: educatorId, name: tutor?.full_name ?? "Seu alfabetizador" };
       } catch {
         educator = { id: educatorId, name: "Seu alfabetizador" };
+      }
+
+      // Torna o vínculo durável (RN084: quem cadastrou já é vinculado): sem
+      // isso a referência ao educador vive só no metadata do registro legado
+      // e some quando o aluno migrado passa a ser resolvido pelo painel.
+      if (UUID_PATTERN.test(String(found.id)) && UUID_PATTERN.test(String(educatorId))) {
+        try {
+          const links = await getTutorStudentLinks();
+          const hasLink = links.some(
+            (l) => l.tutor_id === educatorId && l.student_id === found.id,
+          );
+          if (!hasLink) {
+            await createTutorStudentLink({
+              tutorId: educatorId,
+              studentId: found.id,
+              status: "confirmado",
+              requestedBy: educatorId,
+            });
+          }
+        } catch {
+          // Sem vínculo persistido o fluxo ainda funciona nesta sessão.
+        }
       }
     }
 
