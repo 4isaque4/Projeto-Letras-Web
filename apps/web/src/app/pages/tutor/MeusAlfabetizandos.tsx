@@ -39,6 +39,22 @@ const EMPTY_CREATE_FORM: StudentCreateForm = {
   cpf: "",
 };
 
+function applyCpfMask(value: string): string {
+  const d = value.replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
+function applyPhoneMask(value: string): string {
+  const d = value.replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 2) return d;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
 export default function MeusAlfabetizandos() {
   const { user } = useAuth();
   const [items, setItems] = useState<StudentItem[]>([]);
@@ -221,15 +237,17 @@ export default function MeusAlfabetizandos() {
           />
           <input
             value={createForm.cpf}
-            onChange={(event) => setCreateForm((current) => ({ ...current, cpf: event.target.value }))}
-            placeholder="CPF *"
+            onChange={(event) => setCreateForm((current) => ({ ...current, cpf: applyCpfMask(event.target.value) }))}
+            placeholder="CPF * (000.000.000-00)"
+            maxLength={14}
             className="border border-gray-300 px-3 py-2 text-sm"
             required
           />
           <input
             value={createForm.telefone}
-            onChange={(event) => setCreateForm((current) => ({ ...current, telefone: event.target.value }))}
-            placeholder="Telefone"
+            onChange={(event) => setCreateForm((current) => ({ ...current, telefone: applyPhoneMask(event.target.value) }))}
+            placeholder="(00) 00000-0000"
+            maxLength={15}
             className="border border-gray-300 px-3 py-2 text-sm"
           />
         </div>

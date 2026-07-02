@@ -654,7 +654,7 @@ cadastrosRouter.get("/alfabetizandos/buscar", async (req, res) => {
 
     const students = await getProfiles({ role: "alfabetizando" });
 
-    const found = students.find((s) => {
+    const matchesSearch = (s) => {
       if (cpfOrPassport) {
         const profileCpf = String(s.cpf ?? "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
         const searchCpf = cpfOrPassport.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
@@ -666,10 +666,40 @@ cadastrosRouter.get("/alfabetizandos/buscar", async (req, res) => {
         if (profilePhone && profilePhone === searchPhone) return true;
       }
       return false;
-    });
+    };
+
+    // Prefere o registro do schema do painel (id UUID): alunos legados do
+    // schema mobile (id CUID) podem já ter sido migrados em login anterior.
+    const matches = students.filter(matchesSearch);
+    let found = matches.find((s) => UUID_PATTERN.test(String(s.id))) ?? matches[0];
 
     if (!found) {
       return res.status(404).json({ message: "Cadastro não encontrado. Verifique os dados ou entre em contato com seu educador." });
+    }
+
+    // Aluno legado do schema mobile (id CUID do Prisma): não existe em
+    // public.profiles, então vínculos/sessões (FK uuid) jamais funcionariam.
+    // Migra na hora: cria auth user + profile com os mesmos dados (o mesmo
+    // caminho do cadastro mobile) e segue o fluxo com o id novo.
+    if (!UUID_PATTERN.test(String(found.id))) {
+      const identifier = String(found.cpf ?? found.phone ?? "")
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .slice(-16)
+        .toLowerCase();
+      if (!identifier) {
+        return res.status(422).json({
+          message: "Cadastro antigo sem CPF/telefone. Peça ao seu alfabetizador para refazer seu cadastro.",
+        });
+      }
+      const migrated = await createAuthUserWithProfile({
+        email: `aluno.${identifier}@mobile.letras.local`,
+        password: `Letras@${identifier}`,
+        fullName: found.full_name,
+        phone: found.phone || undefined,
+        cpf: found.cpf || undefined,
+        role: "alfabetizando",
+      });
+      found = { ...found, id: migrated.id };
     }
 
     // Resolve o alfabetizador que cadastrou o aluno (RN084) para habilitar o
@@ -677,8 +707,23 @@ cadastrosRouter.get("/alfabetizandos/buscar", async (req, res) => {
     // vínculo e acabava liberando acesso direto indevidamente.
     let educator = null;
     let educatorId = found.metadata?.educatorId ?? null;
+
+    // Registros legados guardam o id CUID da tabela Educator (Prisma).
+    // Vínculos (FK uuid -> profiles) exigem o UUID Supabase correspondente.
+    if (educatorId && !UUID_PATTERN.test(String(educatorId))) {
+      try {
+        const { supabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
+        const client = isSupabaseConfigured && supabaseAdmin ? supabaseAdmin : null;
+        educatorId = client
+          ? await resolveSupabaseTutorId(String(educatorId), req.headers.authorization, client)
+          : null;
+      } catch {
+        educatorId = null;
+      }
+    }
+
     if (!educatorId) {
-      // Sem educatorId no metadata: procura vínculo existente (confirmado > pendente).
+      // Sem educatorId utilizável: procura vínculo existente (confirmado > pendente).
       try {
         const links = (await getTutorStudentLinks()).filter((l) => l.student_id === found.id);
         const chosen =
@@ -1095,9 +1140,34 @@ cadastrosRouter.patch("/vinculos/:id", async (req, res) => {
 cadastrosRouter.post("/sessoes-confirmacao", async (req, res) => {
   try {
     const learnerProfileId = req.body?.learnerProfileId ?? req.body?.studentId ?? req.body?.alfabetizandoId;
-    const educatorId = req.body?.educatorId ?? req.body?.tutorId ?? req.body?.alfabetizadorId;
+    let educatorId = req.body?.educatorId ?? req.body?.tutorId ?? req.body?.alfabetizadorId;
     if (!learnerProfileId || !educatorId) {
       return res.status(400).json({ message: "learnerProfileId e educatorId são obrigatórios." });
+    }
+
+    // IDs legados (CUID do schema mobile) não existem em profiles — o vínculo
+    // (FK uuid) falharia no banco. Resolve o educador quando possível e
+    // devolve erro claro em vez de vazar erro de sintaxe do Postgres.
+    if (!UUID_PATTERN.test(String(educatorId))) {
+      try {
+        const { supabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
+        const client = isSupabaseConfigured && supabaseAdmin ? supabaseAdmin : null;
+        educatorId = client
+          ? await resolveSupabaseTutorId(String(educatorId), req.headers.authorization, client)
+          : null;
+      } catch {
+        educatorId = null;
+      }
+      if (!educatorId) {
+        return res.status(422).json({
+          message: "Cadastro do alfabetizador é de uma versão antiga. Peça para ele acessar o app e refazer o login.",
+        });
+      }
+    }
+    if (!UUID_PATTERN.test(String(learnerProfileId))) {
+      return res.status(422).json({
+        message: "Cadastro do alfabetizando é de uma versão antiga. Saia e entre novamente com o CPF para atualizá-lo.",
+      });
     }
 
     // Se já existe um vínculo para o par, reaproveita (evita duplicar / erro de unique).

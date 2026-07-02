@@ -50,6 +50,14 @@ function isValidCpfFormat(cpf: string): boolean {
   return /^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(cpf.trim());
 }
 
+function applyPhoneMask(value: string): string {
+  const d = value.replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 2) return d;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
 const EMPTY_CREATE_FORM: StudentCreateForm = {
   nome: "",
   email: "",
@@ -233,8 +241,9 @@ export default function Alfabetizandos() {
           />
           <input
             value={createForm.telefone}
-            onChange={(event) => setCreateForm((current) => ({ ...current, telefone: event.target.value }))}
-            placeholder="Telefone"
+            onChange={(event) => setCreateForm((current) => ({ ...current, telefone: applyPhoneMask(event.target.value) }))}
+            placeholder="(00) 00000-0000"
+            maxLength={15}
             className="border border-gray-300 px-3 py-2 text-sm"
           />
           <input
@@ -324,7 +333,9 @@ export default function Alfabetizandos() {
                         {editingId === aluno.id ? (
                           <input
                             value={editForm.telefone}
-                            onChange={(event) => setEditForm((current) => ({ ...current, telefone: event.target.value }))}
+                            onChange={(event) => setEditForm((current) => ({ ...current, telefone: applyPhoneMask(event.target.value) }))}
+                            placeholder="(00) 00000-0000"
+                            maxLength={15}
                             className="w-full border border-gray-300 px-2 py-1 text-sm"
                           />
                         ) : (

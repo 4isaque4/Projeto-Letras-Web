@@ -4108,7 +4108,8 @@ export async function createAuthUserWithProfile({
       {
         id: userId,
         full_name: normalizedName,
-        phone: normalizeText(phone) || null,
+        // Telefone: apenas dígitos, máximo 11 (DDD + 9 dígitos).
+        phone: normalizeDigits(phone, 11),
         cpf: normalizeText(cpf) || null,
         metadata: {
           email: normalizedEmail,
@@ -4178,9 +4179,10 @@ export async function updateProfileRecord({
       throw new HttpError(400, `Falha ao buscar perfil: ${readError.message}`);
     }
 
-    if (!existingProfile) {
-      throw new HttpError(404, "Perfil nao encontrado.");
-    }
+    // Sem linha em profiles: o registro pode existir apenas no schema mobile
+    // (LearnerProfile/Educator sincronizados usam o mesmo id). Cai para os
+    // caminhos mobile abaixo em vez de responder 404 direto.
+    if (existingProfile) {
 
     const payload = {};
 
@@ -4207,7 +4209,8 @@ export async function updateProfileRecord({
     }
 
     if (phone !== undefined) {
-      payload.phone = normalizeNullableText(phone);
+      // Telefone: apenas dígitos, máximo 11 (DDD + 9 dígitos).
+      payload.phone = normalizeDigits(phone, 11);
     }
 
     if (cpf !== undefined) {
@@ -4279,12 +4282,13 @@ export async function updateProfileRecord({
     }
 
     return data;
+    }
   }
 
   if (!normalizedRole) {
     throw new HttpError(
       400,
-      "Para IDs nao UUID (schema mobile), informe a role (tutor ou alfabetizando).",
+      "Informe a role (tutor ou alfabetizando) para atualizar este registro.",
     );
   }
 
