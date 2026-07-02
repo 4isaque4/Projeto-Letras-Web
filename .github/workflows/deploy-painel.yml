@@ -1,0 +1,57 @@
+# Deploy automático do painel (frontend Vite + API Express) em painel.letras.cloud.
+#
+# Dispara em push na branch de deploy ou manualmente (workflow_dispatch).
+# Secrets necessários (Settings > Secrets and variables > Actions):
+#   DEPLOY_HOST          IP do VPS
+#   DEPLOY_USER          usuário SSH (root)
+#   DEPLOY_PASSWORD      senha SSH
+#   WEB_ENV_PRODUCTION   conteúdo integral de apps/web/.env.production
+name: Deploy painel
+
+on:
+  push:
+    branches:
+      - feat/learner-experience-improvements
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-painel
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Restaurar .env.production (gitignored)
+        run: printf '%s' "$WEB_ENV_PRODUCTION" > apps/web/.env.production
+        env:
+          WEB_ENV_PRODUCTION: ${{ secrets.WEB_ENV_PRODUCTION }}
+
+      - name: Instalar dependências
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build do painel web
+        run: pnpm --filter web build
+
+      - name: Instalar paramiko
+        run: pip install paramiko
+
+      - name: Deploy no VPS
+        run: python tools/deploy/deploy_painel_ci.py
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+          DEPLOY_BRANCH: ${{ github.ref_name }}
