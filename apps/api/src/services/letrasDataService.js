@@ -27,7 +27,17 @@ const ACTIVITY_PROGRESS_STATUSES = new Set([
 ]);
 const SUPPORT_REQUEST_STATUSES = new Set(["aberto", "em_atendimento", "resolvido", "cancelado"]);
 const SUPPORT_REQUEST_PRIORITIES = new Set(["baixa", "media", "alta", "critica"]);
-const NOTIFICATION_TYPES = new Set(["support_request", "progress_locked", "link_pending", "system"]);
+const NOTIFICATION_TYPES = new Set([
+  "support_request",
+  "progress_locked",
+  "link_pending",
+  "system",
+  "deadline_alert",
+  "score_event",
+  "recognition",
+  "link_denied",
+  "link_transferred",
+]);
 const SYSTEM_SETTINGS_EVENT_TYPE = "system.settings.updated";
 const SYSTEM_SETTINGS_ENTITY_TYPE = "system_settings";
 const DEFAULT_SYSTEM_SETTINGS = Object.freeze({
@@ -1687,6 +1697,593 @@ export async function markEducatorNotificationRead(notificationId) {
   }
 
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// Pontuação do alfabetizador — ledger de eventos (RN085/RN093/RN096)
+// ---------------------------------------------------------------------------
+
+// RN085: créditos por alfabetizando que conclui cada etapa.
+const STAGE_COMPLETION_POINTS = Object.freeze({ 1: 10, 2: 15, 3: 25 });
+// RN096: "PESSOA QUE TRANSFORMA PESSOA!" tem 26 letras (com "!"); a primeira é
+// gratuita e cada 200 pontos forma uma nova (5.000 pontos fecham a frase).
+const SCORE_PHRASE_TOTAL_LETTERS = 26;
+const SCORE_POINTS_PER_LETTER = 200;
+// RN085: bônus por avanço do alfabetizando após pedido de apoio ou bloqueio
+// preventivo de tela — em até 1 hora (+3), 24 horas (+2) ou 3 dias (+1).
+const SUPPORT_BONUS_WINDOWS = Object.freeze([
+  { maxMs: 60 * 60 * 1000, points: 3 },
+  { maxMs: 24 * 60 * 60 * 1000, points: 2 },
+  { maxMs: 3 * 24 * 60 * 60 * 1000, points: 1 },
+]);
+// RN085: -3 quando o alfabetizando não avança da tela de dúvida em 5 dias,
+// -3 a cada novos 5 dias, com teto de 30 pontos de perda por episódio.
+const INACTIVITY_PENALTY_POINTS = -3;
+const INACTIVITY_PERIOD_MS = 5 * 24 * 60 * 60 * 1000;
+const INACTIVITY_PENALTY_CAP = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function lettersUnlockedFromScore(totalScore) {
+  const safeTotal = Math.max(0, Number(totalScore) || 0);
+  return Math.min(SCORE_PHRASE_TOTAL_LETTERS, 1 + Math.floor(safeTotal / SCORE_POINTS_PER_LETTER));
+}
+
+function formatNotificationStamp(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}, às ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+async function resolveStudentDisplayInfo(studentId) {
+  const client = requireSupabase();
+  const normalizedId = normalizeText(studentId);
+  if (!normalizedId) {
+    return { name: "Alfabetizando", cpf: null };
+  }
+
+  if (isUuid(normalizedId)) {
+    const { data } = await client
+      .from("profiles")
+      .select("full_name, cpf")
+      .eq("id", normalizedId)
+      .maybeSingle();
+    if (data?.full_name) {
+      return { name: data.full_name, cpf: normalizeNullableText(data.cpf) };
+    }
+  }
+
+  const { data: mobileLearner, error } = await client
+    .from("LearnerProfile")
+    .select("displayName, cpf")
+    .eq("id", normalizedId)
+    .maybeSingle();
+  if (error && !isOptionalSourceMissing(error)) {
+    return { name: "Alfabetizando", cpf: null };
+  }
+
+  return {
+    name: normalizeText(mobileLearner?.displayName) || "Alfabetizando",
+    cpf: normalizeNullableText(mobileLearner?.cpf),
+  };
+}
+
+async function resolveEducatorDisplayName(educatorId) {
+  const client = requireSupabase();
+  const normalizedId = normalizeText(educatorId);
+  if (!normalizedId) {
+    return "Alfabetizador";
+  }
+
+  if (isUuid(normalizedId)) {
+    const { data } = await client
+      .from("profiles")
+      .select("full_name")
+      .eq("id", normalizedId)
+      .maybeSingle();
+    if (data?.full_name) {
+      return data.full_name;
+    }
+  }
+
+  const { data: mobileEducator, error } = await client
+    .from("Educator")
+    .select("name")
+    .eq("id", normalizedId)
+    .maybeSingle();
+  if (error && !isOptionalSourceMissing(error)) {
+    return "Alfabetizador";
+  }
+
+  return normalizeText(mobileEducator?.name) || "Alfabetizador";
+}
+
+export async function getEducatorScoreSummary(educatorId) {
+  const client = requireSupabase();
+  const normalizedId = normalizeText(educatorId);
+  if (!normalizedId) {
+    throw new HttpError(400, "educatorId e obrigatorio.");
+  }
+
+  // limit alto o suficiente para o horizonte do MVP; o PostgREST corta em 1000.
+  const events = await runOptionalQuery(
+    client
+      .from("educator_score_events")
+      .select("id, educator_id, student_id, event_type, stage_number, points, payload, created_at")
+      .eq("educator_id", normalizedId)
+      .order("created_at", { ascending: false })
+      .limit(1000),
+    "Falha ao listar eventos de pontuacao",
+  );
+
+  const totalScore = (events ?? []).reduce((sum, event) => sum + (Number(event.points) || 0), 0);
+  return {
+    totalScore,
+    lettersUnlocked: lettersUnlockedFromScore(totalScore),
+    events: events ?? [],
+  };
+}
+
+// Registra um evento no ledger de pontos. Idempotente via dedupe_key (retorna
+// null quando o evento já existe ou a migration ainda não foi aplicada).
+export async function recordEducatorScoreEvent({
+  educatorId,
+  studentId,
+  eventType,
+  stageNumber,
+  points,
+  dedupeKey,
+  payload,
+} = {}) {
+  const client = requireSupabase();
+  const normalizedEducatorId = normalizeText(educatorId);
+  const normalizedPoints = Math.trunc(Number(points));
+  if (!normalizedEducatorId || !Number.isFinite(normalizedPoints) || normalizedPoints === 0) {
+    return null;
+  }
+
+  const { data, error } = await client
+    .from("educator_score_events")
+    .insert({
+      educator_id: normalizedEducatorId,
+      student_id: normalizeNullableText(studentId),
+      event_type: normalizeText(eventType) || "adjustment",
+      stage_number: Number.isFinite(Number(stageNumber)) ? Number(stageNumber) : null,
+      points: normalizedPoints,
+      dedupe_key: normalizeNullableText(dedupeKey),
+      payload: payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {},
+    })
+    .select("id, educator_id, student_id, event_type, stage_number, points, payload, created_at")
+    .single();
+
+  if (error) {
+    // 23505 = dedupe_key repetido: evento já registrado.
+    if (error.code === "23505" || isOptionalSourceMissing(error)) {
+      return null;
+    }
+    throw new HttpError(400, `Falha ao registrar evento de pontuacao: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("notify score event", () => notifyScoreEvent(data));
+  return data;
+}
+
+// RN093 "Pontuação ganha ou perdida" + "Reconhecimento" (nova letra da frase).
+async function notifyScoreEvent(scoreEvent) {
+  const { name } = await resolveStudentDisplayInfo(scoreEvent.student_id);
+  const gained = scoreEvent.points > 0;
+  const stamp = formatNotificationStamp(new Date(scoreEvent.created_at ?? Date.now()));
+  const title = gained
+    ? `Você ganhou + ${scoreEvent.points} ${scoreEvent.points === 1 ? "ponto" : "pontos"}`
+    : `Você perdeu ${Math.abs(scoreEvent.points)} pontos`;
+
+  let body;
+  if (scoreEvent.event_type === "stage_completed") {
+    body = `${name} concluiu a Etapa ${scoreEvent.stage_number} da alfabetização. ${stamp}.`;
+  } else if (scoreEvent.event_type === "support_bonus") {
+    body = `${name} avançou após o pedido de apoio ou bloqueio de tela. ${stamp}.`;
+  } else if (scoreEvent.event_type === "inactivity_penalty") {
+    body = `${name} segue sem avanço na tela de dúvida. ${stamp}.`;
+  } else {
+    body = `${name}. ${stamp}.`;
+  }
+
+  await createEducatorNotification({
+    recipientId: scoreEvent.educator_id,
+    recipientRole: "tutor",
+    type: "score_event",
+    title,
+    body,
+    sourceEntityType: "educator_score_event",
+    sourceEntityId: scoreEvent.id,
+    payload: {
+      studentId: scoreEvent.student_id,
+      points: scoreEvent.points,
+      eventType: scoreEvent.event_type,
+    },
+  });
+
+  if (gained) {
+    const { totalScore } = await getEducatorScoreSummary(scoreEvent.educator_id);
+    const lettersBefore = lettersUnlockedFromScore(totalScore - scoreEvent.points);
+    const lettersAfter = lettersUnlockedFromScore(totalScore);
+    if (lettersAfter > lettersBefore) {
+      await createEducatorNotification({
+        recipientId: scoreEvent.educator_id,
+        recipientRole: "tutor",
+        type: "recognition",
+        title: "Parabéns! Você completou mais uma letra da sua meta.",
+        sourceEntityType: "educator_score_event",
+        sourceEntityId: scoreEvent.id,
+        payload: { lettersUnlocked: lettersAfter },
+      });
+    }
+  }
+}
+
+// RN085: quando todas as atividades publicadas da etapa da atividade recém
+// concluída ficam "concluido", credita +10/+15/+25 ao alfabetizador vinculado.
+async function maybeCreditStageCompletion({ studentId, activityId }) {
+  const client = requireSupabase();
+  const normalizedStudentId = normalizeText(studentId);
+  const normalizedActivityId = normalizeText(activityId);
+  if (!normalizedStudentId || !isUuid(normalizedActivityId)) {
+    return;
+  }
+
+  const { data: activity } = await client
+    .from("learning_activities")
+    .select("id, module_id")
+    .eq("id", normalizedActivityId)
+    .maybeSingle();
+  if (!activity?.module_id) {
+    return;
+  }
+
+  const { data: module } = await client
+    .from("learning_modules")
+    .select("id, stage_number")
+    .eq("id", activity.module_id)
+    .maybeSingle();
+  const stageNumber = Number(module?.stage_number);
+  if (!STAGE_COMPLETION_POINTS[stageNumber]) {
+    return;
+  }
+
+  const { data: stageModules } = await client
+    .from("learning_modules")
+    .select("id")
+    .eq("stage_number", stageNumber)
+    .neq("is_active", false);
+  const moduleIds = (stageModules ?? []).map((item) => item.id);
+  if (moduleIds.length === 0) {
+    return;
+  }
+
+  const { data: stageActivities } = await client
+    .from("learning_activities")
+    .select("id")
+    .in("module_id", moduleIds)
+    .neq("is_published", false);
+  const requiredActivityIds = (stageActivities ?? []).map((item) => item.id);
+  if (requiredActivityIds.length === 0) {
+    return;
+  }
+
+  const progressRows = await getActivityProgress({ studentIds: [normalizedStudentId] });
+  const completedActivityIds = new Set(
+    progressRows.filter((row) => row.status === "concluido").map((row) => row.activity_id),
+  );
+  if (!requiredActivityIds.every((id) => completedActivityIds.has(id))) {
+    return;
+  }
+
+  const tutorId = await resolveTutorIdForStudent(normalizedStudentId);
+  if (!tutorId) {
+    return;
+  }
+
+  await recordEducatorScoreEvent({
+    educatorId: tutorId,
+    studentId: normalizedStudentId,
+    eventType: "stage_completed",
+    stageNumber,
+    points: STAGE_COMPLETION_POINTS[stageNumber],
+    dedupeKey: `stage:${tutorId}:${normalizedStudentId}:${stageNumber}`,
+    payload: { activityId: normalizedActivityId },
+  });
+}
+
+// RN085: bônus por avanço do alfabetizando após o gatilho mais recente de
+// pedido de apoio ou bloqueio preventivo de tela, dentro das janelas 1h/24h/3d.
+// Idempotente por gatilho (um bônus por pedido/bloqueio).
+async function maybeCreditSupportBonus({ studentId }) {
+  const client = requireSupabase();
+  const normalizedStudentId = normalizeText(studentId);
+  if (!normalizedStudentId) {
+    return;
+  }
+
+  const nowMs = Date.now();
+  const windowStartIso = new Date(
+    nowMs - SUPPORT_BONUS_WINDOWS[SUPPORT_BONUS_WINDOWS.length - 1].maxMs,
+  ).toISOString();
+
+  let trigger = null;
+  const { data: supportRequest, error: supportError } = await client
+    .from("support_requests")
+    .select("id, tutor_id, requested_at")
+    .eq("student_id", normalizedStudentId)
+    .gte("requested_at", windowStartIso)
+    .order("requested_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (supportError && !isOptionalSourceMissing(supportError)) {
+    return;
+  }
+
+  if (supportRequest?.requested_at) {
+    trigger = {
+      dedupeKey: `support_bonus:${supportRequest.id}`,
+      triggeredBy: "support_request",
+      sourceId: supportRequest.id,
+      startedAt: supportRequest.requested_at,
+      tutorId: supportRequest.tutor_id,
+    };
+  } else {
+    const { data: lockNotification, error: lockError } = await client
+      .from("educator_notifications")
+      .select("id, recipient_id, created_at")
+      .eq("type", "progress_locked")
+      .eq("payload->>studentId", normalizedStudentId)
+      .gte("created_at", windowStartIso)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lockError && !isOptionalSourceMissing(lockError)) {
+      return;
+    }
+    if (lockNotification?.created_at) {
+      trigger = {
+        dedupeKey: `lock_bonus:${lockNotification.id}`,
+        triggeredBy: "progress_locked",
+        sourceId: lockNotification.id,
+        startedAt: lockNotification.created_at,
+        tutorId: lockNotification.recipient_id,
+      };
+    }
+  }
+
+  if (!trigger) {
+    return;
+  }
+
+  const elapsedMs = nowMs - new Date(trigger.startedAt).getTime();
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
+    return;
+  }
+  const bonusWindow = SUPPORT_BONUS_WINDOWS.find((window) => elapsedMs <= window.maxMs);
+  if (!bonusWindow) {
+    return;
+  }
+
+  const tutorId =
+    normalizeNullableText(trigger.tutorId) || (await resolveTutorIdForStudent(normalizedStudentId));
+  if (!tutorId) {
+    return;
+  }
+
+  await recordEducatorScoreEvent({
+    educatorId: tutorId,
+    studentId: normalizedStudentId,
+    eventType: "support_bonus",
+    points: bonusWindow.points,
+    dedupeKey: trigger.dedupeKey,
+    payload: {
+      triggeredBy: trigger.triggeredBy,
+      sourceId: trigger.sourceId,
+      elapsedMs,
+    },
+  });
+}
+
+async function createDeadlineAlertIfMissing({ request, tutorId, kind, deadlineMs, studentName }) {
+  const client = requireSupabase();
+  const { data: existing, error } = await client
+    .from("educator_notifications")
+    .select("id")
+    .eq("type", "deadline_alert")
+    .eq("source_entity_id", request.id)
+    .eq("payload->>alertKind", kind)
+    .limit(1)
+    .maybeSingle();
+  if (existing || (error && !isOptionalSourceMissing(error))) {
+    return false;
+  }
+
+  const deadline = new Date(deadlineMs);
+  const pad = (value) => String(value).padStart(2, "0");
+  // Copy fiel ao protótipo "Notificações" do Figma.
+  const body = `Você tem até as ${pad(deadline.getHours())}:${pad(deadline.getMinutes())} horas do dia ${pad(deadline.getDate())}/${pad(deadline.getMonth() + 1)}/${deadline.getFullYear()} para dar apoio ao ${studentName} e não perder ponto.`;
+
+  await createEducatorNotification({
+    recipientId: tutorId,
+    recipientRole: "tutor",
+    type: "deadline_alert",
+    title: "Alerta de prazo",
+    body,
+    sourceEntityType: "support_request",
+    sourceEntityId: request.id,
+    payload: {
+      alertKind: kind,
+      studentId: request.student_id,
+      deadlineAt: deadline.toISOString(),
+    },
+  });
+  return true;
+}
+
+// Varredura periódica (RN085/RN093): para cada pedido de apoio em aberto sem
+// avanço do alfabetizando, emite os alertas de prazo (faltando 3 dias e 24h do
+// fim do prazo de 5 dias) e lança os débitos de -3 a cada 5 dias (teto 30).
+export async function runScoringDeadlineSweep() {
+  const client = requireSupabase();
+  const summary = { checked: 0, alerts: 0, penalties: 0 };
+  const nowMs = Date.now();
+
+  const requests = await runOptionalQuery(
+    client
+      .from("support_requests")
+      .select("id, student_id, tutor_id, requested_at, status")
+      .in("status", ["aberto", "em_atendimento"])
+      .order("requested_at", { ascending: true })
+      .limit(200),
+    "Falha ao listar pedidos de ajuda para varredura de prazos",
+  );
+
+  for (const request of requests ?? []) {
+    const requestedAtMs = new Date(request.requested_at).getTime();
+    if (!Number.isFinite(requestedAtMs)) {
+      continue;
+    }
+
+    const tutorId =
+      normalizeNullableText(request.tutor_id) ||
+      (await resolveTutorIdForStudent(request.student_id));
+    if (!tutorId) {
+      continue;
+    }
+    summary.checked += 1;
+
+    // Avanço = qualquer progresso não-travado do aluno após o pedido.
+    const progressRows = await getActivityProgress({ studentIds: [request.student_id] });
+    const advanced = progressRows.some((row) => {
+      if (row.status !== "em_andamento" && row.status !== "concluido") {
+        return false;
+      }
+      const interactedAtMs = new Date(
+        row.last_interacted_at ?? row.updated_at ?? row.completed_at ?? 0,
+      ).getTime();
+      return Number.isFinite(interactedAtMs) && interactedAtMs > requestedAtMs;
+    });
+    if (advanced) {
+      continue;
+    }
+
+    const deadlineMs = requestedAtMs + INACTIVITY_PERIOD_MS;
+    const { name: studentName } = await resolveStudentDisplayInfo(request.student_id);
+
+    const alerts = [
+      { kind: "3d", dueMs: deadlineMs - 3 * DAY_MS },
+      { kind: "24h", dueMs: deadlineMs - DAY_MS },
+    ];
+    for (const alert of alerts) {
+      if (nowMs < alert.dueMs || nowMs >= deadlineMs) {
+        continue;
+      }
+      const created = await createDeadlineAlertIfMissing({
+        request,
+        tutorId,
+        kind: alert.kind,
+        deadlineMs,
+        studentName,
+      });
+      if (created) {
+        summary.alerts += 1;
+      }
+    }
+
+    const maxPenaltyPeriods = Math.floor(INACTIVITY_PENALTY_CAP / Math.abs(INACTIVITY_PENALTY_POINTS));
+    for (let period = 0; period < maxPenaltyPeriods; period += 1) {
+      const dueMs = deadlineMs + period * INACTIVITY_PERIOD_MS;
+      if (nowMs < dueMs) {
+        break;
+      }
+      const event = await recordEducatorScoreEvent({
+        educatorId: tutorId,
+        studentId: request.student_id,
+        eventType: "inactivity_penalty",
+        points: INACTIVITY_PENALTY_POINTS,
+        dedupeKey: `inactivity:${request.id}:${period}`,
+        payload: { supportRequestId: request.id, period },
+      });
+      if (event) {
+        summary.penalties += 1;
+      }
+    }
+  }
+
+  return summary;
+}
+
+// RN104: ao vincular o alfabetizando a um novo alfabetizador, notifica o(s)
+// antigo(s) com a mensagem padrão da regra (adaptada: a RN grafa "O
+// alfabetizador [nome]" mas o contexto é o alfabetizando revinculado).
+async function notifyPreviousEducatorsOfNewLink(link) {
+  const client = requireSupabase();
+  const { data: previousLinks, error } = await client
+    .from("tutor_student_links")
+    .select("id, tutor_id, status")
+    .eq("student_id", link.student_id)
+    .neq("tutor_id", link.tutor_id)
+    .eq("status", "confirmado");
+  if (error && !isOptionalSourceMissing(error)) {
+    return;
+  }
+
+  const previousTutorIds = [
+    ...new Set((previousLinks ?? []).map((item) => normalizeText(item.tutor_id)).filter(Boolean)),
+  ];
+  if (previousTutorIds.length === 0) {
+    return;
+  }
+
+  const { name, cpf } = await resolveStudentDisplayInfo(link.student_id);
+  const registration = cpf || "não informado";
+  const body = `O alfabetizando ${name}, CPF ou passaporte de número ${registration}, foi vinculado a outro alfabetizador. Caso realmente não tenha mudado, pedimos que descadastre o alfabetizando do seu sistema. Caso seja você a dar continuidade ao processo de alfabetização, entre em contato com o alfabetizando para regularizar a situação.`;
+
+  for (const previousTutorId of previousTutorIds) {
+    await createEducatorNotification({
+      recipientId: previousTutorId,
+      recipientRole: "tutor",
+      type: "link_transferred",
+      title: "Alfabetizando vinculado a outro alfabetizador",
+      body,
+      sourceEntityType: "tutor_student_link",
+      sourceEntityId: link.id,
+      payload: { studentId: link.student_id, newTutorId: link.tutor_id },
+    });
+  }
+}
+
+// RN099: na recusa do vínculo, o alfabetizando e a administração recebem
+// notificação com o motivo. (O mobile do aluno também exibe o motivo via
+// polling de GET /cadastros/sessoes-confirmacao/:id.)
+async function notifyLinkDenied(link) {
+  const [{ name: studentName }, educatorName] = await Promise.all([
+    resolveStudentDisplayInfo(link.student_id),
+    resolveEducatorDisplayName(link.tutor_id),
+  ]);
+  const reason = normalizeText(link.reason) || "Motivo não informado";
+
+  await createEducatorNotification({
+    recipientRole: "admin",
+    type: "link_denied",
+    title: "Vinculação não confirmada",
+    body: `O alfabetizador ${educatorName} não confirmou o vínculo com ${studentName}. Motivo: ${reason}.`,
+    sourceEntityType: "tutor_student_link",
+    sourceEntityId: link.id,
+    payload: { studentId: link.student_id, tutorId: link.tutor_id, reason },
+  });
+
+  await createEducatorNotification({
+    recipientId: link.student_id,
+    recipientRole: "alfabetizando",
+    type: "link_denied",
+    title: "Vinculação não confirmada",
+    body: `O alfabetizador ${educatorName} não confirmou a sua vinculação. Motivo: ${reason}.`,
+    sourceEntityType: "tutor_student_link",
+    sourceEntityId: link.id,
+    payload: { tutorId: link.tutor_id, reason },
+  });
 }
 
 export async function getSupportRequests({ statuses, tutorIds, studentIds, limit = 200 } = {}) {
@@ -4759,6 +5356,20 @@ export async function upsertActivityProgressFromMobile({
     );
   }
 
+  // RN085: avanço do aluno (em andamento/concluído) pode render bônus de
+  // apoio ao educador; conclusão pode fechar a etapa e creditar +10/+15/+25.
+  if (mappedStatus === "em_andamento" || mappedStatus === "concluido") {
+    await runBestEffortMobileSync("credit support bonus after mobile progress", () =>
+      maybeCreditSupportBonus({ studentId: data.student_id }),
+    );
+  }
+
+  if (mappedStatus === "concluido") {
+    await runBestEffortMobileSync("credit stage completion after mobile progress", () =>
+      maybeCreditStageCompletion({ studentId: data.student_id, activityId: data.activity_id }),
+    );
+  }
+
   return { progress: data };
 }
 
@@ -4896,6 +5507,13 @@ export async function updateActivityProgressStatus({
     );
   }
 
+  // RN085: conclusão marcada pelo painel também pode fechar a etapa.
+  if (normalizedStatus === "concluido") {
+    await runBestEffortMobileSync("credit stage completion after panel progress update", () =>
+      maybeCreditStageCompletion({ studentId: data.student_id, activityId: data.activity_id }),
+    );
+  }
+
   return data;
 }
 
@@ -4973,6 +5591,14 @@ export async function createTutorStudentLink({
     );
   }
 
+  // RN104: vínculo já criado confirmado (ex.: novo educador cadastrou o
+  // alfabetizando) notifica os alfabetizadores antigos.
+  if (data.status === "confirmado") {
+    await runBestEffortMobileSync("notify previous educators after link create", () =>
+      notifyPreviousEducatorsOfNewLink(data),
+    );
+  }
+
   return data;
 }
 
@@ -5025,6 +5651,18 @@ export async function updateTutorStudentLink(id, updates) {
       },
     }),
   );
+
+  // RN099: recusa notifica o alfabetizando e a administração com o motivo.
+  if (data.status === "negado") {
+    await runBestEffortMobileSync("notify link denial", () => notifyLinkDenied(data));
+  }
+
+  // RN104: confirmação de vínculo com novo alfabetizador notifica os antigos.
+  if (data.status === "confirmado") {
+    await runBestEffortMobileSync("notify previous educators after link update", () =>
+      notifyPreviousEducatorsOfNewLink(data),
+    );
+  }
 
   return data;
 }

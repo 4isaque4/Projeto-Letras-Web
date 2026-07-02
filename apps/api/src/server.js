@@ -10,8 +10,9 @@ import { learnersRouter } from "./routes/learners.js";
 import { painelRouter } from "./routes/painel.js";
 import { referenceRouter } from "./routes/reference.js";
 import { sessionsRouter } from "./routes/sessions.js";
-import { getLearningThemes, toHttpError } from "./services/letrasDataService.js";
+import { getEducatorScoreSummary, getLearningThemes, toHttpError } from "./services/letrasDataService.js";
 import { supabaseAdmin } from "./lib/supabase.js";
+import { startScoringSweep } from "./jobs/scoringSweep.js";
 
 const app = express();
 const allowAnyOrigin = env.corsOrigins.includes("*");
@@ -95,38 +96,21 @@ app.get(`${env.apiPrefix}/scoring/me`, async (req, res) => {
 
     if (!educatorId) return res.status(401).json({ message: "Autenticacao necessaria." });
 
-    const { data: links } = await supabaseAdmin
-      .from("tutor_student_links")
-      .select("student_id")
-      .eq("tutor_id", educatorId)
-      .eq("status", "confirmado");
-
-    const studentIds = (links ?? []).map((l) => l.student_id);
-    let recentEvents = [];
-    let totalScore = 0;
-
-    if (studentIds.length > 0) {
-      const { data: progressRows } = await supabaseAdmin
-        .from("activity_progress")
-        .select("id, learner_profile_id, activity_id, status, score, updated_at")
-        .in("learner_profile_id", studentIds)
-        .eq("status", "COMPLETED")
-        .order("updated_at", { ascending: false })
-        .limit(20);
-
-      recentEvents = (progressRows ?? []).map((p) => ({
-        learnerId: p.learner_profile_id,
-        activityId: p.activity_id,
-        score: p.score ?? 0,
-        completedAt: p.updated_at,
-      }));
-      totalScore = recentEvents.reduce((sum, e) => sum + (e.score ?? 0), 0);
-    }
+    // RN085/RN096: pontuação vem do ledger de eventos (educator_score_events);
+    // letras da frase "PESSOA QUE TRANSFORMA PESSOA!": 1 grátis + 1 a cada 200.
+    const summary = await getEducatorScoreSummary(educatorId);
+    const recentEvents = summary.events.slice(0, 20).map((event) => ({
+      id: event.id,
+      type: event.event_type,
+      delta: event.points,
+      description: event.payload?.description ?? null,
+      createdAt: event.created_at,
+    }));
 
     return res.json({
-      totalScore,
-      lettersUnlocked: Math.min(Math.floor(totalScore / 100), 26),
-      phraseLength: Math.min(Math.floor(totalScore / 500) + 1, 10),
+      totalScore: Math.max(0, summary.totalScore),
+      lettersUnlocked: summary.lettersUnlocked,
+      phraseLength: 26,
       recentEvents,
       updatedAt: new Date().toISOString(),
     });
@@ -178,4 +162,5 @@ httpServer.listen(env.port, () => {
   console.log(
     `[letras-api] running on http://localhost:${env.port} with prefix ${env.apiPrefix} and realtime /realtime`,
   );
+  startScoringSweep();
 });
