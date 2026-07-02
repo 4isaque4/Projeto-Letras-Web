@@ -39,3 +39,8 @@ jobs:
 
       - name: Run quality gate
         run: pnpm check
+        env:
+          # Os testes da API são mockados, mas o módulo de env aborta sem
+          # estas variáveis — valores dummy bastam para o gate.
+          SUPABASE_URL: https://dummy.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: dummy-key
