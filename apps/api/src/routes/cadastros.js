@@ -134,6 +134,45 @@ function computeStageLabel(stageNumber) {
   return `Etapa ${Math.floor(normalized)}`;
 }
 
+function getProfileMetadata(profile) {
+  return profile?.metadata && typeof profile.metadata === "object" && !Array.isArray(profile.metadata)
+    ? profile.metadata
+    : {};
+}
+
+function metadataText(metadata, keys) {
+  for (const key of keys) {
+    const value = metadata?.[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+async function resolveEducatorIdCandidates(rawEducatorId, authHeader) {
+  const raw = String(rawEducatorId ?? "").trim();
+  const candidates = new Set();
+  if (raw) {
+    candidates.add(raw);
+  }
+
+  if (raw && !UUID_PATTERN.test(raw)) {
+    try {
+      const { supabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
+      const client = isSupabaseConfigured && supabaseAdmin ? supabaseAdmin : null;
+      const resolved = client ? await resolveSupabaseTutorId(raw, authHeader, client) : null;
+      if (resolved) {
+        candidates.add(resolved);
+      }
+    } catch {
+      // Mantem o id original como fallback para registros antigos.
+    }
+  }
+
+  return [...candidates];
+}
+
 function normalizeSubmissionStatus(value, fallback = "pendente") {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (!normalized) {
@@ -936,16 +975,35 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
 
     const maxStage = stageNumbers.length > 0 ? Math.max(...stageNumbers) : 1;
 
+    const metadata = getProfileMetadata(student);
+    const city = metadataText(metadata, ["city", "cidade"]);
+    const uf = metadataText(metadata, ["uf", "state", "estado"]).toUpperCase();
+    const birthDate = metadataText(metadata, ["birthDate", "birth_date", "dataNascimento", "data_nascimento"]);
+
     res.json({
       id: student.id,
+      displayName: student.full_name,
       nome: student.full_name,
       email: extractProfileEmail(student),
+      phoneDigits: student.phone ?? null,
       telefone: student.phone ?? "",
+      cpfOrPassport: student.cpf ?? null,
       cpf: student.cpf ?? "",
       tutor: tutor?.full_name ?? "Sem tutor",
+      educator: tutor
+        ? {
+            id: activeLink.tutor_id,
+            name: tutor.full_name,
+            email: extractProfileEmail(tutor) || null,
+            phoneDigits: tutor.phone ?? null,
+          }
+        : null,
+      birthDate: birthDate || null,
+      uf: uf || null,
+      city: city || null,
       grupo:
-        typeof student.metadata?.group_name === "string" && student.metadata.group_name.length > 0
-          ? student.metadata.group_name
+        typeof metadata.group_name === "string" && metadata.group_name.length > 0
+          ? metadata.group_name
           : "Sem grupo",
       etapa: computeStageLabel(maxStage),
       status,
@@ -1230,14 +1288,16 @@ cadastrosRouter.get("/sessoes-confirmacao", async (req, res) => {
     if (!educatorId) {
       return res.status(400).json({ message: "educatorId é obrigatório." });
     }
+    const educatorIdCandidates = await resolveEducatorIdCandidates(educatorId, req.headers.authorization);
     const pending = (await getTutorStudentLinks()).filter(
-      (l) => l.tutor_id === educatorId && l.status === "pendente",
+      (l) => educatorIdCandidates.includes(l.tutor_id) && l.status === "pendente",
     );
     const studentIds = [...new Set(pending.map((l) => l.student_id))];
     const profiles = studentIds.length ? await getProfiles({ ids: studentIds }) : [];
     const profileById = mapById(profiles);
     const items = pending.map((l) => {
       const s = profileById.get(l.student_id);
+      const metadata = getProfileMetadata(s);
       return {
         id: l.id,
         requestedAt: l.requested_at ?? l.created_at ?? null,
@@ -1247,9 +1307,9 @@ cadastrosRouter.get("/sessoes-confirmacao", async (req, res) => {
           cpfOrPassport: s?.cpf ?? null,
           // Tela de confirmação do educador exibe os dados completos do aluno.
           phoneDigits: s?.phone ?? null,
-          birthDate: s?.metadata?.birthDate ?? null,
-          uf: s?.metadata?.uf ?? null,
-          city: s?.metadata?.city ?? null,
+          birthDate: metadataText(metadata, ["birthDate", "birth_date", "dataNascimento", "data_nascimento"]) || null,
+          uf: metadataText(metadata, ["uf", "state", "estado"]).toUpperCase() || null,
+          city: metadataText(metadata, ["city", "cidade"]) || null,
         },
       };
     });

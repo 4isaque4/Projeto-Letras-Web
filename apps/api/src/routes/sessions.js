@@ -10,6 +10,14 @@ import { emitLearnerLockChanged } from "../realtime/dashboardRealtime.js";
 
 export const sessionsRouter = Router();
 
+export function normalizeLearnerSessionRole(role) {
+  const normalized = String(role ?? "").trim().toUpperCase();
+  if (normalized === "EDUCATOR" || normalized === "TUTOR" || normalized === "ALFABETIZADOR") {
+    return "EDUCATOR";
+  }
+  return "LEARNER";
+}
+
 function requireSupabase() {
   if (!isSupabaseConfigured || !supabaseAdmin) {
     const err = new Error("Supabase nao configurado.");
@@ -24,6 +32,7 @@ sessionsRouter.post("/", async (req, res) => {
   try {
     const client = requireSupabase();
     const { learnerProfileId, deviceId, role } = req.body ?? {};
+    const sessionRole = normalizeLearnerSessionRole(role);
 
     if (!learnerProfileId || !deviceId) {
       return res.status(400).json({ message: "learnerProfileId e deviceId sao obrigatorios." });
@@ -42,7 +51,7 @@ sessionsRouter.post("/", async (req, res) => {
       // Atualiza lastSeen
       const { data: updated } = await client
         .from("LearnerSession")
-        .update({ deviceId, updatedAt: new Date().toISOString() })
+        .update({ deviceId, role: sessionRole, updatedAt: new Date().toISOString() })
         .eq("id", existing.id)
         .select("id, learnerProfileId, deviceId, connectedAt, createdAt, updatedAt")
         .single();
@@ -57,7 +66,7 @@ sessionsRouter.post("/", async (req, res) => {
         id: randomUUID(),
         learnerProfileId,
         deviceId,
-        role: role ?? "learner",
+        role: sessionRole,
         connectedAt: now,
         createdAt: now,
         updatedAt: now,
