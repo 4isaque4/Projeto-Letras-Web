@@ -54,6 +54,9 @@ import {
   getSupportVideos,
   upsertTutorialCompletion,
   HttpError,
+  createActivityPhoto,
+  listActivityPhotos,
+  approveActivityPhoto,
   toHttpError,
   updateContentAsset,
   uploadContentAssetFile,
@@ -1812,5 +1815,51 @@ painelRouter.post("/tts/generate", async (req, res) => {
   } catch (err) {
     console.error("[TTS] generate error:", err);
     return res.status(500).json({ error: "Falha ao gerar áudio" });
+  }
+});
+
+// ─── Fase 2: fotos de atividade (RN059/RN070/RN082/RN113/RN114) ────────────
+
+painelRouter.post("/fotos-atividade", async (req, res) => {
+  try {
+    const data = await createActivityPhoto({
+      studentId: req.body?.learnerProfileId ?? req.body?.studentId,
+      activityId: req.body?.activityId,
+      kind: req.body?.kind,
+      imageBase64: req.body?.imageBase64,
+      mimeType: req.body?.mimeType,
+    });
+    res.status(201).json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.get("/fotos-atividade", async (req, res) => {
+  try {
+    const data = await listActivityPhotos({
+      studentId: req.query.studentId ?? req.query.learnerProfileId,
+      activityId: req.query.activityId,
+      kind: req.query.kind,
+      status: req.query.status,
+    });
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.patch("/fotos-atividade/:id/aprovar", async (req, res) => {
+  try {
+    const data = await approveActivityPhoto({
+      photoId: req.params.id,
+      educatorId: req.body?.educatorId,
+    });
+    res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
   }
 });

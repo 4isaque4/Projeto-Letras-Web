@@ -37,6 +37,8 @@ const NOTIFICATION_TYPES = new Set([
   "recognition",
   "link_denied",
   "link_transferred",
+  "photo_sent",
+  "photo_approved",
 ]);
 const SYSTEM_SETTINGS_EVENT_TYPE = "system.settings.updated";
 const SYSTEM_SETTINGS_ENTITY_TYPE = "system_settings";
@@ -5775,6 +5777,154 @@ export async function upsertTutorialCompletion({
     .single();
 
   if (error) throw new HttpError(400, `Falha ao salvar progresso de tutorial: ${error.message}`);
+  return data;
+}
+
+// ─── Fase 2: fotos de atividade do alfabetizando (RN059/RN070/RN113/RN114) ──
+// A mesma infra atende a carta de agradecimento da Etapa 3 (kind='carta').
+
+const ACTIVITY_PHOTO_SELECT =
+  "id, student_id, activity_id, kind, storage_path, public_url, status, approved_by, approved_at, metadata, created_at";
+
+function extensionForMime(mimeType) {
+  const normalized = String(mimeType || "").toLowerCase();
+  if (normalized.includes("png")) return "png";
+  if (normalized.includes("webp")) return "webp";
+  return "jpg";
+}
+
+export async function createActivityPhoto({ studentId, activityId, kind, imageBase64, mimeType }) {
+  const client = requireSupabase();
+  const normalizedStudentId = normalizeText(studentId);
+  if (!normalizedStudentId) {
+    throw new HttpError(400, "studentId e obrigatorio.");
+  }
+
+  const base64 = String(imageBase64 || "").replace(/^data:[^;]+;base64,/, "").trim();
+  if (!base64) {
+    throw new HttpError(400, "imageBase64 e obrigatorio.");
+  }
+  const buffer = Buffer.from(base64, "base64");
+  if (buffer.length === 0) {
+    throw new HttpError(400, "Imagem vazia.");
+  }
+  if (buffer.length > 8 * 1024 * 1024) {
+    throw new HttpError(400, "Imagem acima de 8MB.");
+  }
+
+  const normalizedKind = String(kind || "atividade").toLowerCase() === "carta" ? "carta" : "atividade";
+  const normalizedMime = normalizeText(mimeType) || "image/jpeg";
+  const objectPath = `activity-photos/${normalizedStudentId}/${Date.now()}-${randomUUID().slice(0, 8)}.${extensionForMime(normalizedMime)}`;
+
+  const uploaded = await uploadBufferToStorage({ buffer, mimeType: normalizedMime, objectPath });
+
+  const { data, error } = await client
+    .from("activity_photos")
+    .insert({
+      student_id: normalizedStudentId,
+      activity_id: normalizeNullableText(activityId),
+      kind: normalizedKind,
+      storage_path: uploaded.objectPath,
+      public_url: uploaded.publicUrl,
+      status: "enviada",
+      metadata: {},
+    })
+    .select(ACTIVITY_PHOTO_SELECT)
+    .single();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao registrar foto: ${error.message}`);
+  }
+
+  // Notifica o alfabetizador vinculado (RN059: foto disponivel na area dele).
+  await runBestEffortMobileSync("notify photo_sent", async () => {
+    const links = await getTutorStudentLinks({ studentIds: [normalizedStudentId], statuses: ["confirmado"] });
+    const tutorId = links[0]?.tutor_id;
+    if (!tutorId) return;
+    const { data: studentProfile } = await client
+      .from("profiles")
+      .select("full_name")
+      .eq("id", normalizedStudentId)
+      .maybeSingle();
+    await createEducatorNotification({
+      recipientId: tutorId,
+      recipientRole: "tutor",
+      type: "photo_sent",
+      title: normalizedKind === "carta" ? "Carta de agradecimento recebida" : "Foto de atividade enviada",
+      body: `${studentProfile?.full_name ?? "Um alfabetizando"} enviou ${normalizedKind === "carta" ? "a carta de agradecimento" : "a foto de uma atividade"}.`,
+      sourceEntityType: "activity_photo",
+      sourceEntityId: data.id,
+      payload: { studentId: normalizedStudentId, activityId: data.activity_id, kind: normalizedKind },
+    });
+  });
+
+  return data;
+}
+
+export async function listActivityPhotos({ studentId, activityId, kind, status } = {}) {
+  const client = requireSupabase();
+  let query = client
+    .from("activity_photos")
+    .select(ACTIVITY_PHOTO_SELECT)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  const normalizedStudentId = normalizeText(studentId);
+  if (normalizedStudentId) query = query.eq("student_id", normalizedStudentId);
+  const normalizedActivityId = normalizeText(activityId);
+  if (normalizedActivityId) query = query.eq("activity_id", normalizedActivityId);
+  const normalizedKind = normalizeText(kind).toLowerCase();
+  if (normalizedKind) query = query.eq("kind", normalizedKind);
+  const normalizedStatus = normalizeText(status).toLowerCase();
+  if (normalizedStatus) query = query.eq("status", normalizedStatus);
+
+  const { data, error } = await query;
+  if (error) {
+    if (isOptionalSourceMissing(error)) return [];
+    throw new HttpError(400, `Falha ao listar fotos: ${error.message}`);
+  }
+  return data ?? [];
+}
+
+// RN082: APROVAR TAREFA — marca a foto como aprovada e registra a decisão.
+export async function approveActivityPhoto({ photoId, educatorId }) {
+  const client = requireSupabase();
+  const normalizedPhotoId = normalizeText(photoId);
+  if (!normalizedPhotoId) {
+    throw new HttpError(400, "photoId e obrigatorio.");
+  }
+
+  const { data, error } = await client
+    .from("activity_photos")
+    .update({
+      status: "aprovada",
+      approved_by: normalizeNullableText(educatorId),
+      approved_at: new Date().toISOString(),
+    })
+    .eq("id", normalizedPhotoId)
+    .select(ACTIVITY_PHOTO_SELECT)
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao aprovar foto: ${error.message}`);
+  }
+  if (!data) {
+    throw new HttpError(404, "Foto nao encontrada.");
+  }
+
+  await runBestEffortMobileSync("notify photo_approved", () =>
+    createEducatorNotification({
+      recipientId: normalizeNullableText(educatorId),
+      recipientRole: "tutor",
+      type: "photo_approved",
+      title: "Tarefa aprovada",
+      body: "Voce aprovou a atividade enviada pelo alfabetizando.",
+      sourceEntityType: "activity_photo",
+      sourceEntityId: data.id,
+      payload: { studentId: data.student_id, activityId: data.activity_id },
+    }),
+  );
+
   return data;
 }
 
