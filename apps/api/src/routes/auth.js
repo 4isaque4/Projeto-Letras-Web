@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { supabaseAdmin, isSupabaseConfigured } from "../lib/supabase.js";
+import { supabaseAdmin, isSupabaseConfigured, createSupabaseAuthClient } from "../lib/supabase.js";
 
 export const authRouter = Router();
 
@@ -75,7 +75,9 @@ authRouter.post("/educators/login", async (req, res) => {
 
     // ── Modo 1: com senha ───────────────────────────────────────────────────
     if (password) {
-      const { data, error } = await client.auth.signInWithPassword({ email, password });
+      // Cliente dedicado: nunca contaminar o supabaseAdmin com a sessao do usuario.
+      const authClient = createSupabaseAuthClient();
+      const { data, error } = await authClient.auth.signInWithPassword({ email, password });
 
       if (error || !data?.session) {
         return res.status(401).json({ message: "Email ou senha invalidos." });
@@ -109,7 +111,9 @@ authRouter.post("/educators/login", async (req, res) => {
       return res.status(401).json({ message: "Nao foi possivel autenticar com este CPF." });
     }
 
-    const { data: otpData, error: otpError } = await client.auth.verifyOtp({
+    // Cliente dedicado: verifyOtp estabelece sessao e nao pode contaminar o admin.
+    const authClient = createSupabaseAuthClient();
+    const { data: otpData, error: otpError } = await authClient.auth.verifyOtp({
       email,
       token: linkData.properties.email_otp,
       type: "email",
@@ -248,7 +252,9 @@ authRouter.post("/educators/register", async (req, res) => {
     }
 
     const { data: linkData } = await client.auth.admin.generateLink({ type: "magiclink", email: resolvedEmail });
-    const { data: otpData } = await client.auth.verifyOtp({
+    // Cliente dedicado: verifyOtp estabelece sessao e nao pode contaminar o admin.
+    const authClient = createSupabaseAuthClient();
+    const { data: otpData } = await authClient.auth.verifyOtp({
       email: resolvedEmail,
       token: linkData?.properties?.email_otp ?? "",
       type: "email",
