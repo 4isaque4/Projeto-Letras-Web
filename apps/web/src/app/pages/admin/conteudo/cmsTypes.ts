@@ -28,6 +28,8 @@ export interface Activity {
   sort_order: number;
   instructions?: string | null;
   is_published?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Asset {

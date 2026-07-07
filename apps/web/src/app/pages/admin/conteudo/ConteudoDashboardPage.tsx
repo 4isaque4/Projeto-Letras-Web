@@ -144,8 +144,16 @@ export default function ConteudoDashboardPage() {
   if (loading) return <StateDisplay type="loading" />;
   if (error) return <StateDisplay type="error" message={error} />;
 
+  // Ordena por recencia real (created_at desc): aula recem-criada aparece no topo.
+  // sort_order e apenas desempate — antes a lista ordenava so por sort_order (0 no
+  // create), entao a aula nova caia fora do top-6 e "sumia" da vista.
   const recentActivities = [...data.activities]
-    .sort((a, b) => Number(b.sort_order ?? 0) - Number(a.sort_order ?? 0))
+    .sort((a, b) => {
+      const ta = a.created_at ? Date.parse(a.created_at) : 0;
+      const tb = b.created_at ? Date.parse(b.created_at) : 0;
+      if (tb !== ta) return tb - ta;
+      return Number(b.sort_order ?? 0) - Number(a.sort_order ?? 0);
+    })
     .slice(0, 6);
 
   const recentAssets = data.assets.slice(0, 4);
