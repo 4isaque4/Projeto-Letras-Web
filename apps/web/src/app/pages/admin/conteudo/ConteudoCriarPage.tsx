@@ -1277,6 +1277,12 @@ function OrgSection({
   setNewModuleStage,
   selectedStageId,
   setSelectedStageId,
+  stageMode,
+  setStageMode,
+  newStageTitle,
+  setNewStageTitle,
+  newStageNumber,
+  setNewStageNumber,
   titulo,
   setTitulo,
   themes,
@@ -1300,6 +1306,12 @@ function OrgSection({
   setNewModuleStage: (v: 1 | 2 | 3) => void;
   selectedStageId: string;
   setSelectedStageId: (v: string) => void;
+  stageMode: "existing" | "new";
+  setStageMode: (v: "existing" | "new") => void;
+  newStageTitle: string;
+  setNewStageTitle: (v: string) => void;
+  newStageNumber: 1 | 2 | 3;
+  setNewStageNumber: (v: 1 | 2 | 3) => void;
   titulo: string;
   setTitulo: (v: string) => void;
   themes: { id: string; title: string }[];
@@ -1412,30 +1424,83 @@ function OrgSection({
           <p className="text-xs text-slate-500">
             Etapa 1 = tutoriais e base · Etapa 2 = reconhecimento de letras · Etapa 3 = leitura.
           </p>
-          <select
-            title="Selecionar etapa"
-            value={selectedStageId}
-            onChange={(e) => {
-              const stageId = e.target.value;
-              setSelectedStageId(stageId);
-              setSelectedModuleId("");
-              const s = stagesForTheme.find((st) => st.id === stageId);
-              if (s) setNewModuleStage(s.stage_number as 1 | 2 | 3);
-            }}
-            disabled={(themeMode === "existing" && !selectedThemeId) || stagesForTheme.length === 0}
-            className="w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-50"
-          >
-            <option value="">Selecione a etapa...</option>
-            {stagesForTheme.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.title}
-              </option>
-            ))}
-          </select>
-          {stagesForTheme.length === 0 && selectedThemeId && themeMode === "existing" && (
-            <p className="text-[10px] text-slate-500">
-              Nenhuma etapa configurada para este tema.
-            </p>
+          <div className="flex gap-4 text-sm">
+            <label className="flex cursor-pointer items-center gap-1.5">
+              <input
+                type="radio"
+                name="stageMode"
+                checked={stageMode === "existing"}
+                onChange={() => setStageMode("existing")}
+                className="accent-slate-900"
+              />
+              Etapa existente
+            </label>
+            <label className="flex cursor-pointer items-center gap-1.5">
+              <input
+                type="radio"
+                name="stageMode"
+                checked={stageMode === "new"}
+                onChange={() => setStageMode("new")}
+                className="accent-slate-900"
+              />
+              Criar nova etapa
+            </label>
+          </div>
+          {stageMode === "existing" ? (
+            <>
+              <select
+                title="Selecionar etapa"
+                value={selectedStageId}
+                onChange={(e) => {
+                  const stageId = e.target.value;
+                  setSelectedStageId(stageId);
+                  setSelectedModuleId("");
+                  const s = stagesForTheme.find((st) => st.id === stageId);
+                  if (s) setNewModuleStage(s.stage_number as 1 | 2 | 3);
+                }}
+                disabled={(themeMode === "existing" && !selectedThemeId) || stagesForTheme.length === 0}
+                className="w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:opacity-50"
+              >
+                <option value="">Selecione a etapa...</option>
+                {stagesForTheme.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title}
+                  </option>
+                ))}
+              </select>
+              {stagesForTheme.length === 0 && (
+                <p className="text-[10px] text-slate-500">
+                  Nenhuma etapa configurada para este tema. Escolha “Criar nova etapa”.
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="space-y-2">
+              <select
+                title="Número da etapa"
+                value={newStageNumber}
+                onChange={(e) => {
+                  const n = Number(e.target.value) as 1 | 2 | 3;
+                  setNewStageNumber(n);
+                  setNewModuleStage(n);
+                }}
+                className="w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+              >
+                <option value={1}>Etapa 1</option>
+                <option value={2}>Etapa 2</option>
+                <option value={3}>Etapa 3</option>
+              </select>
+              <input
+                type="text"
+                placeholder="Título da etapa (ex: Etapa 1 — Tutoriais)"
+                value={newStageTitle}
+                onChange={(e) => setNewStageTitle(e.target.value)}
+                className="w-full border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400"
+              />
+              <p className="text-[10px] text-slate-500">
+                O vídeo de introdução da etapa pode ser configurado depois.
+              </p>
+            </div>
           )}
         </div>
 
@@ -1811,7 +1876,8 @@ export default function ConteudoCriarPage() {
   const editingActivityId = searchParams.get("id") ?? null;
   const isEditing = editingActivityId !== null;
 
-  const { data, createTheme, createModule, createActivity, updateActivity, uploadAsset } = useConteudoData();
+  const { data, createTheme, createStage, createModule, createActivity, updateActivity, uploadAsset } =
+    useConteudoData();
 
   // picker state: which field is waiting for a library selection
   const [picker, setPicker] = useState<{
@@ -1828,8 +1894,14 @@ export default function ConteudoCriarPage() {
   const [moduleMode, setModuleMode] = useState<"existing" | "new">("existing");
   const [selectedModuleId, setSelectedModuleId] = useState("");
   const [newModuleTitle, setNewModuleTitle] = useState("");
-  const [newModuleStage, setNewModuleStage] = useState<1 | 2 | 3>(2);
+  // Espelha o stage_number da etapa selecionada; começa na Etapa 1 e é sempre
+  // sobrescrito ao escolher a etapa (obrigatória para módulo novo).
+  const [newModuleStage, setNewModuleStage] = useState<1 | 2 | 3>(1);
   const [selectedStageId, setSelectedStageId] = useState("");
+  // Criação de etapa inline (destrava temas sem etapas, inclusive tema novo).
+  const [stageMode, setStageMode] = useState<"existing" | "new">("existing");
+  const [newStageTitle, setNewStageTitle] = useState("");
+  const [newStageNumber, setNewStageNumber] = useState<1 | 2 | 3>(1);
   const [titulo, setTitulo] = useState("");
 
   // match-letter
@@ -1908,7 +1980,7 @@ export default function ConteudoCriarPage() {
     setModuleMode(draft.moduleMode === "new" ? "new" : "existing");
     setSelectedModuleId(draft.selectedModuleId || "");
     setNewModuleTitle(draft.newModuleTitle || "");
-    setNewModuleStage([1, 2, 3].includes(Number(draft.newModuleStage)) ? draft.newModuleStage : 2);
+    setNewModuleStage([1, 2, 3].includes(Number(draft.newModuleStage)) ? draft.newModuleStage : 1);
     setSelectedStageId(draft.selectedStageId || "");
     setTitulo(draft.titulo || "");
     setLetraAlvo(draft.letraAlvo || "");
@@ -2367,11 +2439,30 @@ export default function ConteudoCriarPage() {
       let moduleId = selectedModuleId;
       if (moduleMode === "new") {
         if (!newModuleTitle.trim()) throw new Error("Informe o nome do módulo.");
+
+        // Etapa obrigatória: todo módulo novo nasce vinculado a uma etapa do
+        // tema (hierarquia Tema → Etapa → Módulo). Sem isso o app não sabe em
+        // qual etapa a aula entra — origem do antigo fallback silencioso "2".
+        let stageId = selectedStageId;
+        let stageNumber = newModuleStage;
+        if (stageMode === "new") {
+          if (!newStageTitle.trim()) throw new Error("Informe o título da etapa.");
+          const st = await createStage({
+            themeId,
+            stageNumber: newStageNumber,
+            title: newStageTitle.trim(),
+          });
+          if (!st) throw new Error("Não foi possível criar a etapa.");
+          stageId = st.id;
+          stageNumber = newStageNumber;
+        }
+        if (!stageId) throw new Error("Selecione a etapa do módulo.");
+
         const m = await createModule({
           themeId,
           title: newModuleTitle.trim(),
-          stageNumber: newModuleStage,
-          stageId: selectedStageId || undefined,
+          stageNumber,
+          stageId,
         });
         if (!m) throw new Error("Não foi possível criar o módulo.");
         moduleId = m.id;
@@ -2604,6 +2695,12 @@ export default function ConteudoCriarPage() {
             setNewModuleStage={setNewModuleStage}
             selectedStageId={selectedStageId}
             setSelectedStageId={setSelectedStageId}
+            stageMode={stageMode}
+            setStageMode={setStageMode}
+            newStageTitle={newStageTitle}
+            setNewStageTitle={setNewStageTitle}
+            newStageNumber={newStageNumber}
+            setNewStageNumber={setNewStageNumber}
             titulo={titulo}
             setTitulo={setTitulo}
             themes={data.themes}

@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPostFormData } from "../../../core/api/client";
-import { Activity, AssetKind, AssetStatus, Blueprint, ConteudoData, EMPTY_DATA, ModuleItem, Theme } from "./cmsTypes";
+import { Activity, AssetKind, AssetStatus, Blueprint, ConteudoData, EMPTY_DATA, ModuleItem, Stage, Theme } from "./cmsTypes";
 import { inferAssetKindFromFile, isUuid, toFriendlyErrorMessage, toInt } from "./cmsUtils";
 
 interface Feedback {
@@ -21,6 +21,15 @@ interface UpdateThemeInput {
   slug?: string;
   sortOrder?: number;
   isActive?: boolean;
+}
+
+interface CreateStageInput {
+  themeId: string;
+  stageNumber: number;
+  title: string;
+  description?: string;
+  introVideoId?: string;
+  sortOrder?: number;
 }
 
 interface CreateModuleInput {
@@ -212,6 +221,35 @@ export function useConteudoData() {
       } catch (submitError) {
         const rawMessage = submitError instanceof Error ? submitError.message : "Erro ao salvar.";
         setFeedback({ type: "error", text: toFriendlyErrorMessage(rawMessage) });
+        return null;
+      } finally {
+        setBusy("");
+      }
+    },
+    [loadData],
+  );
+
+  const createStage = useCallback(
+    async (input: CreateStageInput) => {
+      try {
+        setBusy("stage");
+        setFeedback(null);
+        const created = (await apiPost("/painel/conteudo/etapas", {
+          themeId: input.themeId,
+          stageNumber: toInt(input.stageNumber, 1),
+          title: input.title,
+          description: input.description || undefined,
+          introVideoId: input.introVideoId || undefined,
+          sortOrder: input.sortOrder !== undefined ? toInt(input.sortOrder, 0) : undefined,
+          isActive: true,
+        })) as Stage;
+
+        await loadData();
+        setFeedback({ type: "ok", text: "Etapa criada com sucesso." });
+        return created;
+      } catch (submitError) {
+        const message = submitError instanceof Error ? submitError.message : "Falha ao criar etapa.";
+        setFeedback({ type: "error", text: toFriendlyErrorMessage(message) });
         return null;
       } finally {
         setBusy("");
@@ -743,6 +781,7 @@ export function useConteudoData() {
     setFeedback,
     loadData,
     createTheme,
+    createStage,
     updateTheme,
     deleteTheme,
     createModule,

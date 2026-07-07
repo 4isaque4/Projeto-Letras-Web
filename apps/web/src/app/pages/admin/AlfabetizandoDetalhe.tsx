@@ -85,6 +85,9 @@ interface StudentDetailResponse {
   tutor: string;
   grupo: string;
   etapa: string;
+  currentStageNumber?: number;
+  etapa1Completed?: boolean;
+  mirrorUnlocked?: boolean;
   status: string;
   progresso: ProgressByStage[];
   tentativas: AttemptItem[];
@@ -224,6 +227,15 @@ export default function AlfabetizandoDetalhe() {
               <div>
                 <p className="text-xs text-gray-500 mb-1">Etapa Atual</p>
                 <p className="text-sm text-gray-700">{detail.etapa}</p>
+                <span
+                  className={`mt-1 inline-block px-2 py-0.5 text-xs border ${
+                    detail.etapa1Completed
+                      ? "border-emerald-500 text-emerald-700 bg-emerald-50"
+                      : "border-amber-500 text-amber-700 bg-amber-50"
+                  }`}
+                >
+                  {detail.etapa1Completed ? "Etapa 1 concluída" : "Etapa 1 em andamento"}
+                </span>
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Status</p>
