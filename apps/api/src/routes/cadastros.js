@@ -607,6 +607,8 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
       const currentStageNumber = stageStatus?.currentStageNumber ?? touchedStageNumber;
       const etapa1Completed = stageStatus?.etapa1Completed ?? false;
       const mirrorUnlocked = stageStatus?.mirrorUnlocked ?? etapa1Completed;
+      // Tema resolvido do aluno (o runner da Etapa 1 no mobile usa para escopar).
+      const themeId = stageStatus?.themeId ?? null;
 
       const link = confirmedLinks.find((item) => item.student_id === student.id);
       const tutor = link ? tutorById.get(link.tutor_id) : null;
@@ -626,6 +628,7 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
         currentStageNumber,
         etapa1Completed,
         mirrorUnlocked,
+        themeId,
         progresso: progressPercent,
         status: computeStudentStatus(studentRows),
         ultimaAtividade: formatRelativeTime(latestActivityAt),
@@ -1002,6 +1005,7 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
     const currentStageNumber = stageStatus?.currentStageNumber ?? maxStage;
     const etapa1Completed = stageStatus?.etapa1Completed ?? false;
     const mirrorUnlocked = stageStatus?.mirrorUnlocked ?? etapa1Completed;
+    const themeId = stageStatus?.themeId ?? null;
 
     const metadata = getProfileMetadata(student);
     const city = metadataText(metadata, ["city", "cidade"]);
@@ -1037,6 +1041,7 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
       currentStageNumber,
       etapa1Completed,
       mirrorUnlocked,
+      themeId,
       status,
       progresso,
       tentativas,
