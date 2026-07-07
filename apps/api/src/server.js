@@ -10,7 +10,7 @@ import { learnersRouter } from "./routes/learners.js";
 import { painelRouter } from "./routes/painel.js";
 import { referenceRouter } from "./routes/reference.js";
 import { sessionsRouter } from "./routes/sessions.js";
-import { getEducatorScoreSummary, getLearningThemes, toHttpError } from "./services/letrasDataService.js";
+import { getEducatorScoreSummary, getPanelLearningThemes, toHttpError } from "./services/letrasDataService.js";
 import { supabaseAdmin } from "./lib/supabase.js";
 import { startScoringSweep } from "./jobs/scoringSweep.js";
 
@@ -120,11 +120,13 @@ app.get(`${env.apiPrefix}/scoring/me`, async (req, res) => {
   }
 });
 
-// GET /api/v1/themes — lista temas para o onboarding do educador no mobile
+// GET /api/v1/themes — lista temas para o onboarding do educador no mobile.
+// Apenas temas ativos do painel (learning_themes): o schema mobile legado tem
+// temas próprios que não existem no CMS e quebrariam etapas/stage-status.
 app.get(`${env.apiPrefix}/themes`, async (_req, res) => {
   try {
-    const themes = await getLearningThemes();
-    const mapped = (themes ?? []).map((t) => ({
+    const themes = await getPanelLearningThemes();
+    const mapped = (themes ?? []).filter((t) => t.is_active !== false).map((t) => ({
       id: t.id,
       name: t.title ?? t.slug ?? "",
       description: t.description ?? null,

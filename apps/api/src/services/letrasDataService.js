@@ -1315,9 +1315,14 @@ export async function computeLearnerStageStatus({ learnerProfileId, themeId } = 
 
 // Status por etapa de VÁRIOS alfabetizandos de uma vez (enriquecimento da lista
 // da home do educador). Carrega o currículo publicado uma única vez (sem N+1) e
-// resolve o tema de cada aluno pelo seu progresso. Aceita progressRows já
-// carregado para não re-consultar o progresso.
-export async function computeLearnerStageStatusMap({ learnerProfileIds, progressRows } = {}) {
+// resolve o tema de cada aluno pelo tema atribuído no perfil
+// (assignedThemeIdByLearner: Map learnerId → themeId) com fallback para o
+// progresso. Aceita progressRows já carregado para não re-consultar o progresso.
+export async function computeLearnerStageStatusMap({
+  learnerProfileIds,
+  progressRows,
+  assignedThemeIdByLearner,
+} = {}) {
   const client = requireSupabase();
   const ids = [...new Set((learnerProfileIds ?? []).map((id) => normalizeText(id)).filter(Boolean))];
   const result = new Map();
@@ -1325,7 +1330,7 @@ export async function computeLearnerStageStatusMap({ learnerProfileIds, progress
 
   const rows = progressRows ?? (await getActivityProgress({ studentIds: ids }));
 
-  const [stages, modules] = await Promise.all([
+  const [stages, modules, themes] = await Promise.all([
     runQuery(
       client
         .from("learning_stages")
@@ -1340,7 +1345,9 @@ export async function computeLearnerStageStatusMap({ learnerProfileIds, progress
         .neq("is_active", false),
       "Falha ao listar modulos",
     ),
+    runQuery(client.from("learning_themes").select("id"), "Falha ao listar temas"),
   ]);
+  const knownThemeIds = new Set(themes.map((t) => normalizeText(t.id)));
 
   const moduleIds = modules.map((m) => m.id);
   const activities = moduleIds.length
@@ -1367,7 +1374,13 @@ export async function computeLearnerStageStatusMap({ learnerProfileIds, progress
 
   for (const learnerId of ids) {
     const learnerProgress = progressByStudent.get(learnerId) ?? [];
-    const themeId = resolveThemeIdFromProgress(learnerProgress, activityThemeById);
+    // Tema atribuído vale só se existir em learning_themes (ids legados do
+    // schema mobile gravados em metadata não resolvem e caem no fallback).
+    const assignedThemeId = normalizeNullableText(assignedThemeIdByLearner?.get(learnerId));
+    const themeId =
+      assignedThemeId && knownThemeIds.has(assignedThemeId)
+        ? assignedThemeId
+        : resolveThemeIdFromProgress(learnerProgress, activityThemeById);
     if (!themeId) {
       // Sem tema resolvível (aluno sem progresso ou módulos legados sem
       // theme_id): default seguro — mirror travado, começando na Etapa 1.

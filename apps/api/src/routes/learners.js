@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { supabaseAdmin, isSupabaseConfigured } from "../lib/supabase.js";
-import { getLearningThemes, toHttpError } from "../services/letrasDataService.js";
+import { getPanelLearningThemes, toHttpError } from "../services/letrasDataService.js";
 
 export const learnersRouter = Router();
 
@@ -25,11 +25,11 @@ function toProfileAsLearner(profile) {
   };
 }
 
-// GET /themes — lista todos os temas (usado no onboarding do educador)
+// GET /themes — lista temas ativos do painel (usado no onboarding do educador)
 learnersRouter.get("/themes-list", async (_req, res) => {
   try {
-    const themes = await getLearningThemes();
-    const mapped = (themes ?? []).map((t) => ({
+    const themes = await getPanelLearningThemes();
+    const mapped = (themes ?? []).filter((t) => t.is_active !== false).map((t) => ({
       id: t.id,
       name: t.title ?? t.slug ?? "",
       description: t.description ?? null,
@@ -137,8 +137,9 @@ learnersRouter.get("/:learnerProfileId/themes", async (req, res) => {
       return res.json([]);
     }
 
-    // Busca detalhes do tema
-    const themes = await getLearningThemes();
+    // Busca detalhes do tema (só temas do painel; ids legados do schema mobile
+    // não resolvem e caem no retorno vazio, forçando nova seleção no app)
+    const themes = await getPanelLearningThemes();
     const theme = themes?.find((t) => t.id === themeId);
 
     if (!theme) {

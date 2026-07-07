@@ -571,9 +571,17 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
 
     // Status por etapa (gate Etapa 1/Etapa 2 + espelhamento). Reaproveita o
     // progresso já carregado; carrega o currículo publicado uma única vez.
+    // O tema atribuído no app do educador (metadata.assignedThemeId) resolve o
+    // tema mesmo antes de o aluno ter qualquer progresso.
+    const assignedThemeIdByLearner = new Map(
+      filteredStudents
+        .filter((student) => student.metadata?.assignedThemeId)
+        .map((student) => [student.id, student.metadata.assignedThemeId]),
+    );
     const stageStatusByStudent = await computeLearnerStageStatusMap({
       learnerProfileIds: filteredStudentIds,
       progressRows: progress,
+      assignedThemeIdByLearner,
     });
 
     const items = filteredStudents.map((student) => {
