@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createAuthUserWithProfile,
   createTutorStudentLink,
+  computeLearnerStageStatusMap,
   deleteProfileRecord,
   daysSince,
   formatDateTime,
@@ -568,6 +569,13 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
     const tutorById = mapById(tutors);
     const totalActivities = activities.length;
 
+    // Status por etapa (gate Etapa 1/Etapa 2 + espelhamento). Reaproveita o
+    // progresso já carregado; carrega o currículo publicado uma única vez.
+    const stageStatusByStudent = await computeLearnerStageStatusMap({
+      learnerProfileIds: filteredStudentIds,
+      progressRows: progress,
+    });
+
     const items = filteredStudents.map((student) => {
       const studentRows = progressByStudent.get(student.id) ?? [];
       const completedCount = studentRows.filter(
@@ -591,7 +599,14 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
           return module?.stage_number ?? null;
         })
         .filter((value) => typeof value === "number");
-      const stageNumber = stageNumbers.length > 0 ? Math.max(...stageNumbers) : 1;
+      const touchedStageNumber = stageNumbers.length > 0 ? Math.max(...stageNumbers) : 1;
+
+      // Gate por etapa: currentStageNumber = maior etapa desbloqueada (fonte da
+      // verdade), com fallback para a etapa tocada quando não há status.
+      const stageStatus = stageStatusByStudent.get(student.id) ?? null;
+      const currentStageNumber = stageStatus?.currentStageNumber ?? touchedStageNumber;
+      const etapa1Completed = stageStatus?.etapa1Completed ?? false;
+      const mirrorUnlocked = stageStatus?.mirrorUnlocked ?? etapa1Completed;
 
       const link = confirmedLinks.find((item) => item.student_id === student.id);
       const tutor = link ? tutorById.get(link.tutor_id) : null;
@@ -607,7 +622,10 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
           typeof student.metadata?.group_name === "string" && student.metadata.group_name.length > 0
             ? student.metadata.group_name
             : "Sem grupo",
-        etapa: computeStageLabel(stageNumber),
+        etapa: computeStageLabel(currentStageNumber),
+        currentStageNumber,
+        etapa1Completed,
+        mirrorUnlocked,
         progresso: progressPercent,
         status: computeStudentStatus(studentRows),
         ultimaAtividade: formatRelativeTime(latestActivityAt),
@@ -975,6 +993,16 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
 
     const maxStage = stageNumbers.length > 0 ? Math.max(...stageNumbers) : 1;
 
+    // Gate por etapa (mesma fonte da verdade da lista e do app mobile).
+    const stageStatusById = await computeLearnerStageStatusMap({
+      learnerProfileIds: [studentId],
+      progressRows: progress,
+    });
+    const stageStatus = stageStatusById.get(studentId) ?? null;
+    const currentStageNumber = stageStatus?.currentStageNumber ?? maxStage;
+    const etapa1Completed = stageStatus?.etapa1Completed ?? false;
+    const mirrorUnlocked = stageStatus?.mirrorUnlocked ?? etapa1Completed;
+
     const metadata = getProfileMetadata(student);
     const city = metadataText(metadata, ["city", "cidade"]);
     const uf = metadataText(metadata, ["uf", "state", "estado"]).toUpperCase();
@@ -1005,7 +1033,10 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
         typeof metadata.group_name === "string" && metadata.group_name.length > 0
           ? metadata.group_name
           : "Sem grupo",
-      etapa: computeStageLabel(maxStage),
+      etapa: computeStageLabel(currentStageNumber),
+      currentStageNumber,
+      etapa1Completed,
+      mirrorUnlocked,
       status,
       progresso,
       tentativas,

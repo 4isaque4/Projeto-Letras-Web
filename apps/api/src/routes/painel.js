@@ -16,6 +16,7 @@ import {
   deleteLearningStage,
   deleteMediaLibraryItem,
   createMobileScreenBlueprint,
+  computeLearnerStageStatus,
   daysSince,
   formatDateTime,
   formatRelativeTime,
@@ -1136,6 +1137,18 @@ painelRouter.post("/progress", async (req, res) => {
       emitLearnerLockChanged(result.progress.student_id, true);
     }
 
+    // Etapa fechada (ex.: educador concluiu a Etapa 1 pelo runner): avisa a sala
+    // do dashboard. O app do educador destrava Etapa 2/espelhamento no próximo
+    // refetch-on-focus — não há sala de educador no namespace /realtime hoje.
+    if (result.stageCompleted) {
+      await emitOperationalRealtimeEvent("stage.completed", {
+        studentId: result.stageCompleted.studentId,
+        tutorId: result.stageCompleted.tutorId,
+        themeId: result.stageCompleted.themeId,
+        stageNumber: result.stageCompleted.stageNumber,
+      });
+    }
+
     res.status(result.skipped ? 202 : 200).json(result);
   } catch (error) {
     const httpError = toHttpError(error);
@@ -1156,6 +1169,22 @@ painelRouter.get("/progress/:learnerProfileId", async (req, res) => {
       .eq("status", "concluido");
     if (error) throw new HttpError(500, `Falha ao buscar progresso: ${error.message}`);
     res.json({ completedActivityIds: (data ?? []).map((r) => r.activity_id) });
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+// Fonte da verdade do gate Etapa 1 → Etapa 2 e do espelhamento. Retorna, por
+// etapa do tema, se está concluída e desbloqueada, além de etapa1Completed /
+// mirrorUnlocked (alias) e currentStageNumber. Consumido pelo app mobile.
+painelRouter.get("/learners/:learnerProfileId/stage-status", async (req, res) => {
+  try {
+    const status = await computeLearnerStageStatus({
+      learnerProfileId: req.params.learnerProfileId,
+      themeId: req.query?.themeId,
+    });
+    res.json(status);
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });

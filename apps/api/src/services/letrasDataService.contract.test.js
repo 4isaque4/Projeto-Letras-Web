@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
   __setSupabaseAdminForTests,
+  computeLearnerStageStatus,
   createSupportRequest,
   deleteProfileRecord,
   updateActivityProgressStatus,
@@ -11,6 +12,50 @@ import {
 const STUDENT_ID = "11111111-1111-4111-8111-111111111111";
 const ACTIVITY_ID = "22222222-2222-4222-8222-222222222222";
 const TUTOR_ID = "33333333-3333-4333-8333-333333333333";
+
+// Cenário de currículo por etapa (tema A com Etapa 1 e Etapa 2; tema B com uma
+// Etapa 1 própria — usado para provar o escopo por tema do gate e do crédito).
+const THEME_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const THEME_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const STAGE_A1 = "a1a1a1a1-1111-4111-8111-111111111111";
+const STAGE_A2 = "a2a2a2a2-2222-4222-8222-222222222222";
+const MODULE_A1 = "m1111111-1111-4111-8111-111111111111";
+const MODULE_A2 = "m2222222-2222-4222-8222-222222222222";
+const MODULE_B1 = "mb111111-1111-4111-8111-111111111111";
+const ACT_A1a = "c1111111-1111-4111-8111-111111111111";
+const ACT_A1b = "c1222222-2222-4222-8222-222222222222";
+const ACT_A2a = "c2111111-1111-4111-8111-111111111111";
+const ACT_B1a = "cb111111-1111-4111-8111-111111111111";
+
+function createCurriculumSeed(overrides = {}) {
+  return {
+    tutor_student_links: [
+      {
+        id: "link-1",
+        student_id: STUDENT_ID,
+        tutor_id: TUTOR_ID,
+        status: "confirmado",
+        updated_at: "2026-05-14T10:00:00.000Z",
+      },
+    ],
+    learning_stages: [
+      { id: STAGE_A1, theme_id: THEME_A, stage_number: 1, title: "Etapa 1", sort_order: 0, is_active: true },
+      { id: STAGE_A2, theme_id: THEME_A, stage_number: 2, title: "Etapa 2", sort_order: 1, is_active: true },
+    ],
+    learning_modules: [
+      { id: MODULE_A1, theme_id: THEME_A, stage_id: STAGE_A1, stage_number: 1, is_active: true },
+      { id: MODULE_A2, theme_id: THEME_A, stage_id: STAGE_A2, stage_number: 2, is_active: true },
+      { id: MODULE_B1, theme_id: THEME_B, stage_id: null, stage_number: 1, is_active: true },
+    ],
+    learning_activities: [
+      { id: ACT_A1a, module_id: MODULE_A1, is_published: true },
+      { id: ACT_A1b, module_id: MODULE_A1, is_published: true },
+      { id: ACT_A2a, module_id: MODULE_A2, is_published: true },
+      { id: ACT_B1a, module_id: MODULE_B1, is_published: true },
+    ],
+    ...overrides,
+  };
+}
 
 afterEach(() => {
   __setSupabaseAdminForTests(null);
@@ -187,6 +232,130 @@ describe("mobile-web support and lock contracts", () => {
   });
 });
 
+describe("stage status gate (Etapa 1 → Etapa 2 + espelhamento)", () => {
+  it("reports Etapa 1 completed, Etapa 2 unlocked and mirror unlocked once all Etapa 1 activities are done", async () => {
+    const supabase = new FakeSupabase(
+      createCurriculumSeed({
+        activity_progress: [
+          { id: "p1", student_id: STUDENT_ID, activity_id: ACT_A1a, status: "concluido", completed_at: "2026-05-14T10:00:00.000Z", metadata: {} },
+          { id: "p2", student_id: STUDENT_ID, activity_id: ACT_A1b, status: "concluido", completed_at: "2026-05-14T10:05:00.000Z", metadata: {} },
+        ],
+      }),
+    );
+    __setSupabaseAdminForTests(supabase);
+
+    const status = await computeLearnerStageStatus({ learnerProfileId: STUDENT_ID, themeId: THEME_A });
+
+    assert.equal(status.etapa1Completed, true);
+    assert.equal(status.mirrorUnlocked, true);
+    assert.equal(status.currentStageNumber, 2);
+
+    const stage1 = status.stages.find((s) => s.stageNumber === 1);
+    const stage2 = status.stages.find((s) => s.stageNumber === 2);
+    assert.equal(stage1.completed, true);
+    assert.equal(stage1.unlocked, true);
+    assert.equal(stage1.totalActivities, 2);
+    assert.equal(stage2.completed, false);
+    assert.equal(stage2.unlocked, true);
+  });
+
+  it("keeps Etapa 2 and mirror locked while Etapa 1 is partial", async () => {
+    const supabase = new FakeSupabase(
+      createCurriculumSeed({
+        activity_progress: [
+          { id: "p1", student_id: STUDENT_ID, activity_id: ACT_A1a, status: "concluido", completed_at: "2026-05-14T10:00:00.000Z", metadata: {} },
+        ],
+      }),
+    );
+    __setSupabaseAdminForTests(supabase);
+
+    const status = await computeLearnerStageStatus({ learnerProfileId: STUDENT_ID, themeId: THEME_A });
+
+    assert.equal(status.etapa1Completed, false);
+    assert.equal(status.mirrorUnlocked, false);
+    assert.equal(status.currentStageNumber, 1);
+    assert.equal(status.stages.find((s) => s.stageNumber === 2).unlocked, false);
+  });
+
+  it("locks the mirror when Etapa 1 has no published activities (safe default)", async () => {
+    const supabase = new FakeSupabase(
+      createCurriculumSeed({
+        learning_activities: [
+          { id: ACT_A2a, module_id: MODULE_A2, is_published: true },
+        ],
+      }),
+    );
+    __setSupabaseAdminForTests(supabase);
+
+    const status = await computeLearnerStageStatus({ learnerProfileId: STUDENT_ID, themeId: THEME_A });
+
+    assert.equal(status.etapa1Completed, false);
+    assert.equal(status.mirrorUnlocked, false);
+    assert.equal(status.stages.find((s) => s.stageNumber === 1).totalActivities, 0);
+  });
+
+  it("credits stage completion scoped by theme and emits a fresh stage.completed signal", async () => {
+    const supabase = new FakeSupabase(
+      createCurriculumSeed({
+        activity_progress: [
+          // Etapa 1 do tema A já 1/2 concluída; a atividade B (outro tema) segue
+          // pendente — não pode bloquear o crédito da Etapa 1 do tema A.
+          { id: "p1", student_id: STUDENT_ID, activity_id: ACT_A1a, status: "concluido", completed_at: "2026-05-14T10:00:00.000Z", metadata: {} },
+        ],
+      }),
+    );
+    __setSupabaseAdminForTests(supabase);
+
+    const result = await upsertActivityProgressFromMobile({
+      learnerProfileId: STUDENT_ID,
+      activityId: ACT_A1b,
+      status: "COMPLETED",
+    });
+
+    assert.ok(result.stageCompleted, "esperava sinal de conclusão de etapa");
+    assert.equal(result.stageCompleted.stageNumber, 1);
+    assert.equal(result.stageCompleted.themeId, THEME_A);
+    assert.equal(result.stageCompleted.tutorId, TUTOR_ID);
+
+    const scoreEvents = supabase.rows("educator_score_events");
+    assert.equal(scoreEvents.length, 1);
+    assert.equal(scoreEvents[0].event_type, "stage_completed");
+    assert.equal(scoreEvents[0].stage_number, 1);
+    assert.equal(scoreEvents[0].points, 10);
+    assert.equal(
+      supabase.rows("sync_events").some((row) => row.event_type === "stage.completed"),
+      true,
+    );
+  });
+
+  it("does not re-signal stage completion when only Etapa 2 remains open", async () => {
+    const supabase = new FakeSupabase(
+      createCurriculumSeed({
+        activity_progress: [
+          { id: "p1", student_id: STUDENT_ID, activity_id: ACT_A1a, status: "concluido", completed_at: "2026-05-14T10:00:00.000Z", metadata: {} },
+          { id: "p2", student_id: STUDENT_ID, activity_id: ACT_A1b, status: "concluido", completed_at: "2026-05-14T10:05:00.000Z", metadata: {} },
+        ],
+      }),
+    );
+    __setSupabaseAdminForTests(supabase);
+
+    // Concluir uma atividade da Etapa 2 (que ainda não fecha a Etapa 2).
+    const result = await upsertActivityProgressFromMobile({
+      learnerProfileId: STUDENT_ID,
+      activityId: ACT_A2a,
+      status: "COMPLETED",
+    });
+
+    // Etapa 2 tem só 1 atividade publicada; ao concluí-la a Etapa 2 fecha e
+    // credita +15 — mas nunca a Etapa 1 de novo.
+    assert.equal(result.stageCompleted.stageNumber, 2);
+    const scoreEvents = supabase.rows("educator_score_events");
+    assert.equal(scoreEvents.length, 1);
+    assert.equal(scoreEvents[0].stage_number, 2);
+    assert.equal(scoreEvents[0].points, 15);
+  });
+});
+
 function createProgressSupabase(overrides = {}) {
   return new FakeSupabase({
     tutor_student_links: [
@@ -301,6 +470,16 @@ class FakeQuery {
 
   in(column, values) {
     this.filters.push((row) => values.includes(row[column]));
+    return this;
+  }
+
+  neq(column, value) {
+    this.filters.push((row) => row[column] !== value);
+    return this;
+  }
+
+  gte(column, value) {
+    this.filters.push((row) => row[column] != null && row[column] >= value);
     return this;
   }
 

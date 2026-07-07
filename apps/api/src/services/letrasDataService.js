@@ -1147,6 +1147,255 @@ export async function getActivityProgress({ studentIds } = {}) {
   return dedupeByKey(progressRows, mobileProgressRows, (item) => `${item.student_id}:${item.activity_id}`);
 }
 
+// ---------------------------------------------------------------------------
+// Status por etapa do alfabetizando (fonte da verdade do gate Etapa 1/Etapa 2
+// e do espelhamento). Computado na leitura, sem tabela nova. Escopado por tema.
+// ---------------------------------------------------------------------------
+
+function groupByKey(items, keyFn) {
+  const map = new Map();
+  for (const item of items ?? []) {
+    const key = keyFn(item);
+    if (key == null) continue;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(item);
+  }
+  return map;
+}
+
+// Resolve o número da etapa de um módulo: prioriza o vínculo forte
+// stage_id → learning_stages e cai para stage_number (legado) quando não há.
+function resolveModuleStageNumber(module, stageNumberByStageId) {
+  const stageId = normalizeNullableText(module?.stage_id);
+  if (stageId && stageNumberByStageId.has(stageId)) {
+    return stageNumberByStageId.get(stageId);
+  }
+  const legacy = Number(module?.stage_number);
+  return Number.isFinite(legacy) ? legacy : null;
+}
+
+// Deriva o tema do alfabetizando pelo tema mais frequente entre as atividades
+// em que ele tem progresso (o tema é travado durante a jornada — CLAUDE.md).
+function resolveThemeIdFromProgress(progressRows, activityThemeById) {
+  const counts = new Map();
+  for (const row of progressRows ?? []) {
+    const themeId = activityThemeById.get(row.activity_id);
+    if (!themeId) continue;
+    counts.set(themeId, (counts.get(themeId) ?? 0) + 1);
+  }
+  let best = null;
+  let bestCount = 0;
+  for (const [themeId, count] of counts) {
+    if (count > bestCount) {
+      best = themeId;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+// Puro/síncrono: monta o rollup por etapa a partir de dados já carregados
+// (etapas ativas, módulos ativos, atividades publicadas e progresso do aluno).
+// Reutilizado pelo endpoint individual e pelo enriquecimento em lote da lista.
+function buildStageStatus({ stages, modules, activities, progressRows }) {
+  const stageNumberByStageId = new Map(
+    (stages ?? []).map((stage) => [stage.id, Number(stage.stage_number)]),
+  );
+  const stageNumberByModuleId = new Map(
+    (modules ?? []).map((module) => [module.id, resolveModuleStageNumber(module, stageNumberByStageId)]),
+  );
+
+  const completedActivityIds = new Set(
+    (progressRows ?? [])
+      .filter((row) => row.status === "concluido")
+      .map((row) => row.activity_id),
+  );
+
+  // Atividades publicadas agrupadas por número de etapa (via módulo).
+  const activityIdsByStageNumber = new Map();
+  for (const activity of activities ?? []) {
+    const stageNumber = stageNumberByModuleId.get(activity.module_id);
+    if (stageNumber == null) continue;
+    if (!activityIdsByStageNumber.has(stageNumber)) activityIdsByStageNumber.set(stageNumber, []);
+    activityIdsByStageNumber.get(stageNumber).push(activity.id);
+  }
+
+  const orderedStages = [...(stages ?? [])].sort(
+    (a, b) => Number(a.stage_number) - Number(b.stage_number),
+  );
+
+  // Uma etapa desbloqueia se é a menor OU todas as anteriores estão concluídas.
+  let allPreviousCompleted = true;
+  const stageStatuses = orderedStages.map((stage) => {
+    const stageNumber = Number(stage.stage_number);
+    const stageActivityIds = activityIdsByStageNumber.get(stageNumber) ?? [];
+    const stageCompletedIds = stageActivityIds.filter((id) => completedActivityIds.has(id));
+    const totalActivities = stageActivityIds.length;
+    const completed = totalActivities > 0 && stageCompletedIds.length === totalActivities;
+    const unlocked = allPreviousCompleted;
+    allPreviousCompleted = allPreviousCompleted && completed;
+    return {
+      stageId: stage.id,
+      stageNumber,
+      title: stage.title ?? null,
+      totalActivities,
+      completedCount: stageCompletedIds.length,
+      completed,
+      unlocked,
+      completedActivityIds: stageCompletedIds,
+    };
+  });
+
+  const firstStage = stageStatuses[0] ?? null;
+  // Etapa 1 = menor etapa ativa. Tema sem atividades na Etapa 1 ⇒ false (mirror
+  // travado por padrão seguro).
+  const etapa1Completed = Boolean(firstStage?.completed);
+  const unlockedStageNumbers = stageStatuses.filter((s) => s.unlocked).map((s) => s.stageNumber);
+  const currentStageNumber =
+    unlockedStageNumbers.length > 0 ? Math.max(...unlockedStageNumbers) : firstStage?.stageNumber ?? 1;
+
+  return {
+    stages: stageStatuses,
+    etapa1Completed,
+    mirrorUnlocked: etapa1Completed,
+    currentStageNumber,
+  };
+}
+
+// Status por etapa de UM alfabetizando dentro de UM tema. Wrapper de leitura
+// usado pelo endpoint GET /painel/learners/:id/stage-status e por
+// maybeCreditStageCompletion (crédito de pontos escopado por tema).
+export async function computeLearnerStageStatus({ learnerProfileId, themeId } = {}) {
+  const client = requireSupabase();
+  const normalizedLearnerId = normalizeText(learnerProfileId);
+  const normalizedThemeId = normalizeText(themeId);
+  if (!normalizedLearnerId) throw new HttpError(400, "learnerProfileId e obrigatorio.");
+  if (!normalizedThemeId) throw new HttpError(400, "themeId e obrigatorio.");
+
+  const [stages, modules] = await Promise.all([
+    runQuery(
+      client
+        .from("learning_stages")
+        .select("id, stage_number, title, sort_order")
+        .eq("theme_id", normalizedThemeId)
+        .neq("is_active", false)
+        .order("stage_number", { ascending: true }),
+      "Falha ao listar etapas do tema",
+    ),
+    runQuery(
+      client
+        .from("learning_modules")
+        .select("id, stage_id, stage_number")
+        .eq("theme_id", normalizedThemeId)
+        .neq("is_active", false),
+      "Falha ao listar modulos do tema",
+    ),
+  ]);
+
+  const moduleIds = modules.map((m) => m.id);
+  const activities = moduleIds.length
+    ? await runQuery(
+        client
+          .from("learning_activities")
+          .select("id, module_id")
+          .in("module_id", moduleIds)
+          .neq("is_published", false),
+        "Falha ao listar atividades do tema",
+      )
+    : [];
+
+  const progressRows = await getActivityProgress({ studentIds: [normalizedLearnerId] });
+
+  return {
+    learnerProfileId: normalizedLearnerId,
+    themeId: normalizedThemeId,
+    ...buildStageStatus({ stages, modules, activities, progressRows }),
+  };
+}
+
+// Status por etapa de VÁRIOS alfabetizandos de uma vez (enriquecimento da lista
+// da home do educador). Carrega o currículo publicado uma única vez (sem N+1) e
+// resolve o tema de cada aluno pelo seu progresso. Aceita progressRows já
+// carregado para não re-consultar o progresso.
+export async function computeLearnerStageStatusMap({ learnerProfileIds, progressRows } = {}) {
+  const client = requireSupabase();
+  const ids = [...new Set((learnerProfileIds ?? []).map((id) => normalizeText(id)).filter(Boolean))];
+  const result = new Map();
+  if (ids.length === 0) return result;
+
+  const rows = progressRows ?? (await getActivityProgress({ studentIds: ids }));
+
+  const [stages, modules] = await Promise.all([
+    runQuery(
+      client
+        .from("learning_stages")
+        .select("id, theme_id, stage_number, title, sort_order")
+        .neq("is_active", false),
+      "Falha ao listar etapas",
+    ),
+    runQuery(
+      client
+        .from("learning_modules")
+        .select("id, theme_id, stage_id, stage_number")
+        .neq("is_active", false),
+      "Falha ao listar modulos",
+    ),
+  ]);
+
+  const moduleIds = modules.map((m) => m.id);
+  const activities = moduleIds.length
+    ? await runQuery(
+        client
+          .from("learning_activities")
+          .select("id, module_id")
+          .in("module_id", moduleIds)
+          .neq("is_published", false),
+        "Falha ao listar atividades",
+      )
+    : [];
+
+  const moduleThemeById = new Map(modules.map((m) => [m.id, normalizeNullableText(m.theme_id)]));
+  const activityThemeById = new Map(
+    activities.map((a) => [a.id, moduleThemeById.get(a.module_id) ?? null]),
+  );
+
+  const stagesByTheme = groupByKey(stages, (s) => normalizeNullableText(s.theme_id));
+  const modulesByTheme = groupByKey(modules, (m) => normalizeNullableText(m.theme_id));
+  const activitiesByTheme = groupByKey(activities, (a) => activityThemeById.get(a.id));
+
+  const progressByStudent = groupByKey(rows, (row) => normalizeText(row.student_id));
+
+  for (const learnerId of ids) {
+    const learnerProgress = progressByStudent.get(learnerId) ?? [];
+    const themeId = resolveThemeIdFromProgress(learnerProgress, activityThemeById);
+    if (!themeId) {
+      // Sem tema resolvível (aluno sem progresso ou módulos legados sem
+      // theme_id): default seguro — mirror travado, começando na Etapa 1.
+      result.set(learnerId, {
+        learnerProfileId: learnerId,
+        themeId: null,
+        stages: [],
+        etapa1Completed: false,
+        mirrorUnlocked: false,
+        currentStageNumber: 1,
+      });
+      continue;
+    }
+    result.set(learnerId, {
+      learnerProfileId: learnerId,
+      themeId,
+      ...buildStageStatus({
+        stages: stagesByTheme.get(themeId) ?? [],
+        modules: modulesByTheme.get(themeId) ?? [],
+        activities: activitiesByTheme.get(themeId) ?? [],
+        progressRows: learnerProgress,
+      }),
+    });
+  }
+
+  return result;
+}
+
 export async function getLearningActivities({ ids } = {}) {
   if (ids && ids.length === 0) {
     return [];
@@ -1928,7 +2177,7 @@ async function maybeCreditStageCompletion({ studentId, activityId }) {
   const normalizedStudentId = normalizeText(studentId);
   const normalizedActivityId = normalizeText(activityId);
   if (!normalizedStudentId || !isUuid(normalizedActivityId)) {
-    return;
+    return null;
   }
 
   const { data: activity } = await client
@@ -1937,61 +2186,79 @@ async function maybeCreditStageCompletion({ studentId, activityId }) {
     .eq("id", normalizedActivityId)
     .maybeSingle();
   if (!activity?.module_id) {
-    return;
+    return null;
   }
 
+  // Escopo por tema (corrige o bug cross-theme): a etapa é resolvida DENTRO do
+  // tema do módulo da atividade concluída — nunca somando atividades de temas
+  // distintos que compartilham o mesmo stage_number.
   const { data: module } = await client
     .from("learning_modules")
-    .select("id, stage_number")
+    .select("id, theme_id, stage_id, stage_number")
     .eq("id", activity.module_id)
     .maybeSingle();
-  const stageNumber = Number(module?.stage_number);
+  const themeId = normalizeNullableText(module?.theme_id);
+  if (!themeId) {
+    return null;
+  }
+
+  let stageNumber = Number(module?.stage_number);
+  const stageId = normalizeNullableText(module?.stage_id);
+  if (stageId) {
+    const { data: stage } = await client
+      .from("learning_stages")
+      .select("stage_number")
+      .eq("id", stageId)
+      .maybeSingle();
+    if (stage?.stage_number != null) {
+      stageNumber = Number(stage.stage_number);
+    }
+  }
   if (!STAGE_COMPLETION_POINTS[stageNumber]) {
-    return;
+    return null;
   }
 
-  const { data: stageModules } = await client
-    .from("learning_modules")
-    .select("id")
-    .eq("stage_number", stageNumber)
-    .neq("is_active", false);
-  const moduleIds = (stageModules ?? []).map((item) => item.id);
-  if (moduleIds.length === 0) {
-    return;
-  }
-
-  const { data: stageActivities } = await client
-    .from("learning_activities")
-    .select("id")
-    .in("module_id", moduleIds)
-    .neq("is_published", false);
-  const requiredActivityIds = (stageActivities ?? []).map((item) => item.id);
-  if (requiredActivityIds.length === 0) {
-    return;
-  }
-
-  const progressRows = await getActivityProgress({ studentIds: [normalizedStudentId] });
-  const completedActivityIds = new Set(
-    progressRows.filter((row) => row.status === "concluido").map((row) => row.activity_id),
-  );
-  if (!requiredActivityIds.every((id) => completedActivityIds.has(id))) {
-    return;
+  const status = await computeLearnerStageStatus({
+    learnerProfileId: normalizedStudentId,
+    themeId,
+  });
+  const stageStatus = status.stages.find((s) => s.stageNumber === stageNumber);
+  if (!stageStatus?.completed) {
+    return null;
   }
 
   const tutorId = await resolveTutorIdForStudent(normalizedStudentId);
   if (!tutorId) {
-    return;
+    return null;
   }
 
-  await recordEducatorScoreEvent({
+  const event = await recordEducatorScoreEvent({
     educatorId: tutorId,
     studentId: normalizedStudentId,
     eventType: "stage_completed",
     stageNumber,
     points: STAGE_COMPLETION_POINTS[stageNumber],
     dedupeKey: `stage:${tutorId}:${normalizedStudentId}:${stageNumber}`,
-    payload: { activityId: normalizedActivityId },
+    payload: { activityId: normalizedActivityId, themeId },
   });
+
+  // recordEducatorScoreEvent retorna null em dedupe (etapa já creditada): só
+  // sinalizamos conclusão fresca uma vez — evita sync/realtime duplicados.
+  if (!event) {
+    return null;
+  }
+
+  await runBestEffortMobileSync("register stage completed sync event", () =>
+    registerSyncEvent({
+      sourcePlatform: "mobile",
+      eventType: "stage.completed",
+      entityType: "learner_stage",
+      entityId: normalizedStudentId,
+      payload: { studentId: normalizedStudentId, tutorId, themeId, stageNumber },
+    }),
+  );
+
+  return { studentId: normalizedStudentId, tutorId, themeId, stageNumber };
 }
 
 // RN085: bônus por avanço do alfabetizando após o gatilho mais recente de
@@ -5366,13 +5633,17 @@ export async function upsertActivityProgressFromMobile({
     );
   }
 
+  let stageCompleted = null;
   if (mappedStatus === "concluido") {
-    await runBestEffortMobileSync("credit stage completion after mobile progress", () =>
-      maybeCreditStageCompletion({ studentId: data.student_id, activityId: data.activity_id }),
-    );
+    await runBestEffortMobileSync("credit stage completion after mobile progress", async () => {
+      stageCompleted = await maybeCreditStageCompletion({
+        studentId: data.student_id,
+        activityId: data.activity_id,
+      });
+    });
   }
 
-  return { progress: data };
+  return stageCompleted ? { progress: data, stageCompleted } : { progress: data };
 }
 
 export async function updateActivityProgressStatus({
@@ -5511,9 +5782,12 @@ export async function updateActivityProgressStatus({
 
   // RN085: conclusão marcada pelo painel também pode fechar a etapa.
   if (normalizedStatus === "concluido") {
-    await runBestEffortMobileSync("credit stage completion after panel progress update", () =>
-      maybeCreditStageCompletion({ studentId: data.student_id, activityId: data.activity_id }),
-    );
+    await runBestEffortMobileSync("credit stage completion after panel progress update", async () => {
+      data.stageCompleted = await maybeCreditStageCompletion({
+        studentId: data.student_id,
+        activityId: data.activity_id,
+      });
+    });
   }
 
   return data;
