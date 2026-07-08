@@ -47,7 +47,7 @@ learnersRouter.get("/themes-list", async (_req, res) => {
 learnersRouter.post("/", async (req, res) => {
   try {
     const client = requireSupabase();
-    const { displayName, notes, educatorId } = req.body ?? {};
+    const { displayName, notes } = req.body ?? {};
 
     if (!displayName || !String(displayName).trim()) {
       return res.status(400).json({ message: "displayName e obrigatorio." });
@@ -76,7 +76,6 @@ learnersRouter.post("/", async (req, res) => {
     const metadata = {
       email: fakeEmail,
       notes: notes ?? null,
-      ...(educatorId ? { educatorId } : {}),
     };
 
     const { data: profile, error: profileError } = await client
@@ -95,19 +94,8 @@ learnersRouter.post("/", async (req, res) => {
       return res.status(500).json({ message: `Perfil nao criado: ${profileError.message}` });
     }
 
-    // Cria vínculo se educatorId fornecido
-    if (educatorId) {
-      await client
-        .from("tutor_student_links")
-        .insert({
-          id: randomUUID(),
-          tutor_id: educatorId,
-          student_id: userId,
-          status: "confirmado",
-          created_at: new Date().toISOString(),
-        })
-        .catch(() => {});
-    }
+    // O vínculo tutor↔aluno não é criado aqui (RN101): nasce "pendente" via
+    // POST /cadastros/sessoes-confirmacao e exige aceite explícito do alfabetizador.
 
     return res.status(201).json(toProfileAsLearner(profile));
   } catch (err) {

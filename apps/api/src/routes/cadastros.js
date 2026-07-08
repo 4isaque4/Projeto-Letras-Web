@@ -818,27 +818,10 @@ cadastrosRouter.get("/alfabetizandos/buscar", async (req, res) => {
         educator = { id: educatorId, name: "Seu alfabetizador" };
       }
 
-      // Torna o vínculo durável (RN084: quem cadastrou já é vinculado): sem
-      // isso a referência ao educador vive só no metadata do registro legado
-      // e some quando o aluno migrado passa a ser resolvido pelo painel.
-      if (UUID_PATTERN.test(String(found.id)) && UUID_PATTERN.test(String(educatorId))) {
-        try {
-          const links = await getTutorStudentLinks();
-          const hasLink = links.some(
-            (l) => l.tutor_id === educatorId && l.student_id === found.id,
-          );
-          if (!hasLink) {
-            await createTutorStudentLink({
-              tutorId: educatorId,
-              studentId: found.id,
-              status: "confirmado",
-              requestedBy: educatorId,
-            });
-          }
-        } catch {
-          // Sem vínculo persistido o fluxo ainda funciona nesta sessão.
-        }
-      }
+      // NÃO criamos/confirmamos vínculo aqui — este é um GET (lookup) e não deve
+      // ter efeito colateral de escrita (RN101: vínculo exige aceite explícito via
+      // POST/PATCH /cadastros/sessoes-confirmacao). Se `educator` veio preenchido
+      // mas ainda não há tutor_student_link, o app mobile abre o pedido pendente.
     }
 
     return res.json({
@@ -1130,28 +1113,9 @@ cadastrosRouter.post("/alfabetizandos", async (req, res) => {
       }
     }
 
-    // Se vier educatorId (fluxo mobile do educador), cria o vínculo automaticamente.
-    const rawEducatorId = String(req.body?.educatorId ?? "").trim();
-    if (rawEducatorId && data?.id) {
-      try {
-        const { supabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
-        const client = isSupabaseConfigured && supabaseAdmin ? supabaseAdmin : null;
-        const supabaseTutorId = client
-          ? (await resolveSupabaseTutorId(rawEducatorId, req.headers.authorization, client)) ?? rawEducatorId
-          : rawEducatorId;
-
-        if (UUID_PATTERN.test(supabaseTutorId)) {
-          await createTutorStudentLink({
-            tutorId: supabaseTutorId,
-            studentId: data.id,
-            status: "confirmado",
-            requestedBy: supabaseTutorId,
-          });
-        }
-      } catch {
-        // Vínculo falhou mas o cadastro foi criado — não bloqueia o retorno.
-      }
-    }
+    // O vínculo tutor↔aluno não é criado no cadastro (RN101): nasce como "pendente"
+    // via POST /cadastros/sessoes-confirmacao quando o aluno solicita, e só vira
+    // "confirmado" no aceite explícito do alfabetizador (PATCH /sessoes-confirmacao/:id).
 
     res.status(201).json(data);
   } catch (error) {

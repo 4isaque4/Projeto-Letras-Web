@@ -27,10 +27,6 @@ interface StudentCreateForm {
   cpf: string;
 }
 
-interface CreatedStudent {
-  id: string;
-}
-
 const EMPTY_CREATE_FORM: StudentCreateForm = {
   nome: "",
   email: "",
@@ -128,24 +124,21 @@ export default function MeusAlfabetizandos() {
       setError("");
       setCreateMessage("");
 
-      const created = (await apiPost("/cadastros/alfabetizandos", {
+      // O vínculo não é criado aqui: o alfabetizando faz login por CPF/telefone no
+      // app mobile (Etapa 2) para solicitar vínculo, e o alfabetizador confirma no
+      // próprio app. Evita vínculo "confirmado" sem aceite (RN101).
+      await apiPost("/cadastros/alfabetizandos", {
         nome,
         email,
         password,
         phone: telefone || undefined,
         cpf: cpf || undefined,
-      })) as CreatedStudent;
-
-      // Vincula automaticamente o alfabetizando ao tutor logado.
-      await apiPost("/cadastros/vinculos", {
-        tutorId: user.id,
-        studentId: created.id,
-        status: "confirmado",
-        requestedBy: user.id,
       });
 
       setCreateForm(EMPTY_CREATE_FORM);
-      setCreateMessage(`Alfabetizando "${nome}" cadastrado e vinculado.`);
+      setCreateMessage(
+        `Alfabetizando "${nome}" cadastrado. O vínculo é confirmado quando ele fizer login pelo app.`,
+      );
       await loadStudents();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Falha ao cadastrar alfabetizando.");
