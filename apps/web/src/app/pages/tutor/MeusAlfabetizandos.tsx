@@ -124,15 +124,16 @@ export default function MeusAlfabetizandos() {
       setError("");
       setCreateMessage("");
 
-      // O vínculo não é criado aqui: o alfabetizando faz login por CPF/telefone no
-      // app mobile (Etapa 2) para solicitar vínculo, e o alfabetizador confirma no
-      // próprio app. Evita vínculo "confirmado" sem aceite (RN101).
+      // educatorId registra QUEM cadastrou (associação pendente em metadata.educatorId),
+      // NÃO cria vínculo confirmado (RN101). O alfabetizando faz login por CPF/telefone no
+      // app (Etapa 2) para solicitar o vínculo, e o alfabetizador confirma no próprio app.
       await apiPost("/cadastros/alfabetizandos", {
         nome,
         email,
         password,
         phone: telefone || undefined,
         cpf: cpf || undefined,
+        educatorId: user.id,
       });
 
       setCreateForm(EMPTY_CREATE_FORM);

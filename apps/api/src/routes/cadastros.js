@@ -537,12 +537,20 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
     });
 
     const confirmedLinks = links.filter((item) => item.status === "confirmado");
+    // Aluno recém-cadastrado ainda não tem vínculo confirmado, mas guarda o
+    // alfabetizador que o cadastrou em metadata.educatorId (associação pendente).
+    // Sem isto ele sumiria da lista "Meus Alfabetizandos" (filtrada por tutor) até
+    // o aceite. Mostramos também esses associados por metadata.
+    const associatedByMetadata = students.filter(
+      (item) => tutorId.length > 0 && String(item.metadata?.educatorId ?? "") === tutorId,
+    );
     const filteredStudentIds =
       tutorId.length > 0
         ? [
-            ...new Set(
-              confirmedLinks.filter((item) => item.tutor_id === tutorId).map((item) => item.student_id),
-            ),
+            ...new Set([
+              ...confirmedLinks.filter((item) => item.tutor_id === tutorId).map((item) => item.student_id),
+              ...associatedByMetadata.map((item) => item.id),
+            ]),
           ]
         : students.map((item) => item.id);
 
@@ -618,8 +626,11 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
       // Tema resolvido do aluno (o runner da Etapa 1 no mobile usa para escopar).
       const themeId = stageStatus?.themeId ?? null;
 
+      // Vínculo confirmado tem prioridade; senão, cai para a associação pendente
+      // (metadata.educatorId) para exibir o alfabetizador mesmo antes do aceite.
       const link = confirmedLinks.find((item) => item.student_id === student.id);
-      const tutor = link ? tutorById.get(link.tutor_id) : null;
+      const associatedTutorId = link?.tutor_id ?? student.metadata?.educatorId ?? null;
+      const tutor = associatedTutorId ? tutorById.get(associatedTutorId) : null;
 
       return {
         id: student.id,
@@ -641,7 +652,7 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
         status: computeStudentStatus(studentRows),
         ultimaAtividade: formatRelativeTime(latestActivityAt),
         ultimaAtividadeEm: latestActivityAt ?? null,
-        tutorId: link?.tutor_id ?? null,
+        tutorId: associatedTutorId,
         tutorNome: tutor?.full_name ?? "Sem tutor",
         telefone: student.phone ?? "",
         cpf: student.cpf ?? "",
@@ -1095,7 +1106,27 @@ cadastrosRouter.post("/alfabetizandos", async (req, res) => {
     const uf = String(req.body?.uf ?? "").trim();
     const city = String(req.body?.city ?? "").trim();
     const photoUri = String(req.body?.photoUri ?? "").trim();
-    if ((birthDate || uf || city || photoUri) && data?.id) {
+
+    // Guarda QUEM cadastrou o aluno (metadata.educatorId) — associação PENDENTE,
+    // NÃO um vínculo. Não cria tutor_student_link aqui (RN101: vínculo exige aceite).
+    // Serve para o app do alfabetizando (Etapa 2) resolver a quem pedir o vínculo
+    // (GET /cadastros/alfabetizandos/buscar → educator) e para o painel mostrar o
+    // alfabetizador associado antes da confirmação. Resolve p/ UUID Supabase quando
+    // vier um id legado (CUID do schema mobile).
+    let educatorId = String(req.body?.educatorId ?? "").trim();
+    if (educatorId && !UUID_PATTERN.test(educatorId)) {
+      try {
+        const { supabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
+        const client = isSupabaseConfigured && supabaseAdmin ? supabaseAdmin : null;
+        educatorId = client
+          ? (await resolveSupabaseTutorId(educatorId, req.headers.authorization, client)) ?? educatorId
+          : educatorId;
+      } catch {
+        /* mantém o valor recebido; buscar tenta resolver de novo na leitura */
+      }
+    }
+
+    if ((birthDate || uf || city || photoUri || educatorId) && data?.id) {
       try {
         await updateProfileRecord({
           profileId: data.id,
@@ -1106,6 +1137,7 @@ cadastrosRouter.post("/alfabetizandos", async (req, res) => {
             ...(uf ? { uf } : {}),
             ...(city ? { city } : {}),
             ...(photoUri ? { photoUri } : {}),
+            ...(educatorId ? { educatorId } : {}),
           },
         });
       } catch {
@@ -1114,8 +1146,8 @@ cadastrosRouter.post("/alfabetizandos", async (req, res) => {
     }
 
     // O vínculo tutor↔aluno não é criado no cadastro (RN101): nasce como "pendente"
-    // via POST /cadastros/sessoes-confirmacao quando o aluno solicita, e só vira
-    // "confirmado" no aceite explícito do alfabetizador (PATCH /sessoes-confirmacao/:id).
+    // via POST /cadastros/sessoes-confirmacao quando o aluno solicita (Etapa 2), e só
+    // vira "confirmado" no aceite explícito do alfabetizador (PATCH /sessoes-confirmacao/:id).
 
     res.status(201).json(data);
   } catch (error) {
