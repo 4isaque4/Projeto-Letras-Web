@@ -21,8 +21,21 @@ import {
   updateTutorStudentLink,
 } from "../services/letrasDataService.js";
 import { emitLearnerLockChanged } from "../realtime/dashboardRealtime.js";
+import { removeLearnerLink, replaceLearnerLink } from "../services/learnerLinkService.js";
 
 export const cadastrosRouter = Router();
+
+async function resolveAuthenticatedActor(req) {
+  const token = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+  const { supabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
+  if (!isSupabaseConfigured || !supabaseAdmin) return null;
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !user) return null;
+  const { data: profiles } = await supabaseAdmin.from("profiles").select("id,role").eq("id", user.id).limit(1);
+  const profile = profiles?.[0];
+  return profile ? { id: profile.id, role: profile.role } : null;
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -1145,9 +1158,32 @@ cadastrosRouter.post("/alfabetizandos", async (req, res) => {
       }
     }
 
-    // O vínculo tutor↔aluno não é criado no cadastro (RN101): nasce como "pendente"
-    // via POST /cadastros/sessoes-confirmacao quando o aluno solicita (Etapa 2), e só
-    // vira "confirmado" no aceite explícito do alfabetizador (PATCH /sessoes-confirmacao/:id).
+    // Se vier educatorId, cria o vínculo confirmado. Falha de vínculo desfaz
+    // o perfil recém-criado para não deixar um cadastro parcialmente salvo.
+    const rawEducatorId = String(req.body?.educatorId ?? "").trim();
+    if (rawEducatorId && data?.id) {
+      try {
+        const { supabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
+        const client = isSupabaseConfigured && supabaseAdmin ? supabaseAdmin : null;
+        const supabaseTutorId = client
+          ? (await resolveSupabaseTutorId(rawEducatorId, req.headers.authorization, client)) ?? rawEducatorId
+          : rawEducatorId;
+
+        if (!UUID_PATTERN.test(supabaseTutorId)) {
+          throw Object.assign(new Error("Alfabetizador inválido para o vínculo."), { status: 422 });
+        }
+        const actor = await resolveAuthenticatedActor(req);
+        await replaceLearnerLink({
+          studentId: data.id,
+          tutorId: supabaseTutorId,
+          changedBy: actor?.id ?? supabaseTutorId,
+          reason: "Vínculo criado junto com o cadastro do alfabetizando.",
+        });
+      } catch (linkError) {
+        await deleteProfileRecord({ profileId: data.id, role: "alfabetizando" }).catch(() => {});
+        throw linkError;
+      }
+    }
 
     res.status(201).json(data);
   } catch (error) {
@@ -1172,6 +1208,47 @@ cadastrosRouter.patch("/alfabetizandos/:id", async (req, res) => {
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+cadastrosRouter.put("/alfabetizandos/:id/vinculo", async (req, res) => {
+  try {
+    const actor = await resolveAuthenticatedActor(req);
+    if (!actor || !["admin", "tutor"].includes(actor.role)) {
+      return res.status(actor ? 403 : 401).json({ message: "Autenticação administrativa ou de alfabetizador obrigatória." });
+    }
+    const tutorId = String(req.body?.tutorId ?? req.body?.educatorId ?? "").trim();
+    if (actor.role === "tutor" && tutorId !== actor.id) {
+      return res.status(403).json({ message: "O alfabetizador só pode criar o próprio vínculo." });
+    }
+    const data = await replaceLearnerLink({
+      studentId: req.params.id,
+      tutorId,
+      changedBy: actor.id,
+      reason: String(req.body?.reason ?? "").trim(),
+    });
+    return res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    return res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+cadastrosRouter.delete("/alfabetizandos/:id/vinculo", async (req, res) => {
+  try {
+    const actor = await resolveAuthenticatedActor(req);
+    if (!actor || actor.role !== "admin") {
+      return res.status(actor ? 403 : 401).json({ message: "Apenas a administração pode remover um vínculo." });
+    }
+    const data = await removeLearnerLink({
+      studentId: req.params.id,
+      changedBy: actor.id,
+      reason: String(req.body?.reason ?? "").trim(),
+    });
+    return res.json(data);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    return res.status(httpError.status).json({ message: httpError.message });
   }
 });
 
