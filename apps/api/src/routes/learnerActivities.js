@@ -5,6 +5,7 @@ import {
   completeLearnerActivity,
   getLearnerActivityCatalog,
   setLearnerActivityAccess,
+  reorderLearnerActivities,
 } from "../services/learnerActivityService.js";
 
 async function defaultResolveActor(req) {
@@ -37,6 +38,7 @@ export function createLearnerActivitiesRouter({
   getCatalog = getLearnerActivityCatalog,
   completeActivity = completeLearnerActivity,
   setAccess = setLearnerActivityAccess,
+  reorderActivities = reorderLearnerActivities,
 } = {}) {
   const router = Router();
 
@@ -101,6 +103,25 @@ export function createLearnerActivitiesRouter({
         linkId,
         changes,
         reason: String(req.body?.reason ?? "manual"),
+      }));
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  router.post("/reorder", async (req, res) => {
+    try {
+      const linkId = String(req.body?.linkId ?? "").trim();
+      if (!linkId) return res.status(400).json({ message: "Vínculo obrigatório." });
+      return res.json(await reorderActivities({
+        actor: req.actor,
+        linkId,
+        movement: {
+          activityId: String(req.body?.activityId ?? "").trim(),
+          targetModuleId: String(req.body?.targetModuleId ?? "").trim(),
+          targetIndex: Number(req.body?.targetIndex ?? 0),
+          confirmedCrossGroup: req.body?.confirmedCrossGroup === true,
+        },
       }));
     } catch (error) {
       return sendError(res, error);

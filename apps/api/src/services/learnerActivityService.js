@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabaseAdmin } from "../lib/supabase.js";
+import { reorderAssignments } from "../domain/activityOrdering.js";
 
 function httpError(status, message) {
   return Object.assign(new Error(message), { status });
@@ -55,7 +56,10 @@ export async function getLearnerActivityCatalog({ actor, studentId, repository }
     repo.listAttemptCounts({ studentId, activityIds }),
     repo.listScoreEvents({ studentId, activityIds }),
   ]);
-  const moduleIds = [...new Set(activities.map((row) => row.moduleId).filter(Boolean))];
+  const moduleIds = [...new Set([
+    ...activities.map((row) => row.moduleId),
+    ...access.map((row) => row.assignedModuleId),
+  ].filter(Boolean))];
   const modules = await repo.listModules({ ids: moduleIds });
   const themeIds = [...new Set(modules.map((row) => row.themeId).filter(Boolean))];
   const themes = await repo.listThemes({ ids: themeIds });
@@ -76,6 +80,7 @@ export async function getLearnerActivityCatalog({ actor, studentId, repository }
     const completed = progressRow?.status === "concluido" || Boolean(progressRow?.completedAt);
     const lesson = {
       id: activity.id,
+      moduleId: assignment.assignedModuleId ?? activity.moduleId,
       title: activity.title,
       instructions: activity.instructions ?? "",
       type: activity.type ?? null,
@@ -88,9 +93,10 @@ export async function getLearnerActivityCatalog({ actor, studentId, repository }
       canReplay: completed,
       pointsAwarded: pointsByActivity.get(activity.id) ?? 0,
     };
-    const list = lessonsByModule.get(activity.moduleId) ?? [];
+    const effectiveModuleId = assignment.assignedModuleId ?? activity.moduleId;
+    const list = lessonsByModule.get(effectiveModuleId) ?? [];
     list.push(lesson);
-    lessonsByModule.set(activity.moduleId, list);
+    lessonsByModule.set(effectiveModuleId, list);
   }
 
   const modulesByThemeAndStage = new Map();
@@ -175,6 +181,27 @@ export async function setLearnerActivityAccess({ actor, linkId, changes, reason 
   return { updated };
 }
 
+export async function reorderLearnerActivities({ actor, linkId, movement, repository } = {}) {
+  if (!linkId || !movement?.activityId || !movement?.targetModuleId) {
+    throw httpError(400, "Vínculo, aula e módulo de destino são obrigatórios.");
+  }
+  const repo = requireRepository(repository);
+  const link = await repo.getLink(linkId);
+  if (!link) throw httpError(404, "Vínculo não encontrado.");
+  assertCanManageLink(actor, link);
+  const current = await repo.listAccess({ linkId, studentId: link.studentId });
+  const assignments = reorderAssignments(current, movement);
+  await repo.replaceAssignmentOrder({ linkId, assignments, changedBy: actor.id });
+  await repo.appendSyncEvent({
+    sourcePlatform: "web",
+    eventType: "content.assignment_reordered",
+    entityType: "tutor_student_link",
+    entityId: linkId,
+    payload: { studentId: link.studentId, movement, changedBy: actor.id },
+  });
+  return { updated: assignments.length, assignments };
+}
+
 function mapLink(row) {
   return row ? { id: row.id, tutorId: row.tutor_id, studentId: row.student_id, status: row.status } : null;
 }
@@ -200,7 +227,7 @@ export function createSupabaseLearnerActivityRepository(client) {
     },
     async listAccess({ linkId }) {
       const rows = await queryData(client.from("learner_activity_access").select("*").eq("link_id", linkId).order("sequence_order"), "Falha ao listar acesso às atividades");
-      return rows.map((row) => ({ linkId: row.link_id, studentId: row.student_id, activityId: row.activity_id, accessStatus: row.access_status, sequenceOrder: row.sequence_order, isRequired: row.is_required }));
+      return rows.map((row) => ({ linkId: row.link_id, studentId: row.student_id, activityId: row.activity_id, assignedModuleId: row.assigned_module_id, accessStatus: row.access_status, sequenceOrder: row.sequence_order, isRequired: row.is_required }));
     },
     async listActivities({ ids }) {
       if (ids.length === 0) return [];
@@ -262,6 +289,20 @@ export function createSupabaseLearnerActivityRepository(client) {
         updated += rows.length;
       }
       return updated;
+    },
+    async replaceAssignmentOrder({ linkId, assignments, changedBy }) {
+      const rows = assignments.map((row) => ({
+        activityId: row.activityId,
+        assignedModuleId: row.assignedModuleId,
+        sequenceOrder: row.sequenceOrder,
+      }));
+      const { data, error } = await client.rpc("reorder_learner_activity_assignments", {
+        p_link_id: linkId,
+        p_assignments: rows,
+        p_changed_by: changedBy,
+      });
+      if (error) throw httpError(400, `Falha ao reorganizar aulas: ${error.message}`);
+      return data;
     },
     async appendSyncEvent(event) {
       await queryData(client.from("sync_events").insert({ source_platform: event.sourcePlatform, event_type: event.eventType, entity_type: event.entityType, entity_id: event.entityId, payload: event.payload }).select("id"), "Falha ao registrar sincronização");
