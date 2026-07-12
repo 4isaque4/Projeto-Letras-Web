@@ -246,7 +246,9 @@ begin
   join public.learning_modules module on module.id = activity.module_id
   where activity.id = p_activity_id;
 
-  select count(*) > 0 and coalesce(bool_and(progress.status = 'concluido'), false) into v_stage_completed
+  select count(*) > 0
+    and bool_and(coalesce(progress.status = 'concluido', false))
+  into v_stage_completed
   from public.learner_activity_access access
   join public.learning_activities activity on activity.id = access.activity_id
   join public.learning_modules module on module.id = activity.module_id
