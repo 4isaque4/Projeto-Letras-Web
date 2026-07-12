@@ -2,7 +2,15 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useConfirm } from "../../components/ConfirmDialog";
 import StateDisplay from "../../components/StateDisplay";
-import { apiDelete, apiDeleteWithBody, apiGet, apiPatch, apiPost, apiPut } from "../../core/api/client";
+import {
+  apiDelete,
+  apiDeleteWithBody,
+  apiGet,
+  apiPatch,
+  apiPost,
+  apiPut,
+} from "../../core/api/client";
+import LearnerLinkDialog from "./LearnerLinkDialog";
 
 interface StudentItem {
   id: string;
@@ -33,7 +41,10 @@ interface StudentCreateForm {
   educatorId: string;
 }
 
-interface TutorItem { id: string; nome: string; }
+interface TutorItem {
+  id: string;
+  nome: string;
+}
 
 interface StudentEditForm {
   nome: string;
@@ -43,7 +54,7 @@ interface StudentEditForm {
 }
 
 function applyCpfMask(value: string): string {
-  const d = value.replace(/\D/g, '').slice(0, 11);
+  const d = value.replace(/\D/g, "").slice(0, 11);
   if (d.length <= 3) return d;
   if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
   if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
@@ -58,7 +69,8 @@ function applyPhoneMask(value: string): string {
   const d = value.replace(/\D/g, "").slice(0, 11);
   if (d.length <= 2) return d;
   if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  if (d.length <= 10)
+    return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 }
 
@@ -79,9 +91,15 @@ export default function Alfabetizandos() {
   const [saving, setSaving] = useState(false);
   const confirm = useConfirm();
   const [deletingId, setDeletingId] = useState("");
-  const [createForm, setCreateForm] = useState<StudentCreateForm>(EMPTY_CREATE_FORM);
+  const [createForm, setCreateForm] =
+    useState<StudentCreateForm>(EMPTY_CREATE_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editForm, setEditForm] = useState<StudentEditForm>({ nome: "", email: "", telefone: "", cpf: "" });
+  const [editForm, setEditForm] = useState<StudentEditForm>({
+    nome: "",
+    email: "",
+    telefone: "",
+    cpf: "",
+  });
   const [linkEditingId, setLinkEditingId] = useState<string | null>(null);
   const [linkTutorId, setLinkTutorId] = useState("");
   const [linkReason, setLinkReason] = useState("");
@@ -90,10 +108,16 @@ export default function Alfabetizandos() {
     try {
       setLoading(true);
       setError("");
-      const response = (await apiGet("/cadastros/alfabetizandos")) as StudentsResponse;
+      const response = (await apiGet(
+        "/cadastros/alfabetizandos",
+      )) as StudentsResponse;
       setItems(response.items ?? []);
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Falha ao carregar alfabetizandos.");
+      setError(
+        fetchError instanceof Error
+          ? fetchError.message
+          : "Falha ao carregar alfabetizandos.",
+      );
     } finally {
       setLoading(false);
     }
@@ -101,10 +125,12 @@ export default function Alfabetizandos() {
 
   useEffect(() => {
     loadStudents();
-    void apiGet("/cadastros/alfabetizadores").then((response) => {
-      const payload = response as { items?: TutorItem[] };
-      setTutors(payload.items ?? []);
-    }).catch(() => setTutors([]));
+    void apiGet("/cadastros/alfabetizadores")
+      .then((response) => {
+        const payload = response as { items?: TutorItem[] };
+        setTutors(payload.items ?? []);
+      })
+      .catch(() => setTutors([]));
   }, [loadStudents]);
 
   const onCreateStudent = async (event: FormEvent<HTMLFormElement>) => {
@@ -139,27 +165,70 @@ export default function Alfabetizandos() {
       setCreateForm(EMPTY_CREATE_FORM);
       await loadStudents();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Falha ao criar alfabetizando.");
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Falha ao criar alfabetizando.",
+      );
     } finally {
       setSaving(false);
     }
   };
 
   const saveLink = async (studentId: string) => {
-    if (!linkTutorId || !linkReason.trim()) { setError("Selecione o alfabetizador e informe o motivo da alteração."); return; }
-    try { setSaving(true); setError(""); await apiPut(`/cadastros/alfabetizandos/${studentId}/vinculo`, { tutorId: linkTutorId, reason: linkReason.trim() }); setLinkEditingId(null); setLinkReason(""); await loadStudents(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao alterar vínculo."); }
-    finally { setSaving(false); }
+    if (!linkTutorId || !linkReason.trim()) {
+      setError("Selecione o alfabetizador e informe o motivo da alteração.");
+      return;
+    }
+    try {
+      setSaving(true);
+      setError("");
+      await apiPut(`/cadastros/alfabetizandos/${studentId}/vinculo`, {
+        tutorId: linkTutorId,
+        reason: linkReason.trim(),
+      });
+      setLinkEditingId(null);
+      setLinkReason("");
+      await loadStudents();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Falha ao alterar vínculo.",
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const removeLink = async (student: StudentItem) => {
     const reason = linkReason.trim();
-    if (!reason) { setError("Informe o motivo para remover o vínculo."); return; }
-    const accepted = await confirm({ title: "Remover vínculo", message: `Remover o vínculo de ${student.nome}? O histórico será preservado.`, confirmLabel: "Remover vínculo", variant: "danger" });
+    if (!reason) {
+      setError("Informe o motivo para remover o vínculo.");
+      return;
+    }
+    const accepted = await confirm({
+      title: "Remover vínculo",
+      message: `Remover o vínculo de ${student.nome}? O histórico será preservado.`,
+      confirmLabel: "Remover vínculo",
+      variant: "danger",
+    });
     if (!accepted) return;
-    try { setSaving(true); setError(""); await apiDeleteWithBody(`/cadastros/alfabetizandos/${student.id}/vinculo`, { reason }); setLinkEditingId(null); setLinkReason(""); await loadStudents(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao remover vínculo."); }
-    finally { setSaving(false); }
+    try {
+      setSaving(true);
+      setError("");
+      await apiDeleteWithBody(
+        `/cadastros/alfabetizandos/${student.id}/vinculo`,
+        { reason },
+      );
+      setLinkEditingId(null);
+      setLinkReason("");
+      await loadStudents();
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Falha ao remover vínculo.",
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const startEdit = (item: StudentItem) => {
@@ -210,7 +279,11 @@ export default function Alfabetizandos() {
       cancelEdit();
       await loadStudents();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Falha ao atualizar alfabetizando.");
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Falha ao atualizar alfabetizando.",
+      );
     } finally {
       setSaving(false);
     }
@@ -236,7 +309,11 @@ export default function Alfabetizandos() {
       }
       await loadStudents();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Falha ao excluir alfabetizando.");
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Falha ao excluir alfabetizando.",
+      );
     } finally {
       setDeletingId("");
     }
@@ -246,52 +323,93 @@ export default function Alfabetizandos() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Alfabetizandos</h1>
-        <p className="text-sm text-gray-600 mt-1">Gestão de todos os alunos do sistema</p>
+        <p className="text-sm text-gray-600 mt-1">
+          Gestão de todos os alunos do sistema
+        </p>
       </div>
 
-      <form onSubmit={onCreateStudent} className="border border-gray-300 bg-white p-4 space-y-3">
-        <p className="text-sm font-semibold text-gray-900">Criar alfabetizando</p>
+      <form
+        onSubmit={onCreateStudent}
+        className="border border-gray-300 bg-white p-4 space-y-3"
+      >
+        <p className="text-sm font-semibold text-gray-900">
+          Criar alfabetizando
+        </p>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
           <input
             value={createForm.nome}
-            onChange={(event) => setCreateForm((current) => ({ ...current, nome: event.target.value }))}
+            onChange={(event) =>
+              setCreateForm((current) => ({
+                ...current,
+                nome: event.target.value,
+              }))
+            }
             placeholder="Nome"
             className="border border-gray-300 px-3 py-2 text-sm"
           />
           <input
             value={createForm.email}
-            onChange={(event) => setCreateForm((current) => ({ ...current, email: event.target.value }))}
+            onChange={(event) =>
+              setCreateForm((current) => ({
+                ...current,
+                email: event.target.value,
+              }))
+            }
             placeholder="Email"
             className="border border-gray-300 px-3 py-2 text-sm"
           />
           <input
             value={createForm.password}
-            onChange={(event) => setCreateForm((current) => ({ ...current, password: event.target.value }))}
+            onChange={(event) =>
+              setCreateForm((current) => ({
+                ...current,
+                password: event.target.value,
+              }))
+            }
             placeholder="Senha"
             className="border border-gray-300 px-3 py-2 text-sm"
           />
           <input
             value={createForm.telefone}
-            onChange={(event) => setCreateForm((current) => ({ ...current, telefone: applyPhoneMask(event.target.value) }))}
+            onChange={(event) =>
+              setCreateForm((current) => ({
+                ...current,
+                telefone: applyPhoneMask(event.target.value),
+              }))
+            }
             placeholder="(00) 00000-0000"
             maxLength={15}
             className="border border-gray-300 px-3 py-2 text-sm"
           />
           <input
             value={createForm.cpf}
-            onChange={(event) => setCreateForm((current) => ({ ...current, cpf: applyCpfMask(event.target.value) }))}
+            onChange={(event) =>
+              setCreateForm((current) => ({
+                ...current,
+                cpf: applyCpfMask(event.target.value),
+              }))
+            }
             placeholder="000.000.000-00"
             maxLength={14}
             className="border border-gray-300 px-3 py-2 text-sm"
           />
           <select
             value={createForm.educatorId}
-            onChange={(event) => setCreateForm((current) => ({ ...current, educatorId: event.target.value }))}
+            onChange={(event) =>
+              setCreateForm((current) => ({
+                ...current,
+                educatorId: event.target.value,
+              }))
+            }
             className="border border-gray-300 bg-white px-3 py-2 text-sm"
             aria-label="Alfabetizador responsável"
           >
             <option value="">Alfabetizador responsável</option>
-            {tutors.map((tutor) => <option key={tutor.id} value={tutor.id}>{tutor.nome}</option>)}
+            {tutors.map((tutor) => (
+              <option key={tutor.id} value={tutor.id}>
+                {tutor.nome}
+              </option>
+            ))}
           </select>
         </div>
         <button
@@ -309,37 +427,72 @@ export default function Alfabetizandos() {
         ) : error && items.length === 0 ? (
           <StateDisplay type="error" message={error} />
         ) : items.length === 0 ? (
-          <StateDisplay type="empty" message="Nenhum alfabetizando cadastrado ainda." />
+          <StateDisplay
+            type="empty"
+            message="Nenhum alfabetizando cadastrado ainda."
+          />
         ) : (
           <div>
             {error ? (
-              <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+              <div className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {error}
+              </div>
             ) : null}
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-100 border-b border-gray-300">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Nome</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Email</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Tutor</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Grupo</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Etapa</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Progresso</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Telefone</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">CPF</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Última atividade</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Ações</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
+                      Nome
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
+                      Email
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
+                      Tutor
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
+                      Grupo
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
+                      Etapa
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
+                      Progresso
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
+                      Status
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
+                      Telefone
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
+                      CPF
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
+                      Última atividade
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
+                      Ações
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((aluno) => (
-                    <tr key={aluno.id} className="border-b border-gray-200 hover:bg-gray-50">
+                    <tr
+                      key={aluno.id}
+                      className="border-b border-gray-200 hover:bg-gray-50"
+                    >
                       <td className="px-4 py-3 text-sm text-gray-900 font-medium">
                         {editingId === aluno.id ? (
                           <input
                             value={editForm.nome}
-                            onChange={(event) => setEditForm((current) => ({ ...current, nome: event.target.value }))}
+                            onChange={(event) =>
+                              setEditForm((current) => ({
+                                ...current,
+                                nome: event.target.value,
+                              }))
+                            }
                             className="w-full border border-gray-300 px-2 py-1 text-sm"
                           />
                         ) : (
@@ -350,30 +503,53 @@ export default function Alfabetizandos() {
                         {editingId === aluno.id ? (
                           <input
                             value={editForm.email}
-                            onChange={(event) => setEditForm((current) => ({ ...current, email: event.target.value }))}
+                            onChange={(event) =>
+                              setEditForm((current) => ({
+                                ...current,
+                                email: event.target.value,
+                              }))
+                            }
                             className="w-full border border-gray-300 px-2 py-1 text-sm"
                           />
                         ) : (
                           aluno.email || "-"
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{aluno.tutorNome || "-"}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{aluno.grupo || "-"}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{aluno.etapa}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {aluno.tutorNome || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {aluno.grupo || "-"}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {aluno.etapa}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <div className="flex-1 h-2 bg-gray-200 border border-gray-300">
-                            <div className="h-full bg-gray-900" style={{ width: `${aluno.progresso}%` }} />
+                            <div
+                              className="h-full bg-gray-900"
+                              style={{ width: `${aluno.progresso}%` }}
+                            />
                           </div>
-                          <span className="text-xs text-gray-600 w-10">{aluno.progresso}%</span>
+                          <span className="text-xs text-gray-600 w-10">
+                            {aluno.progresso}%
+                          </span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{aluno.status}</td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {aluno.status}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {editingId === aluno.id ? (
                           <input
                             value={editForm.telefone}
-                            onChange={(event) => setEditForm((current) => ({ ...current, telefone: applyPhoneMask(event.target.value) }))}
+                            onChange={(event) =>
+                              setEditForm((current) => ({
+                                ...current,
+                                telefone: applyPhoneMask(event.target.value),
+                              }))
+                            }
                             placeholder="(00) 00000-0000"
                             maxLength={15}
                             className="w-full border border-gray-300 px-2 py-1 text-sm"
@@ -386,7 +562,12 @@ export default function Alfabetizandos() {
                         {editingId === aluno.id ? (
                           <input
                             value={editForm.cpf}
-                            onChange={(event) => setEditForm((current) => ({ ...current, cpf: applyCpfMask(event.target.value) }))}
+                            onChange={(event) =>
+                              setEditForm((current) => ({
+                                ...current,
+                                cpf: applyCpfMask(event.target.value),
+                              }))
+                            }
                             placeholder="000.000.000-00"
                             maxLength={14}
                             className="w-full border border-gray-300 px-2 py-1 text-sm"
@@ -395,7 +576,9 @@ export default function Alfabetizandos() {
                           aluno.cpf || "-"
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{aluno.ultimaAtividade}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {aluno.ultimaAtividade}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex gap-2">
                           {editingId === aluno.id ? (
@@ -434,7 +617,11 @@ export default function Alfabetizandos() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setLinkEditingId(linkEditingId === aluno.id ? null : aluno.id);
+                                  setLinkEditingId(
+                                    linkEditingId === aluno.id
+                                      ? null
+                                      : aluno.id,
+                                  );
                                   setLinkTutorId(aluno.tutorId ?? "");
                                   setLinkReason("");
                                 }}
@@ -448,22 +635,10 @@ export default function Alfabetizandos() {
                                 disabled={deletingId === aluno.id}
                                 className="px-3 py-1 text-xs border border-red-300 bg-red-50 text-red-700 disabled:opacity-60"
                               >
-                                {deletingId === aluno.id ? "Excluindo..." : "Excluir"}
+                                {deletingId === aluno.id
+                                  ? "Excluindo..."
+                                  : "Excluir"}
                               </button>
-                              {linkEditingId === aluno.id ? (
-                                <div className="mt-2 grid min-w-72 gap-2 border border-gray-300 bg-gray-50 p-3">
-                                  <select value={linkTutorId} onChange={(event) => setLinkTutorId(event.target.value)} className="border border-gray-300 bg-white px-2 py-1 text-xs">
-                                    <option value="">Selecione o alfabetizador</option>
-                                    {tutors.map((tutor) => <option key={tutor.id} value={tutor.id}>{tutor.nome}</option>)}
-                                  </select>
-                                  <input value={linkReason} onChange={(event) => setLinkReason(event.target.value)} placeholder="Motivo da alteração" className="border border-gray-300 px-2 py-1 text-xs" />
-                                  <div className="flex gap-2">
-                                    <button type="button" disabled={saving} onClick={() => void saveLink(aluno.id)} className="border border-gray-900 bg-gray-900 px-2 py-1 text-xs text-white disabled:opacity-50">Salvar vínculo</button>
-                                    {aluno.tutorId ? <button type="button" disabled={saving} onClick={() => void removeLink(aluno)} className="border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700 disabled:opacity-50">Remover vínculo</button> : null}
-                                  </div>
-                                  <p className="text-xs text-gray-600">A alteração preserva progresso, tentativas e pontuação.</p>
-                                </div>
-                              ) : null}
                             </>
                           )}
                         </div>
@@ -476,7 +651,28 @@ export default function Alfabetizandos() {
           </div>
         )}
       </div>
+      {linkEditingId
+        ? (() => {
+            const learner = items.find((item) => item.id === linkEditingId);
+            if (!learner) return null;
+            return (
+              <LearnerLinkDialog
+                learnerName={learner.nome}
+                currentTutorName={learner.tutorNome}
+                currentTutorId={learner.tutorId}
+                tutors={tutors}
+                tutorId={linkTutorId}
+                reason={linkReason}
+                saving={saving}
+                onTutorChange={setLinkTutorId}
+                onReasonChange={setLinkReason}
+                onClose={() => setLinkEditingId(null)}
+                onSave={() => void saveLink(learner.id)}
+                onRemove={() => void removeLink(learner)}
+              />
+            );
+          })()
+        : null}
     </div>
   );
 }
-
