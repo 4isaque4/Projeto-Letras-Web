@@ -20,6 +20,7 @@ tmp/
 infra/supabase/.temp/
 .playwright-cli/
 .playwright-mcp/
+.worktrees/
 artifacts/
 
 # Screenshots ad-hoc gerados por testes (Playwright MCP, debug manual)
