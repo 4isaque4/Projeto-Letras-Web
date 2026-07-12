@@ -1196,6 +1196,19 @@ painelRouter.get("/score/:learnerId", async (req, res) => {
     const { learnerId } = req.params;
     if (!learnerId) return res.status(400).json({ message: "learnerId obrigatorio." });
 
+    const { data: scoreEvents, error: scoreEventsError } = await supabaseAdmin
+      .from("learner_score_events")
+      .select("points,event_type")
+      .eq("student_id", learnerId);
+
+    if (!scoreEventsError) {
+      const totalPoints = (scoreEvents ?? []).reduce((total, event) => total + Number(event.points || 0), 0);
+      const completedCount = (scoreEvents ?? []).filter((event) => event.event_type === "first_completion").length;
+      return res.json({ totalPoints: Math.max(0, Math.round(totalPoints)), completedCount, totalActivities: completedCount });
+    }
+
+    // Compatibilidade anterior à migration local: uma linha consolidada por
+    // aula impede duplicação, mas o ledger acima passa a ser a fonte canônica.
     const { data, error } = await supabaseAdmin
       .from("activity_progress")
       .select("score, status")
