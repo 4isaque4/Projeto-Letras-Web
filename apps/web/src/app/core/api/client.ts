@@ -1,4 +1,5 @@
 import { env } from "../config/env";
+import { supabaseClient } from "../supabase/client";
 
 const DEFAULT_API_BASE_URL = "http://localhost:8082/api/v1";
 
@@ -15,6 +16,11 @@ async function requestJson(path: string, init?: RequestInit, options?: { isJsonB
   const headers = new Headers(init?.headers ?? {});
   if (options?.isJsonBody !== false && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
+  }
+  if (!headers.has("Authorization")) {
+    const { data } = await supabaseClient.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) headers.set("Authorization", `Bearer ${token}`);
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -63,8 +69,16 @@ export async function apiPatch(path: string, body: unknown) {
   });
 }
 
+export async function apiPut(path: string, body: unknown) {
+  return requestJson(path, { method: "PUT", body: JSON.stringify(body) });
+}
+
 export async function apiDelete(path: string) {
   return requestJson(path, {
     method: "DELETE",
   });
+}
+
+export async function apiDeleteWithBody(path: string, body: unknown) {
+  return requestJson(path, { method: "DELETE", body: JSON.stringify(body) });
 }

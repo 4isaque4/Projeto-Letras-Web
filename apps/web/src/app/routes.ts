@@ -9,6 +9,7 @@ import Alfabetizandos from "./pages/admin/Alfabetizandos";
 import AlfabetizandoDetalhe from "./pages/admin/AlfabetizandoDetalhe";
 import Alfabetizadores from "./pages/admin/Alfabetizadores";
 import Vinculos from "./pages/admin/Vinculos";
+import AtividadesAlfabetizando from "./pages/admin/AtividadesAlfabetizando";
 import Grupos from "./pages/admin/Grupos";
 import Fila from "./pages/admin/Fila";
 import Conteudo from "./pages/admin/Conteudo";
@@ -41,6 +42,7 @@ export const router = createBrowserRouter([
       { path: "admin/alfabetizandos/:id", Component: AlfabetizandoDetalhe },
       { path: "admin/alfabetizadores", Component: Alfabetizadores },
       { path: "admin/vinculos", Component: Vinculos },
+      { path: "admin/atividades-alfabetizando", Component: AtividadesAlfabetizando },
       { path: "admin/grupos", Component: Grupos },
       { path: "admin/fila", Component: Fila },
       { path: "admin/conteudo", Component: Conteudo },

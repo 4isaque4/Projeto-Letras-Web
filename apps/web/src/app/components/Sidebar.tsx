@@ -8,7 +8,8 @@ import {
   FileText,
   Trophy,
   FileBarChart,
-  Settings
+  Settings,
+  BookOpenCheck
 } from "lucide-react";
 
 interface SidebarProps {
@@ -21,6 +22,7 @@ export default function Sidebar({ userRole = 'admin' }: SidebarProps) {
     { icon: Users, label: "Alfabetizandos", path: "/admin/alfabetizandos" },
     { icon: UserCheck, label: "Alfabetizadores", path: "/admin/alfabetizadores" },
     { icon: Link2, label: "Vínculos e Convites", path: "/admin/vinculos" },
+    { icon: BookOpenCheck, label: "Atividades do alfabetizando", path: "/admin/atividades-alfabetizando" },
     { icon: Inbox, label: "Fila de Atendimento", path: "/admin/fila" },
     { icon: FileText, label: "Aulas e Mídias", path: "/admin/conteudo" },
     { icon: Trophy, label: "Pontuação & Ranking", path: "/admin/ranking" },
