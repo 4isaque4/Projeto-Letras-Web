@@ -27,6 +27,48 @@ function requireSupabase() {
   return supabaseAdmin;
 }
 
+function createLearnerProfileCompatibilityRepository(client) {
+  return {
+    async getLegacyLearnerProfile(id) {
+      const { data, error } = await client.from("LearnerProfile")
+        .select("id, displayName").eq("id", id).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    async getCanonicalLearnerProfile(id) {
+      const { data, error } = await client.from("profiles")
+        .select("id, full_name, role").eq("id", id).maybeSingle();
+      if (error) throw error;
+      if (!data || !["alfabetizando", "learner", "student"].includes(String(data.role).toLowerCase())) {
+        return null;
+      }
+      return { id: data.id, displayName: data.full_name };
+    },
+    async upsertLegacyLearnerProfile(profile) {
+      const now = new Date().toISOString();
+      const { data, error } = await client.from("LearnerProfile")
+        .upsert({ ...profile, createdAt: now, updatedAt: now }, { onConflict: "id" })
+        .select("id, displayName").single();
+      if (error) throw error;
+      return data;
+    },
+  };
+}
+
+export async function ensureLegacyLearnerProfile({ learnerProfileId, repository } = {}) {
+  const repo = repository ?? createLearnerProfileCompatibilityRepository(requireSupabase());
+  const existing = await repo.getLegacyLearnerProfile(learnerProfileId);
+  if (existing) return existing;
+
+  const canonical = await repo.getCanonicalLearnerProfile(learnerProfileId);
+  if (!canonical) {
+    const error = new Error("Alfabetizando não encontrado.");
+    error.status = 404;
+    throw error;
+  }
+  return repo.upsertLegacyLearnerProfile(canonical);
+}
+
 // POST /sessions — cria ou atualiza sessão do aluno no mobile
 sessionsRouter.post("/", async (req, res) => {
   try {
@@ -39,6 +81,8 @@ sessionsRouter.post("/", async (req, res) => {
     }
 
     // Verifica sessão existente
+    await ensureLegacyLearnerProfile({ learnerProfileId });
+
     const { data: existing } = await client
       .from("LearnerSession")
       .select("id, learnerProfileId, deviceId, connectedAt, createdAt, updatedAt")
