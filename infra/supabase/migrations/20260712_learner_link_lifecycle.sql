@@ -68,9 +68,70 @@ begin
     decided_by = p_changed_by, decided_at = now(), reason = p_reason
   returning * into v_active;
 
+  insert into public.learner_activity_access (
+    link_id, student_id, activity_id, access_status, sequence_order,
+    is_required, available_at, changed_by, change_reason
+  )
+  select
+    v_active.id,
+    p_student_id,
+    ordered.activity_id,
+    case
+      when ordered.sequence_order = 1 or progress.status = 'concluido' then 'available'::public.learner_activity_access_status
+      else 'locked'::public.learner_activity_access_status
+    end,
+    ordered.sequence_order,
+    true,
+    case when ordered.sequence_order = 1 or progress.status = 'concluido' then now() else null end,
+    p_changed_by,
+    'Atribuição inicial do vínculo'
+  from (
+    select activity.id as activity_id,
+      row_number() over (order by theme.sort_order, module.stage_number, module.sort_order, activity.sort_order, activity.id)::integer as sequence_order
+    from public.learning_activities activity
+    join public.learning_modules module on module.id = activity.module_id
+    join public.learning_themes theme on theme.id = module.theme_id
+    where activity.is_published and module.is_active and theme.is_active
+  ) ordered
+  left join public.activity_progress progress
+    on progress.student_id = p_student_id and progress.activity_id = ordered.activity_id
+  on conflict do nothing;
+
   return jsonb_build_object('previous', case when v_previous.id is null then null else to_jsonb(v_previous) end, 'active', to_jsonb(v_active));
 end;
 $$;
+
+-- Backfill seguro para vínculos já existentes. A primeira aula e todas as já
+-- concluídas ficam disponíveis; as demais permanecem visíveis e bloqueadas.
+insert into public.learner_activity_access (
+  link_id, student_id, activity_id, access_status, sequence_order,
+  is_required, available_at, change_reason
+)
+select
+  link.id,
+  link.student_id,
+  ordered.activity_id,
+  case
+    when ordered.sequence_order = 1 or progress.status = 'concluido' then 'available'::public.learner_activity_access_status
+    else 'locked'::public.learner_activity_access_status
+  end,
+  ordered.sequence_order,
+  true,
+  case when ordered.sequence_order = 1 or progress.status = 'concluido' then now() else null end,
+  'Migração inicial do catálogo por vínculo'
+from public.tutor_student_links link
+cross join lateral (
+  select activity.id as activity_id,
+    row_number() over (order by theme.sort_order, module.stage_number, module.sort_order, activity.sort_order, activity.id)::integer as sequence_order
+  from public.learning_activities activity
+  join public.learning_modules module on module.id = activity.module_id
+  join public.learning_themes theme on theme.id = module.theme_id
+  where activity.is_published and module.is_active and theme.is_active
+) ordered
+left join public.activity_progress progress
+  on progress.student_id = link.student_id and progress.activity_id = ordered.activity_id
+where link.status = 'confirmado' and link.lifecycle_status = 'active'
+on conflict do nothing;
 
 create or replace function public.end_learner_link(
   p_student_id uuid,
