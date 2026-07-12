@@ -7,6 +7,7 @@ import { authRouter } from "./routes/auth.js";
 import { cadastrosRouter } from "./routes/cadastros.js";
 import { healthRouter } from "./routes/health.js";
 import { learnersRouter } from "./routes/learners.js";
+import { learnerActivitiesRouter } from "./routes/learnerActivities.js";
 import { painelRouter } from "./routes/painel.js";
 import { referenceRouter } from "./routes/reference.js";
 import { sessionsRouter } from "./routes/sessions.js";
@@ -73,6 +74,7 @@ app.use(`${env.apiPrefix}/cadastros`, cadastrosRouter);
 app.use(`${env.apiPrefix}/painel`, painelRouter);
 app.use(`${env.apiPrefix}/sessions`, sessionsRouter);
 app.use(`${env.apiPrefix}/learners`, learnersRouter);
+app.use(`${env.apiPrefix}/learner-activities`, learnerActivitiesRouter);
 
 // GET /api/v1/scoring/me — pontuação do educador para o app mobile
 app.get(`${env.apiPrefix}/scoring/me`, async (req, res) => {
