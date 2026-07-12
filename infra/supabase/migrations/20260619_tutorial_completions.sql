@@ -51,7 +51,7 @@ create policy tutorial_completions_own on public.tutorial_completions
   using (
     educator_id = (
       select id from public.profiles
-       where user_id = auth.uid()
+       where id = auth.uid()
        limit 1
     )
   );
