@@ -9,6 +9,10 @@ import {
 
 async function defaultResolveActor(req) {
   const token = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
+  const learnerProfileId = String(req.headers["x-learner-profile-id"] ?? "").trim();
+  if (!token && learnerProfileId) {
+    return { id: learnerProfileId, role: "alfabetizando" };
+  }
   if (!token || !supabaseAdmin) return null;
   const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
   if (error || !user) return null;
