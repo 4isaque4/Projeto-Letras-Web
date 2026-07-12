@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { ChevronDown, ChevronRight, Image as ImageIcon, Video } from "lucide-react";
 import StateDisplay from "../components/StateDisplay";
@@ -147,32 +147,82 @@ function toUrl(path: string | null | undefined): string {
   return resolvePublicAssetUrl(path, env.supabaseUrl ?? "");
 }
 
+// Player de áudio do preview: um único áudio por vez, com toggle.
+// Clicar de novo no alto-falante que está tocando PARA o áudio (queixa:
+// "não para quando clicamos"). O `src` que está tocando fica num store
+// externo simples para os botões refletirem o estado (verde escuro
+// enquanto toca) via useSyncExternalStore.
 let activePreviewAudio: HTMLAudioElement | null = null;
+let activePreviewSrc: string | null = null;
+const previewAudioListeners = new Set<() => void>();
+
+function emitPreviewAudioChange() {
+  previewAudioListeners.forEach((listener) => listener());
+}
+
+function subscribePreviewAudio(listener: () => void) {
+  previewAudioListeners.add(listener);
+  return () => {
+    previewAudioListeners.delete(listener);
+  };
+}
+
+function clearActivePreviewAudio() {
+  activePreviewAudio = null;
+  activePreviewSrc = null;
+  emitPreviewAudioChange();
+}
+
+function stopPreviewAudio() {
+  if (activePreviewAudio) {
+    activePreviewAudio.pause();
+    activePreviewAudio.currentTime = 0;
+  }
+  if (activePreviewSrc !== null) {
+    clearActivePreviewAudio();
+  }
+}
 
 function playPreviewAudio(src: string) {
   if (!src) return;
+  // Toggle: clicar de novo no áudio que já está tocando o interrompe.
+  if (activePreviewSrc === src) {
+    stopPreviewAudio();
+    return;
+  }
   if (activePreviewAudio) {
     activePreviewAudio.pause();
     activePreviewAudio.currentTime = 0;
   }
   const audio = new Audio(src);
   activePreviewAudio = audio;
+  activePreviewSrc = src;
   audio.addEventListener("ended", () => {
-    if (activePreviewAudio === audio) activePreviewAudio = null;
+    if (activePreviewAudio === audio) clearActivePreviewAudio();
   });
-  void audio.play();
+  void audio.play().catch(() => {
+    // Autoplay/format bloqueado: limpa o estado para o botão não ficar preso "tocando".
+    if (activePreviewAudio === audio) clearActivePreviewAudio();
+  });
+  emitPreviewAudioChange();
 }
 
 function PreviewSoundButton({ src, large = false }: { src?: string; large?: boolean }) {
-  const color = large ? "#2fa536" : "#9be39f";
+  const resolvedSrc = src ?? "";
+  const isPlaying = useSyncExternalStore(
+    subscribePreviewAudio,
+    () => resolvedSrc !== "" && activePreviewSrc === resolvedSrc,
+  );
+  const color = large || isPlaying ? "#2fa536" : "#9be39f";
   return (
     <button
       type="button"
-      onClick={() => playPreviewAudio(src ?? "")}
+      onClick={() => playPreviewAudio(resolvedSrc)}
       className={`flex shrink-0 items-center justify-center transition hover:opacity-80 active:scale-95 ${
         large ? "h-[68px] w-[86px]" : "h-[38px] w-12"
       }`}
-      aria-label="Reproduzir audio"
+      aria-label={isPlaying ? "Parar áudio" : "Reproduzir áudio"}
+      aria-pressed={isPlaying}
     >
       <svg
         width={large ? 66 : 38}
@@ -556,6 +606,10 @@ export default function MobileModulos() {
   const [expandedThemeId, setExpandedThemeId] = useState<string | null>(null);
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
   const [highlightedActivityId, setHighlightedActivityId] = useState<string | null>(null);
+
+  // Interrompe qualquer áudio ao sair da tela — sem isso o preview seguiria
+  // tocando após navegar para outra página.
+  useEffect(() => stopPreviewAudio, []);
 
   useEffect(() => {
     let active = true;
