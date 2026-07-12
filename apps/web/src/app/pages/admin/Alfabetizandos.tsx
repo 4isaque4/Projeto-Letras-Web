@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useConfirm } from "../../components/ConfirmDialog";
 import StateDisplay from "../../components/StateDisplay";
-import { apiDelete, apiGet, apiPatch, apiPost } from "../../core/api/client";
+import { apiDelete, apiDeleteWithBody, apiGet, apiPatch, apiPost, apiPut } from "../../core/api/client";
 
 interface StudentItem {
   id: string;
@@ -14,6 +14,7 @@ interface StudentItem {
   status: string;
   ultimaAtividade: string;
   tutorNome: string;
+  tutorId: string | null;
   telefone: string;
   cpf: string;
 }
@@ -29,7 +30,10 @@ interface StudentCreateForm {
   password: string;
   telefone: string;
   cpf: string;
+  educatorId: string;
 }
+
+interface TutorItem { id: string; nome: string; }
 
 interface StudentEditForm {
   nome: string;
@@ -64,10 +68,12 @@ const EMPTY_CREATE_FORM: StudentCreateForm = {
   password: "",
   telefone: "",
   cpf: "",
+  educatorId: "",
 };
 
 export default function Alfabetizandos() {
   const [items, setItems] = useState<StudentItem[]>([]);
+  const [tutors, setTutors] = useState<TutorItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -76,6 +82,9 @@ export default function Alfabetizandos() {
   const [createForm, setCreateForm] = useState<StudentCreateForm>(EMPTY_CREATE_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<StudentEditForm>({ nome: "", email: "", telefone: "", cpf: "" });
+  const [linkEditingId, setLinkEditingId] = useState<string | null>(null);
+  const [linkTutorId, setLinkTutorId] = useState("");
+  const [linkReason, setLinkReason] = useState("");
 
   const loadStudents = useCallback(async () => {
     try {
@@ -92,6 +101,10 @@ export default function Alfabetizandos() {
 
   useEffect(() => {
     loadStudents();
+    void apiGet("/cadastros/alfabetizadores").then((response) => {
+      const payload = response as { items?: TutorItem[] };
+      setTutors(payload.items ?? []);
+    }).catch(() => setTutors([]));
   }, [loadStudents]);
 
   const onCreateStudent = async (event: FormEvent<HTMLFormElement>) => {
@@ -101,8 +114,8 @@ export default function Alfabetizandos() {
     const email = createForm.email.trim();
     const password = createForm.password.trim();
 
-    if (!nome || !email || !password) {
-      setError("Preencha nome, email e senha para criar um alfabetizando.");
+    if (!nome || !email || !password || !createForm.educatorId) {
+      setError("Preencha nome, email, senha e alfabetizador responsável.");
       return;
     }
     const cpf = createForm.cpf.trim();
@@ -120,6 +133,7 @@ export default function Alfabetizandos() {
         password,
         phone: createForm.telefone.trim() || undefined,
         cpf: createForm.cpf.trim() || undefined,
+        educatorId: createForm.educatorId,
       });
 
       setCreateForm(EMPTY_CREATE_FORM);
@@ -129,6 +143,23 @@ export default function Alfabetizandos() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const saveLink = async (studentId: string) => {
+    if (!linkTutorId || !linkReason.trim()) { setError("Selecione o alfabetizador e informe o motivo da alteração."); return; }
+    try { setSaving(true); setError(""); await apiPut(`/cadastros/alfabetizandos/${studentId}/vinculo`, { tutorId: linkTutorId, reason: linkReason.trim() }); setLinkEditingId(null); setLinkReason(""); await loadStudents(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao alterar vínculo."); }
+    finally { setSaving(false); }
+  };
+
+  const removeLink = async (student: StudentItem) => {
+    const reason = linkReason.trim();
+    if (!reason) { setError("Informe o motivo para remover o vínculo."); return; }
+    const accepted = await confirm({ title: "Remover vínculo", message: `Remover o vínculo de ${student.nome}? O histórico será preservado.`, confirmLabel: "Remover vínculo", variant: "danger" });
+    if (!accepted) return;
+    try { setSaving(true); setError(""); await apiDeleteWithBody(`/cadastros/alfabetizandos/${student.id}/vinculo`, { reason }); setLinkEditingId(null); setLinkReason(""); await loadStudents(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Falha ao remover vínculo."); }
+    finally { setSaving(false); }
   };
 
   const startEdit = (item: StudentItem) => {
@@ -220,7 +251,7 @@ export default function Alfabetizandos() {
 
       <form onSubmit={onCreateStudent} className="border border-gray-300 bg-white p-4 space-y-3">
         <p className="text-sm font-semibold text-gray-900">Criar alfabetizando</p>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-6">
           <input
             value={createForm.nome}
             onChange={(event) => setCreateForm((current) => ({ ...current, nome: event.target.value }))}
@@ -253,6 +284,15 @@ export default function Alfabetizandos() {
             maxLength={14}
             className="border border-gray-300 px-3 py-2 text-sm"
           />
+          <select
+            value={createForm.educatorId}
+            onChange={(event) => setCreateForm((current) => ({ ...current, educatorId: event.target.value }))}
+            className="border border-gray-300 bg-white px-3 py-2 text-sm"
+            aria-label="Alfabetizador responsável"
+          >
+            <option value="">Alfabetizador responsável</option>
+            {tutors.map((tutor) => <option key={tutor.id} value={tutor.id}>{tutor.nome}</option>)}
+          </select>
         </div>
         <button
           type="submit"
@@ -393,12 +433,37 @@ export default function Alfabetizandos() {
                               </button>
                               <button
                                 type="button"
+                                onClick={() => {
+                                  setLinkEditingId(linkEditingId === aluno.id ? null : aluno.id);
+                                  setLinkTutorId(aluno.tutorId ?? "");
+                                  setLinkReason("");
+                                }}
+                                className="px-3 py-1 text-xs border border-slate-500 text-slate-800 hover:bg-slate-100"
+                              >
+                                Alterar vínculo
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => onDelete(aluno)}
                                 disabled={deletingId === aluno.id}
                                 className="px-3 py-1 text-xs border border-red-300 bg-red-50 text-red-700 disabled:opacity-60"
                               >
                                 {deletingId === aluno.id ? "Excluindo..." : "Excluir"}
                               </button>
+                              {linkEditingId === aluno.id ? (
+                                <div className="mt-2 grid min-w-72 gap-2 border border-gray-300 bg-gray-50 p-3">
+                                  <select value={linkTutorId} onChange={(event) => setLinkTutorId(event.target.value)} className="border border-gray-300 bg-white px-2 py-1 text-xs">
+                                    <option value="">Selecione o alfabetizador</option>
+                                    {tutors.map((tutor) => <option key={tutor.id} value={tutor.id}>{tutor.nome}</option>)}
+                                  </select>
+                                  <input value={linkReason} onChange={(event) => setLinkReason(event.target.value)} placeholder="Motivo da alteração" className="border border-gray-300 px-2 py-1 text-xs" />
+                                  <div className="flex gap-2">
+                                    <button type="button" disabled={saving} onClick={() => void saveLink(aluno.id)} className="border border-gray-900 bg-gray-900 px-2 py-1 text-xs text-white disabled:opacity-50">Salvar vínculo</button>
+                                    {aluno.tutorId ? <button type="button" disabled={saving} onClick={() => void removeLink(aluno)} className="border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700 disabled:opacity-50">Remover vínculo</button> : null}
+                                  </div>
+                                  <p className="text-xs text-gray-600">A alteração preserva progresso, tentativas e pontuação.</p>
+                                </div>
+                              ) : null}
                             </>
                           )}
                         </div>
