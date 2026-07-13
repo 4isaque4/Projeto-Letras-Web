@@ -6,6 +6,7 @@ import {
   getLearnerActivityCatalog,
   setLearnerActivityAccess,
   reorderLearnerActivities,
+  syncLearnerAssignmentsWithGrade,
 } from "../services/learnerActivityService.js";
 
 async function defaultResolveActor(req) {
@@ -39,6 +40,7 @@ export function createLearnerActivitiesRouter({
   completeActivity = completeLearnerActivity,
   setAccess = setLearnerActivityAccess,
   reorderActivities = reorderLearnerActivities,
+  syncGrade = syncLearnerAssignmentsWithGrade,
 } = {}) {
   const router = Router();
 
@@ -104,6 +106,14 @@ export function createLearnerActivitiesRouter({
         changes,
         reason: String(req.body?.reason ?? "manual"),
       }));
+    } catch (error) {
+      return sendError(res, error);
+    }
+  });
+
+  router.post("/sync-grade", async (req, res) => {
+    try {
+      return res.json(await syncGrade({ actor: req.actor }));
     } catch (error) {
       return sendError(res, error);
     }

@@ -81,6 +81,25 @@ describe("learner activities routes", () => {
     assert.equal(response.status, 200);
     assert.equal(changes[0].linkId, "link-1");
   });
+
+  it("applies the common grade via sync-grade", async () => {
+    const calls = [];
+    const baseUrl = await startApi({
+      resolveActor: async () => ({ id: "admin-1", role: "admin" }),
+      syncGrade: async (input) => {
+        calls.push(input);
+        return { gradeSize: 3, totalLinks: 2, updatedLinks: 2, unchangedLinks: 0 };
+      },
+    });
+    const response = await fetch(`${baseUrl}/sync-grade`, {
+      method: "POST",
+      headers: { Authorization: "Bearer valid", "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(calls[0].actor.id, "admin-1");
+    assert.deepEqual(await response.json(), { gradeSize: 3, totalLinks: 2, updatedLinks: 2, unchangedLinks: 0 });
+  });
 });
 
 async function startApi(overrides = {}) {
@@ -91,6 +110,7 @@ async function startApi(overrides = {}) {
     getCatalog: overrides.getCatalog ?? (async () => ({ themes: [] })),
     completeActivity: overrides.completeActivity ?? (async () => ({ lessonCompleted: true })),
     setAccess: overrides.setAccess ?? (async () => ({ updated: 0 })),
+    syncGrade: overrides.syncGrade ?? (async () => ({ updatedLinks: 0 })),
   }));
   const server = createServer(app);
   servers.push(server);
