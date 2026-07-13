@@ -22,7 +22,7 @@ export default function Sidebar({ userRole = 'admin' }: SidebarProps) {
     { icon: Users, label: "Alfabetizandos", path: "/admin/alfabetizandos" },
     { icon: UserCheck, label: "Alfabetizadores", path: "/admin/alfabetizadores" },
     { icon: Link2, label: "Vínculos e Convites", path: "/admin/vinculos" },
-    { icon: BookOpenCheck, label: "Grade de aulas por tema", path: "/admin/grade-temas" },
+    { icon: BookOpenCheck, label: "Trilha de aulas", path: "/admin/trilha-de-aulas" },
     { icon: Inbox, label: "Fila de Atendimento", path: "/admin/fila" },
     { icon: FileText, label: "Aulas e Mídias", path: "/admin/conteudo" },
     { icon: Trophy, label: "Pontuação & Ranking", path: "/admin/ranking" },

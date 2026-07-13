@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { presentActivityContent } from "./activityManagementPresentation";
 
-export interface GradeLesson {
+export interface TrilhaAula {
   id: string;
   moduleId: string;
   title: string;
@@ -18,7 +18,7 @@ export interface GradeLesson {
   position: number;
 }
 
-export default function GradeLessonCard({
+export default function TrilhaAulaCard({
   lesson,
   reorganizing,
   busy,
@@ -27,7 +27,7 @@ export default function GradeLessonCard({
   onDragStart,
   onDrop,
 }: {
-  lesson: GradeLesson;
+  lesson: TrilhaAula;
   reorganizing: boolean;
   busy: boolean;
   onToggle: () => void;
@@ -66,7 +66,7 @@ export default function GradeLessonCard({
             <span
               className={`rounded-full px-2.5 py-1 text-xs font-semibold ${lesson.isPublished ? "bg-blue-50 text-blue-800" : "bg-amber-50 text-amber-800"}`}
             >
-              {lesson.isPublished ? "Na grade" : "Fora da grade"}
+              {lesson.isPublished ? "Na trilha" : "Fora da trilha"}
             </span>
           </div>
           <p className="mt-1 line-clamp-2 text-sm text-slate-600">
@@ -112,7 +112,7 @@ export default function GradeLessonCard({
               ) : (
                 <ListPlus className="h-4 w-4" />
               )}
-              {lesson.isPublished ? "Remover da grade" : "Incluir na grade"}
+              {lesson.isPublished ? "Remover da trilha" : "Incluir na trilha"}
             </button>
           )}
         </div>

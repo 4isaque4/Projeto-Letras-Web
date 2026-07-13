@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import StateDisplay from "../../components/StateDisplay";
 import { apiGet, apiPatch, apiPost } from "../../core/api/client";
-import GradeLessonCard, { GradeLesson } from "./GradeLessonCard";
+import TrilhaAulaCard, { TrilhaAula } from "./TrilhaAulaCard";
 
 interface Theme {
   id: string;
@@ -47,12 +47,12 @@ interface ConteudoResponse {
   activities: Activity[];
 }
 interface MoveRequest {
-  lesson: GradeLesson;
-  target: GradeLesson;
+  lesson: TrilhaAula;
+  target: TrilhaAula;
   crossGroup: boolean;
 }
 
-export default function GradeTemas() {
+export default function TrilhaAulas() {
   const [data, setData] = useState<ConteudoResponse | null>(null);
   const [selectedThemeId, setSelectedThemeId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -60,7 +60,7 @@ export default function GradeTemas() {
   const [syncInfo, setSyncInfo] = useState("");
   const [busyId, setBusyId] = useState("");
   const [reorganizing, setReorganizing] = useState(false);
-  const [dragged, setDragged] = useState<GradeLesson | null>(null);
+  const [dragged, setDragged] = useState<TrilhaAula | null>(null);
   const [pendingMove, setPendingMove] = useState<MoveRequest | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -119,7 +119,7 @@ export default function GradeTemas() {
     [data, selectedThemeId],
   );
   const lessonsByModule = useMemo(() => {
-    const map = new Map<string, GradeLesson[]>();
+    const map = new Map<string, TrilhaAula[]>();
     const moduleIds = new Set(themeModules.map((module) => module.id));
     const ordered = [...(data?.activities ?? [])]
       .filter((activity) => moduleIds.has(activity.module_id))
@@ -165,8 +165,8 @@ export default function GradeTemas() {
     (lesson) => lesson.isPublished,
   ).length;
 
-  // Depois de cada alteração na grade, reaplica o catálogo aos vínculos
-  // ativos para que todos os alfabetizandos do tema recebam a mesma grade.
+  // Depois de cada alteração na trilha, reaplica o catálogo aos vínculos
+  // ativos para que todos os alfabetizandos do tema recebam a mesma trilha.
   const applyGradeToLinks = useCallback(async () => {
     try {
       const result = (await apiPost("/learner-activities/sync-grade", {})) as {
@@ -175,20 +175,20 @@ export default function GradeTemas() {
       };
       setSyncInfo(
         result.updatedLinks > 0
-          ? `Grade aplicada a ${result.updatedLinks} de ${result.totalLinks} alfabetizando(s) com vínculo ativo.`
-          : "Grade já estava aplicada a todos os alfabetizandos com vínculo ativo.",
+          ? `Trilha aplicada a ${result.updatedLinks} de ${result.totalLinks} alfabetizando(s) com vínculo ativo.`
+          : "Trilha já estava aplicada a todos os alfabetizandos com vínculo ativo.",
       );
     } catch (cause) {
       setSyncInfo("");
       setError(
         cause instanceof Error
-          ? `Grade salva, mas não foi possível aplicá-la aos alfabetizandos: ${cause.message}`
-          : "Grade salva, mas não foi possível aplicá-la aos alfabetizandos.",
+          ? `Trilha salva, mas não foi possível aplicá-la aos alfabetizandos: ${cause.message}`
+          : "Trilha salva, mas não foi possível aplicá-la aos alfabetizandos.",
       );
     }
   }, []);
 
-  const toggleGrade = async (lesson: GradeLesson) => {
+  const toggleGrade = async (lesson: TrilhaAula) => {
     try {
       setBusyId(lesson.id);
       setError("");
@@ -209,7 +209,7 @@ export default function GradeTemas() {
     }
   };
 
-  const requestMove = (lesson: GradeLesson, target: GradeLesson) => {
+  const requestMove = (lesson: TrilhaAula, target: TrilhaAula) => {
     if (lesson.id === target.id) return;
     const movement = {
       lesson,
@@ -279,7 +279,7 @@ export default function GradeTemas() {
     }
   };
 
-  const moveBy = (lesson: GradeLesson, direction: -1 | 1) => {
+  const moveBy = (lesson: TrilhaAula, direction: -1 | 1) => {
     const index = flatLessons.findIndex((item) => item.id === lesson.id);
     const target = flatLessons[index + direction];
     if (target) requestMove(lesson, target);
@@ -300,11 +300,11 @@ export default function GradeTemas() {
             Estrutura pedagógica
           </p>
           <h1 className="mt-1 text-2xl font-bold text-slate-950">
-            Grade de aulas por tema
+            Trilha de aulas
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-slate-600">
-            Defina a ordem das aulas e quais entram na grade de cada tema. A
-            grade é comum: vale para todos os alfabetizandos do tema, e o
+            Defina a ordem das aulas e quais entram na trilha de cada tema. A
+            trilha é comum: vale para todos os alfabetizandos do tema, e o
             histórico de conclusão é preservado.
           </p>
         </div>
@@ -332,13 +332,13 @@ export default function GradeTemas() {
       <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:grid-cols-[minmax(280px,1fr)_auto] lg:items-end">
         <div>
           <label
-            htmlFor="grade-theme"
+            htmlFor="trilha-theme"
             className="mb-2 block text-sm font-bold text-slate-900"
           >
             Tema
           </label>
           <select
-            id="grade-theme"
+            id="trilha-theme"
             value={selectedThemeId}
             onChange={(event) => setSelectedThemeId(event.target.value)}
             className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
@@ -356,7 +356,7 @@ export default function GradeTemas() {
             <Layers className="h-5 w-5 text-slate-600" />
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Grade do tema
+                Trilha do tema
               </p>
               <p className="font-semibold text-slate-900">
                 {selectedTheme.title}
@@ -366,7 +366,7 @@ export default function GradeTemas() {
                 {stageNumbers.length === 1 ? "etapa" : "etapas"} ·{" "}
                 {themeModules.length}{" "}
                 {themeModules.length === 1 ? "módulo" : "módulos"} ·{" "}
-                {publishedCount} de {flatLessons.length} aulas na grade
+                {publishedCount} de {flatLessons.length} aulas na trilha
               </p>
             </div>
           </div>
@@ -452,7 +452,7 @@ export default function GradeTemas() {
                               </p>
                             ) : (
                               lessons.map((lesson) => (
-                                <GradeLessonCard
+                                <TrilhaAulaCard
                                   key={lesson.id}
                                   lesson={lesson}
                                   reorganizing={reorganizing}
@@ -492,7 +492,7 @@ export default function GradeTemas() {
             </h2>
             <p className="mt-2 text-sm text-slate-600">
               “{pendingMove.lesson.title}” será movida para outro módulo ou
-              etapa. Isso altera a grade comum do tema para todos os
+              etapa. Isso altera a trilha comum do tema para todos os
               alfabetizandos. Conclusões, tentativas e pontos serão
               preservados.
             </p>
