@@ -202,6 +202,106 @@ export async function reorderLearnerActivities({ actor, linkId, movement, reposi
   return { updated: assignments.length, assignments };
 }
 
+function compareGradeOrder(left, right) {
+  return (
+    Number(left.themeSortOrder ?? 0) - Number(right.themeSortOrder ?? 0) ||
+    Number(left.stageNumber ?? 0) - Number(right.stageNumber ?? 0) ||
+    Number(left.moduleSortOrder ?? 0) - Number(right.moduleSortOrder ?? 0) ||
+    Number(left.activitySortOrder ?? 0) - Number(right.activitySortOrder ?? 0) ||
+    String(left.activityId).localeCompare(String(right.activityId))
+  );
+}
+
+// Reaplica a grade comum (catálogo publicado, ordenado por tema → etapa →
+// módulo → aula) a todos os vínculos ativos. Preserva o status de acesso das
+// aulas já atribuídas e o histórico de progresso; aulas novas seguem a regra
+// da atribuição inicial (1ª aula ou já concluída = disponível).
+export async function syncLearnerAssignmentsWithGrade({ actor, repository } = {}) {
+  if (!actor?.id) throw httpError(401, "Autenticação obrigatória.");
+  if (normalizeRole(actor.role) !== "admin") {
+    throw httpError(403, "Apenas administradores podem aplicar a grade comum.");
+  }
+  const repo = requireRepository(repository);
+  const grade = await repo.listPublishedGradeActivities();
+  const ordered = [...grade].sort(compareGradeOrder).map((row, index) => ({
+    ...row,
+    sequenceOrder: index + 1,
+  }));
+  const links = await repo.listActiveConfirmedLinks();
+
+  let updatedLinks = 0;
+  let unchangedLinks = 0;
+  for (const link of links) {
+    const current = await repo.listAccess({ linkId: link.id, studentId: link.studentId });
+    const currentByActivity = new Map(current.map((row) => [row.activityId, row]));
+    const progress = await repo.listProgress({
+      studentId: link.studentId,
+      activityIds: ordered.map((row) => row.activityId),
+    });
+    const completedIds = new Set(
+      progress
+        .filter((row) => row.status === "concluido" || Boolean(row.completedAt))
+        .map((row) => row.activityId),
+    );
+
+    const assignments = ordered.map((row) => {
+      const existing = currentByActivity.get(row.activityId);
+      const accessStatus = existing
+        ? existing.accessStatus
+        : completedIds.has(row.activityId) || row.sequenceOrder === 1
+          ? "available"
+          : "locked";
+      return {
+        activityId: row.activityId,
+        assignedModuleId: row.moduleId,
+        sequenceOrder: row.sequenceOrder,
+        accessStatus,
+        isRequired: existing ? existing.isRequired !== false : true,
+      };
+    });
+
+    const unchanged =
+      current.length === assignments.length &&
+      assignments.every((assignment) => {
+        const existing = currentByActivity.get(assignment.activityId);
+        return (
+          existing &&
+          Number(existing.sequenceOrder) === assignment.sequenceOrder &&
+          (existing.assignedModuleId ?? null) === (assignment.assignedModuleId ?? null) &&
+          existing.accessStatus === assignment.accessStatus
+        );
+      });
+    if (unchanged) {
+      unchangedLinks += 1;
+      continue;
+    }
+
+    await repo.replaceLinkAssignments({
+      linkId: link.id,
+      studentId: link.studentId,
+      assignments,
+      changedBy: actor.id,
+    });
+    updatedLinks += 1;
+  }
+
+  if (updatedLinks > 0) {
+    await repo.appendSyncEvent({
+      sourcePlatform: "web",
+      eventType: "content.grade_synced",
+      entityType: "learning_catalog",
+      entityId: "common-grade",
+      payload: {
+        gradeSize: ordered.length,
+        totalLinks: links.length,
+        updatedLinks,
+        changedBy: actor.id,
+      },
+    });
+  }
+  return { gradeSize: ordered.length, totalLinks: links.length, updatedLinks, unchangedLinks };
+}
+
 function mapLink(row) {
   return row ? { id: row.id, tutorId: row.tutor_id, studentId: row.student_id, status: row.status } : null;
 }
@@ -224,6 +324,58 @@ export function createSupabaseLearnerActivityRepository(client) {
     async getLink(linkId) {
       const rows = await queryData(client.from("tutor_student_links").select("id,tutor_id,student_id,status").eq("id", linkId).limit(1), "Falha ao consultar vínculo");
       return mapLink(rows[0]);
+    },
+    async listActiveConfirmedLinks() {
+      const rows = await queryData(
+        client.from("tutor_student_links").select("id,tutor_id,student_id,status").eq("status", "confirmado").eq("lifecycle_status", "active"),
+        "Falha ao listar vínculos ativos",
+      );
+      return rows.map(mapLink);
+    },
+    async listPublishedGradeActivities() {
+      const rows = await queryData(
+        client
+          .from("learning_activities")
+          .select("id,module_id,sort_order,learning_modules!inner(id,theme_id,stage_number,sort_order,is_active,learning_themes!inner(id,sort_order,is_active))")
+          .eq("is_published", true)
+          .eq("learning_modules.is_active", true)
+          .eq("learning_modules.learning_themes.is_active", true),
+        "Falha ao listar a grade publicada",
+      );
+      return rows.map((row) => ({
+        activityId: row.id,
+        moduleId: row.module_id,
+        activitySortOrder: row.sort_order,
+        stageNumber: row.learning_modules?.stage_number,
+        moduleSortOrder: row.learning_modules?.sort_order,
+        themeSortOrder: row.learning_modules?.learning_themes?.sort_order,
+      }));
+    },
+    async replaceLinkAssignments({ linkId, studentId, assignments, changedBy }) {
+      await queryData(
+        client.from("learner_activity_access").delete().eq("link_id", linkId).select("id"),
+        "Falha ao limpar a grade do vínculo",
+      );
+      if (assignments.length === 0) return 0;
+      const now = new Date().toISOString();
+      const payload = assignments.map((assignment) => ({
+        link_id: linkId,
+        student_id: studentId,
+        activity_id: assignment.activityId,
+        assigned_module_id: assignment.assignedModuleId,
+        access_status: assignment.accessStatus,
+        sequence_order: assignment.sequenceOrder,
+        is_required: assignment.isRequired !== false,
+        available_at: assignment.accessStatus === "available" ? now : null,
+        locked_at: assignment.accessStatus === "locked" ? now : null,
+        changed_by: changedBy,
+        change_reason: "Grade comum do tema aplicada pelo painel",
+      }));
+      const rows = await queryData(
+        client.from("learner_activity_access").insert(payload).select("id"),
+        "Falha ao aplicar a grade ao vínculo",
+      );
+      return rows.length;
     },
     async listAccess({ linkId }) {
       const rows = await queryData(client.from("learner_activity_access").select("*").eq("link_id", linkId).order("sequence_order"), "Falha ao listar acesso às atividades");

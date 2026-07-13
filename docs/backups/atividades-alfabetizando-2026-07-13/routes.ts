@@ -1,4 +1,4 @@
-import { createBrowserRouter, redirect } from "react-router";
+import { createBrowserRouter } from "react-router";
 import Login from "./pages/Login";
 import HomeRedirect from "./pages/HomeRedirect";
 import Layout from "./components/Layout";
@@ -9,7 +9,7 @@ import Alfabetizandos from "./pages/admin/Alfabetizandos";
 import AlfabetizandoDetalhe from "./pages/admin/AlfabetizandoDetalhe";
 import Alfabetizadores from "./pages/admin/Alfabetizadores";
 import Vinculos from "./pages/admin/Vinculos";
-import GradeTemas from "./pages/admin/GradeTemas";
+import AtividadesAlfabetizando from "./pages/admin/AtividadesAlfabetizando";
 import Grupos from "./pages/admin/Grupos";
 import Fila from "./pages/admin/Fila";
 import Conteudo from "./pages/admin/Conteudo";
@@ -42,9 +42,7 @@ export const router = createBrowserRouter([
       { path: "admin/alfabetizandos/:id", Component: AlfabetizandoDetalhe },
       { path: "admin/alfabetizadores", Component: Alfabetizadores },
       { path: "admin/vinculos", Component: Vinculos },
-      { path: "admin/grade-temas", Component: GradeTemas },
-      // URL antiga mantida para favoritos/links compartilhados
-      { path: "admin/atividades-alfabetizando", loader: () => redirect("/admin/grade-temas") },
+      { path: "admin/atividades-alfabetizando", Component: AtividadesAlfabetizando },
       { path: "admin/grupos", Component: Grupos },
       { path: "admin/fila", Component: Fila },
       { path: "admin/conteudo", Component: Conteudo },
