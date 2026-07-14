@@ -22,7 +22,7 @@ if hasattr(sys.stdout, "reconfigure"):
 HOST = os.environ.get("DEPLOY_HOST", "")
 USER = os.environ.get("DEPLOY_USER", "root")
 PASS = os.environ.get("DEPLOY_PASSWORD", "")
-BRANCH = os.environ.get("DEPLOY_BRANCH", "feat/learner-experience-improvements")
+BRANCH = os.environ.get("DEPLOY_BRANCH", "main")
 
 if not HOST or not PASS:
     print("[FATAL] DEPLOY_HOST/DEPLOY_PASSWORD não definidos no ambiente.")
