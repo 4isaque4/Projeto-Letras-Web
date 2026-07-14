@@ -30,9 +30,9 @@ function createFakeRepository({ grade, links, accessByLink = {}, progressByStude
 }
 
 const GRADE = [
-  { activityId: "b", moduleId: "mod-2", activitySortOrder: 1, stageNumber: 2, moduleSortOrder: 1, themeSortOrder: 1 },
-  { activityId: "a", moduleId: "mod-1", activitySortOrder: 1, stageNumber: 1, moduleSortOrder: 1, themeSortOrder: 1 },
-  { activityId: "c", moduleId: "mod-2", activitySortOrder: 2, stageNumber: 2, moduleSortOrder: 1, themeSortOrder: 1 },
+  { activityId: "b", moduleId: "mod-2", themeId: "theme-a", activitySortOrder: 1, stageNumber: 2, moduleSortOrder: 1, themeSortOrder: 1 },
+  { activityId: "a", moduleId: "mod-1", themeId: "theme-a", activitySortOrder: 1, stageNumber: 1, moduleSortOrder: 1, themeSortOrder: 1 },
+  { activityId: "c", moduleId: "mod-2", themeId: "theme-a", activitySortOrder: 2, stageNumber: 2, moduleSortOrder: 1, themeSortOrder: 1 },
 ];
 
 test("sync-grade exige perfil admin", async () => {
@@ -101,4 +101,57 @@ test("não regrava vínculos que já estão idênticos à grade", async () => {
   assert.equal(result.unchangedLinks, 1);
   assert.equal(calls.replacements.length, 0);
   assert.equal(calls.syncEvents.length, 0);
+});
+
+test("aplica somente o tema do alfabetizando e inclui todas as etapas publicadas", async () => {
+  const grade = [
+    { activityId: "a-3", moduleId: "mod-a-3", themeId: "theme-a", stageNumber: 3, themeSortOrder: 1, moduleSortOrder: 1, activitySortOrder: 1 },
+    { activityId: "b-1", moduleId: "mod-b-1", themeId: "theme-b", stageNumber: 1, themeSortOrder: 2, moduleSortOrder: 1, activitySortOrder: 1 },
+    { activityId: "a-1", moduleId: "mod-a-1", themeId: "theme-a", stageNumber: 1, themeSortOrder: 1, moduleSortOrder: 1, activitySortOrder: 1 },
+    { activityId: "a-2", moduleId: "mod-a-2", themeId: "theme-a", stageNumber: 2, themeSortOrder: 1, moduleSortOrder: 1, activitySortOrder: 1 },
+  ];
+  const { repository, calls } = createFakeRepository({
+    grade,
+    links: [{ id: "link-1", tutorId: "tutor-1", studentId: "student-1", status: "confirmado", themeId: "theme-a" }],
+  });
+
+  const result = await syncLearnerAssignmentsWithGrade({ actor: { id: "admin-1", role: "admin" }, repository });
+
+  assert.equal(result.updatedLinks, 1);
+  assert.equal(result.unresolvedLinks, 0);
+  assert.deepEqual(calls.replacements[0].assignments.map((row) => row.activityId), ["a-1", "a-2", "a-3"]);
+  assert.deepEqual(calls.replacements[0].assignments.map((row) => row.sequenceOrder), [1, 2, 3]);
+});
+
+test("infere o tema de vínculo legado pelo progresso sem misturar outros temas", async () => {
+  const grade = [
+    { activityId: "a-1", moduleId: "mod-a-1", themeId: "theme-a", stageNumber: 1, themeSortOrder: 1, moduleSortOrder: 1, activitySortOrder: 1 },
+    { activityId: "a-2", moduleId: "mod-a-2", themeId: "theme-a", stageNumber: 2, themeSortOrder: 1, moduleSortOrder: 1, activitySortOrder: 1 },
+    { activityId: "b-1", moduleId: "mod-b-1", themeId: "theme-b", stageNumber: 1, themeSortOrder: 2, moduleSortOrder: 1, activitySortOrder: 1 },
+  ];
+  const { repository, calls } = createFakeRepository({
+    grade,
+    links: [{ id: "legacy-link", tutorId: "tutor-1", studentId: "student-1", status: "confirmado", themeId: null }],
+    progressByStudent: { "student-1": [{ activityId: "a-2", status: "concluido", completedAt: "2026-07-10" }] },
+  });
+
+  await syncLearnerAssignmentsWithGrade({ actor: { id: "admin-1", role: "admin" }, repository });
+
+  assert.deepEqual(calls.replacements[0].assignments.map((row) => row.activityId), ["a-1", "a-2"]);
+});
+
+test("não atribui todos os temas quando um vínculo legado não pode ser resolvido", async () => {
+  const grade = [
+    { activityId: "a-1", moduleId: "mod-a", themeId: "theme-a", stageNumber: 1, themeSortOrder: 1, moduleSortOrder: 1, activitySortOrder: 1 },
+    { activityId: "b-1", moduleId: "mod-b", themeId: "theme-b", stageNumber: 1, themeSortOrder: 2, moduleSortOrder: 1, activitySortOrder: 1 },
+  ];
+  const { repository, calls } = createFakeRepository({
+    grade,
+    links: [{ id: "legacy-link", tutorId: "tutor-1", studentId: "student-1", status: "confirmado", themeId: null }],
+  });
+
+  const result = await syncLearnerAssignmentsWithGrade({ actor: { id: "admin-1", role: "admin" }, repository });
+
+  assert.equal(result.unresolvedLinks, 1);
+  assert.equal(calls.replacements.length, 0);
 });

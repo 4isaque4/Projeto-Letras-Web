@@ -212,10 +212,33 @@ function compareGradeOrder(left, right) {
   );
 }
 
-// Reaplica a grade comum (catálogo publicado, ordenado por tema → etapa →
-// módulo → aula) a todos os vínculos ativos. Preserva o status de acesso das
-// aulas já atribuídas e o histórico de progresso; aulas novas seguem a regra
-// da atribuição inicial (1ª aula ou já concluída = disponível).
+function resolveLinkThemeId({ link, orderedGrade, progress }) {
+  const themeIds = [...new Set(orderedGrade.map((row) => row.themeId).filter(Boolean))];
+  if (link.themeId && themeIds.includes(link.themeId)) return link.themeId;
+
+  const themeByActivity = new Map(
+    orderedGrade.filter((row) => row.themeId).map((row) => [row.activityId, row.themeId]),
+  );
+  const progressCountByTheme = new Map();
+  for (const row of progress) {
+    const themeId = themeByActivity.get(row.activityId);
+    if (themeId) progressCountByTheme.set(themeId, (progressCountByTheme.get(themeId) ?? 0) + 1);
+  }
+  if (progressCountByTheme.size > 0) {
+    return themeIds.reduce((selected, themeId) => {
+      if (!selected) return themeId;
+      return (progressCountByTheme.get(themeId) ?? 0) > (progressCountByTheme.get(selected) ?? 0)
+        ? themeId
+        : selected;
+    }, null);
+  }
+
+  return themeIds.length === 1 ? themeIds[0] : null;
+}
+
+// Reaplica a grade publicada do tema de cada alfabetizando (etapa → módulo →
+// aula) aos vínculos ativos. Preserva o status de acesso e o progresso; para
+// vínculos legados, recupera o tema pelo histórico antes de alterar a grade.
 export async function syncLearnerAssignmentsWithGrade({ actor, repository } = {}) {
   if (!actor?.id) throw httpError(401, "Autenticação obrigatória.");
   if (normalizeRole(actor.role) !== "admin") {
@@ -231,6 +254,7 @@ export async function syncLearnerAssignmentsWithGrade({ actor, repository } = {}
 
   let updatedLinks = 0;
   let unchangedLinks = 0;
+  let unresolvedLinks = 0;
   for (const link of links) {
     const current = await repo.listAccess({ linkId: link.id, studentId: link.studentId });
     const currentByActivity = new Map(current.map((row) => [row.activityId, row]));
@@ -238,13 +262,21 @@ export async function syncLearnerAssignmentsWithGrade({ actor, repository } = {}
       studentId: link.studentId,
       activityIds: ordered.map((row) => row.activityId),
     });
+    const themeId = resolveLinkThemeId({ link, orderedGrade: ordered, progress });
+    if (!themeId) {
+      unresolvedLinks += 1;
+      continue;
+    }
+    const themeGrade = ordered
+      .filter((row) => row.themeId === themeId)
+      .map((row, index) => ({ ...row, sequenceOrder: index + 1 }));
     const completedIds = new Set(
       progress
         .filter((row) => row.status === "concluido" || Boolean(row.completedAt))
         .map((row) => row.activityId),
     );
 
-    const assignments = ordered.map((row) => {
+    const assignments = themeGrade.map((row) => {
       const existing = currentByActivity.get(row.activityId);
       const accessStatus = existing
         ? existing.accessStatus
@@ -295,11 +327,12 @@ export async function syncLearnerAssignmentsWithGrade({ actor, repository } = {}
         gradeSize: ordered.length,
         totalLinks: links.length,
         updatedLinks,
+        unresolvedLinks,
         changedBy: actor.id,
       },
     });
   }
-  return { gradeSize: ordered.length, totalLinks: links.length, updatedLinks, unchangedLinks };
+  return { gradeSize: ordered.length, totalLinks: links.length, updatedLinks, unchangedLinks, unresolvedLinks };
 }
 
 function mapLink(row) {
@@ -330,7 +363,17 @@ export function createSupabaseLearnerActivityRepository(client) {
         client.from("tutor_student_links").select("id,tutor_id,student_id,status").eq("status", "confirmado").eq("lifecycle_status", "active"),
         "Falha ao listar vínculos ativos",
       );
-      return rows.map(mapLink);
+      const studentIds = [...new Set(rows.map((row) => row.student_id).filter(Boolean))];
+      const profiles = studentIds.length === 0
+        ? []
+        : await queryData(
+            client.from("profiles").select("id,metadata").in("id", studentIds),
+            "Falha ao consultar o tema dos alfabetizandos",
+          );
+      const themeByStudent = new Map(
+        profiles.map((profile) => [profile.id, profile.metadata?.assignedThemeId ?? null]),
+      );
+      return rows.map((row) => ({ ...mapLink(row), themeId: themeByStudent.get(row.student_id) ?? null }));
     },
     async listPublishedGradeActivities() {
       const rows = await queryData(
@@ -345,6 +388,7 @@ export function createSupabaseLearnerActivityRepository(client) {
       return rows.map((row) => ({
         activityId: row.id,
         moduleId: row.module_id,
+        themeId: row.learning_modules?.theme_id,
         activitySortOrder: row.sort_order,
         stageNumber: row.learning_modules?.stage_number,
         moduleSortOrder: row.learning_modules?.sort_order,
