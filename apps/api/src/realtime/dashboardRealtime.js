@@ -19,7 +19,7 @@ export function createRealtimeEnvelope(type, payload, emittedAt = new Date().toI
 
 export function normalizeRealtimeRole(value) {
   const normalized = String(value ?? "").trim().toLowerCase();
-  if (normalized === "tutor" || normalized === "alfabetizador") {
+  if (normalized === "tutor" || normalized === "alfabetizador" || normalized === "educator") {
     return "tutor";
   }
   if (normalized === "alfabetizando" || normalized === "learner" || normalized === "student") {
@@ -56,11 +56,14 @@ export function emitLearnerLockChanged(learnerProfileId, isLocked) {
     return false;
   }
 
-  dashboardNamespace.to(getLearnerRoomName(normalizedLearnerProfileId)).emit("locked_changed", {
+  const payload = {
     learnerProfileId: normalizedLearnerProfileId,
     isLocked: Boolean(isLocked),
     updatedAt: new Date().toISOString(),
-  });
+  };
+
+  dashboardNamespace.to(getLearnerRoomName(normalizedLearnerProfileId)).emit("locked_changed", payload);
+  dashboardNamespace.to(getDashboardRoomName(DEFAULT_TENANT_ID)).emit("locked_changed", payload);
 
   return true;
 }
@@ -104,6 +107,7 @@ export function installDashboardRealtimeServer(httpServer) {
 
   const namespace = io.of("/realtime");
   const presenceBySocketId = new Map();
+  const learnerPresenceBySocketId = new Map();
 
   dashboardNamespace = namespace;
   dashboardPresenceBySocketId = presenceBySocketId;
@@ -129,6 +133,12 @@ export function installDashboardRealtimeServer(httpServer) {
     if (learnerProfileId) {
       socket.join(getLearnerRoomName(learnerProfileId));
     }
+
+    registerMobileRealtimeConnection({
+      socket,
+      namespace,
+      learnerPresenceBySocketId,
+    });
 
     socket.on("subscribe.dashboard", async (eventOrPayload) => {
       const payload = getEventPayload(eventOrPayload);
@@ -190,6 +200,144 @@ export function installDashboardRealtimeServer(httpServer) {
   return namespace;
 }
 
+export function emitLearnerStateUpdated(learnerProfileId, statePayload = {}) {
+  if (!dashboardNamespace) return false;
+  const normalizedLearnerProfileId = getSocketStringValue(learnerProfileId);
+  if (!normalizedLearnerProfileId) return false;
+  const payload = {
+    learnerProfileId: normalizedLearnerProfileId,
+    currentView: statePayload.currentView,
+    currentActivityId: statePayload.currentActivityId,
+    state: statePayload.state ?? statePayload.statePayload ?? {},
+  };
+  dashboardNamespace.to(getLearnerRoomName(normalizedLearnerProfileId)).emit("learner_state_update", payload);
+  dashboardNamespace.to(getDashboardRoomName(DEFAULT_TENANT_ID)).emit("learner_state_update", payload);
+  return true;
+}
+
+export function emitMobileHelpRequested(request) {
+  if (!dashboardNamespace || !request) return false;
+  const learnerProfileId = getSocketStringValue(request.student_id ?? request.studentId);
+  if (!learnerProfileId) return false;
+  const payload = {
+    requestId: request.id,
+    learnerProfileId,
+    message: request.message ?? "Alfabetizando solicitou ajuda.",
+    snapshot: request.metadata?.snapshot,
+    timestamp: request.requested_at ?? request.requestedAt ?? request.created_at ?? new Date().toISOString(),
+  };
+  const tutorId = getSocketStringValue(request.tutor_id ?? request.tutorId);
+  dashboardNamespace.to(getDashboardRoomName(DEFAULT_TENANT_ID)).emit("help_requested", payload);
+  if (tutorId) {
+    dashboardNamespace.to(getEducatorRoomName(tutorId)).emit("help_requested", payload);
+  }
+  return true;
+}
+
+export function registerMobileRealtimeConnection({
+  socket,
+  namespace,
+  learnerPresenceBySocketId,
+}) {
+  const query = socket.handshake.query ?? {};
+  const educatorId = getSocketStringValue(query.educatorId);
+  const learnerProfileId = getSocketStringValue(query.learnerProfileId);
+  const role = normalizeRealtimeRole(query.role);
+  const dashboardRoom = getDashboardRoomName(DEFAULT_TENANT_ID);
+
+  if (educatorId) {
+    socket.join(dashboardRoom);
+    socket.join(getEducatorRoomName(educatorId));
+    socket.emit("learner_presence_snapshot", {
+      onlineIds: getOnlineLearnerProfileIds(learnerPresenceBySocketId),
+    });
+  }
+
+  if (learnerProfileId && role === "alfabetizando") {
+    learnerPresenceBySocketId.set(socket.id, learnerProfileId);
+    emitLegacyLearnerPresence(namespace, learnerPresenceBySocketId, learnerProfileId, true);
+  } else if (learnerProfileId) {
+    socket.emit("presence_changed", {
+      learnerProfileId,
+      learnersOnline: getOnlineLearnerProfileIds(learnerPresenceBySocketId),
+      educatorsOnline: [],
+    });
+  }
+
+  socket.on("learner_state_update", (eventOrPayload) => {
+    const payload = getEventPayload(eventOrPayload);
+    const targetLearnerId = learnerProfileId ?? getSocketStringValue(payload?.learnerProfileId);
+    if (!targetLearnerId) return;
+    const normalizedPayload = { ...payload, learnerProfileId: targetLearnerId };
+    socket.to(getLearnerRoomName(targetLearnerId)).emit("learner_state_update", normalizedPayload);
+    namespace.to(dashboardRoom).emit("learner_state_update", normalizedPayload);
+  });
+
+  socket.on("help_requested", (eventOrPayload) => {
+    const payload = getEventPayload(eventOrPayload);
+    const targetLearnerId = learnerProfileId ?? getSocketStringValue(payload?.learnerProfileId);
+    if (!targetLearnerId) return;
+    namespace.to(dashboardRoom).emit("help_requested", {
+      ...payload,
+      learnerProfileId: targetLearnerId,
+      timestamp: payload?.timestamp ?? new Date().toISOString(),
+    });
+  });
+
+  socket.on("help_received", (eventOrPayload) => {
+    const payload = getEventPayload(eventOrPayload);
+    const targetLearnerId = getSocketStringValue(payload?.learnerProfileId) ?? learnerProfileId;
+    if (!targetLearnerId) return;
+    namespace.to(getLearnerRoomName(targetLearnerId)).emit("help_received", {
+      ...payload,
+      learnerProfileId: targetLearnerId,
+      timestamp: payload?.timestamp ?? new Date().toISOString(),
+    });
+  });
+
+  const forwardLock = (isLocked) => (eventOrPayload) => {
+    const payload = getEventPayload(eventOrPayload);
+    const targetLearnerId = getSocketStringValue(payload?.learnerProfileId) ?? learnerProfileId;
+    if (!targetLearnerId) return;
+    const changed = {
+      learnerProfileId: targetLearnerId,
+      isLocked,
+      updatedAt: new Date().toISOString(),
+    };
+    namespace.to(getLearnerRoomName(targetLearnerId)).emit("locked_changed", changed);
+    namespace.to(dashboardRoom).emit("locked_changed", changed);
+  };
+  socket.on("lock_set", forwardLock(true));
+  socket.on("lock_release", forwardLock(false));
+
+  socket.on("disconnect", () => {
+    if (!learnerProfileId || learnerPresenceBySocketId.get(socket.id) !== learnerProfileId) {
+      return;
+    }
+    learnerPresenceBySocketId.delete(socket.id);
+    const remainsOnline = getOnlineLearnerProfileIds(learnerPresenceBySocketId).includes(learnerProfileId);
+    if (!remainsOnline) {
+      emitLegacyLearnerPresence(namespace, learnerPresenceBySocketId, learnerProfileId, false);
+    }
+  });
+}
+
+function emitLegacyLearnerPresence(namespace, presenceBySocketId, learnerProfileId, online) {
+  const onlineIds = getOnlineLearnerProfileIds(presenceBySocketId);
+  const changed = { learnerProfileId, online };
+  namespace.to(getDashboardRoomName(DEFAULT_TENANT_ID)).emit("learner_presence_changed", changed);
+  namespace.to(getDashboardRoomName(DEFAULT_TENANT_ID)).emit("learner_presence_snapshot", { onlineIds });
+  namespace.to(getLearnerRoomName(learnerProfileId)).emit("presence_changed", {
+    learnerProfileId,
+    learnersOnline: onlineIds,
+    educatorsOnline: [],
+  });
+}
+
+function getOnlineLearnerProfileIds(presenceBySocketId) {
+  return [...new Set(presenceBySocketId.values())].sort();
+}
+
 function isRealtimeOriginAllowed(origin) {
   if (!origin || env.corsOrigins.includes("*")) {
     return true;
@@ -221,6 +369,10 @@ function getDashboardRoomName(tenantId) {
 
 function getLearnerRoomName(learnerProfileId) {
   return `learner:${learnerProfileId}`;
+}
+
+function getEducatorRoomName(educatorId) {
+  return `educator:${educatorId}`;
 }
 
 function buildPresenceUser(socket, tenantId) {

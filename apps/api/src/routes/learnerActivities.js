@@ -8,6 +8,7 @@ import {
   reorderLearnerActivities,
   syncLearnerAssignmentsWithGrade,
 } from "../services/learnerActivityService.js";
+import { emitOperationalRealtimeEvent } from "../realtime/dashboardRealtime.js";
 
 async function defaultResolveActor(req) {
   const token = String(req.headers.authorization ?? "").replace(/^Bearer\s+/i, "").trim();
@@ -41,6 +42,7 @@ export function createLearnerActivitiesRouter({
   setAccess = setLearnerActivityAccess,
   reorderActivities = reorderLearnerActivities,
   syncGrade = syncLearnerAssignmentsWithGrade,
+  emitRealtime = emitOperationalRealtimeEvent,
 } = {}) {
   const router = Router();
 
@@ -76,7 +78,7 @@ export function createLearnerActivitiesRouter({
       if (!studentId || !activityId || !idempotencyKey) {
         return res.status(400).json({ message: "studentId, activityId e Idempotency-Key são obrigatórios." });
       }
-      return res.json(await completeActivity({
+      const result = await completeActivity({
         actor: req.actor,
         studentId,
         activityId,
@@ -87,7 +89,17 @@ export function createLearnerActivitiesRouter({
           metadata: req.body?.metadata,
           sourcePlatform: req.body?.sourcePlatform ?? "mobile",
         },
-      }));
+      });
+      await emitRealtime(
+        result?.stageCompleted ? "stage.completed" : "progress.updated",
+        {
+          studentId,
+          activityId,
+          stageCompleted: result?.stageCompleted === true,
+        },
+        { includeMetrics: false },
+      );
+      return res.json(result);
     } catch (error) {
       return sendError(res, error);
     }

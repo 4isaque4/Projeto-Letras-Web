@@ -6,7 +6,10 @@ import {
   setMobileLearnerSessionLockState,
   toHttpError,
 } from "../services/letrasDataService.js";
-import { emitLearnerLockChanged } from "../realtime/dashboardRealtime.js";
+import {
+  emitLearnerLockChanged,
+  emitLearnerStateUpdated,
+} from "../realtime/dashboardRealtime.js";
 
 export const sessionsRouter = Router();
 
@@ -209,6 +212,12 @@ sessionsRouter.patch("/:learnerProfileId/state", async (req, res) => {
         .single();
       result = data;
     }
+
+    emitLearnerStateUpdated(learnerProfileId, {
+      currentView: result?.currentView ?? currentView,
+      currentActivityId: result?.currentActivityId ?? currentActivityId,
+      statePayload: result?.statePayload ?? statePayload,
+    });
 
     return res.json(result ?? {});
   } catch (err) {

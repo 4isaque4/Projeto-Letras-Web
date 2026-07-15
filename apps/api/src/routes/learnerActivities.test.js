@@ -34,12 +34,14 @@ describe("learner activities routes", () => {
 
   it("validates and forwards the idempotency key on completion", async () => {
     const completions = [];
+    const realtimeEvents = [];
     const baseUrl = await startApi({
       resolveActor: async () => ({ id: "student-1", role: "alfabetizando" }),
       completeActivity: async (input) => {
         completions.push(input);
         return { lessonCompleted: true, stageCompleted: false, pointsAwardedNow: 10 };
       },
+      emitRealtime: async (type, payload) => realtimeEvents.push({ type, payload }),
     });
     const missingKey = await fetch(`${baseUrl}/activity-1/complete`, {
       method: "POST",
@@ -55,6 +57,10 @@ describe("learner activities routes", () => {
     });
     assert.equal(response.status, 200);
     assert.equal(completions[0].idempotencyKey, "attempt-1");
+    assert.deepEqual(realtimeEvents, [{
+      type: "progress.updated",
+      payload: { studentId: "student-1", activityId: "activity-1", stageCompleted: false },
+    }]);
   });
 
   it("validates batch access changes", async () => {
@@ -111,6 +117,7 @@ async function startApi(overrides = {}) {
     completeActivity: overrides.completeActivity ?? (async () => ({ lessonCompleted: true })),
     setAccess: overrides.setAccess ?? (async () => ({ updated: 0 })),
     syncGrade: overrides.syncGrade ?? (async () => ({ updatedLinks: 0 })),
+    emitRealtime: overrides.emitRealtime ?? (async () => false),
   }));
   const server = createServer(app);
   servers.push(server);

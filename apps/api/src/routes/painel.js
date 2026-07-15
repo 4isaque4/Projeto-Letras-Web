@@ -69,6 +69,7 @@ import { env } from "../config/env.js";
 import {
   emitHelpReceivedToLearner,
   emitLearnerLockChanged,
+  emitMobileHelpRequested,
   emitOperationalRealtimeEvent,
 } from "../realtime/dashboardRealtime.js";
 
@@ -1251,6 +1252,7 @@ painelRouter.post("/support-requests", async (req, res) => {
     });
 
     if (!result.duplicated) {
+      emitMobileHelpRequested(result.request);
       await emitOperationalRealtimeEvent("support.created", buildSupportRealtimePayload(result.request));
       await emitOperationalRealtimeEvent(
         "notification.created",
@@ -1268,6 +1270,32 @@ painelRouter.post("/support-requests", async (req, res) => {
     }
 
     res.status(result.duplicated ? 200 : 201).json(result);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+painelRouter.get("/support-requests", async (req, res) => {
+  try {
+    const tutorId = String(req.query?.tutorId ?? "").trim();
+    if (!tutorId) {
+      res.status(400).json({ message: "tutorId e obrigatorio." });
+      return;
+    }
+    const requests = await getSupportRequests({
+      statuses: ["aberto", "em_atendimento"],
+      tutorIds: [tutorId],
+      limit: 500,
+    });
+    res.json(requests.map((request) => ({
+      requestId: request.id,
+      learnerId: request.student_id,
+      tutorId: request.tutor_id ?? null,
+      message: request.message ?? null,
+      snapshot: request.metadata?.snapshot ?? null,
+      timestamp: request.requested_at ?? request.created_at,
+    })));
   } catch (error) {
     const httpError = toHttpError(error);
     res.status(httpError.status).json({ message: httpError.message });

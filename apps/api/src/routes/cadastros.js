@@ -22,6 +22,7 @@ import {
 } from "../services/letrasDataService.js";
 import { emitLearnerLockChanged } from "../realtime/dashboardRealtime.js";
 import { removeLearnerLink, replaceLearnerLink } from "../services/learnerLinkService.js";
+import { buildLearnerTrackingMetrics } from "./learnerTracking.js";
 
 export const cadastrosRouter = Router();
 
@@ -604,6 +605,16 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
       progressRows: progress,
       assignedThemeIdByLearner,
     });
+    const sessionEntries = await Promise.all(
+      filteredStudentIds.map(async (learnerId) => {
+        try {
+          return [learnerId, await getMobileLearnerSessionState(learnerId)];
+        } catch {
+          return [learnerId, null];
+        }
+      }),
+    );
+    const sessionByStudent = new Map(sessionEntries);
 
     const items = filteredStudents.map((student) => {
       const studentRows = progressByStudent.get(student.id) ?? [];
@@ -638,6 +649,20 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
       const mirrorUnlocked = stageStatus?.mirrorUnlocked ?? etapa1Completed;
       // Tema resolvido do aluno (o runner da Etapa 1 no mobile usa para escopar).
       const themeId = stageStatus?.themeId ?? null;
+      const session = sessionByStudent.get(student.id) ?? null;
+      const persistedActivityAt = [
+        latestActivityAt,
+        session?.sessionState?.updatedAt,
+        session?.updatedAt,
+      ]
+        .filter(Boolean)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null;
+      const tracking = buildLearnerTrackingMetrics({
+        stageStatus,
+        session,
+        latestActivityAt: persistedActivityAt,
+        fallbackProgressPercent: progressPercent,
+      });
 
       // Vínculo confirmado tem prioridade; senão, cai para a associação pendente
       // (metadata.educatorId) para exibir o alfabetizador mesmo antes do aceite.
@@ -661,10 +686,14 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
         etapa1Completed,
         mirrorUnlocked,
         themeId,
-        progresso: progressPercent,
+        progresso: tracking.progressPercent,
+        progressPercent: tracking.progressPercent,
+        currentScreenIndex: tracking.currentScreenIndex,
+        screenCount: tracking.screenCount,
+        inactiveDays: tracking.inactiveDays,
         status: computeStudentStatus(studentRows),
-        ultimaAtividade: formatRelativeTime(latestActivityAt),
-        ultimaAtividadeEm: latestActivityAt ?? null,
+        ultimaAtividade: formatRelativeTime(persistedActivityAt),
+        ultimaAtividadeEm: persistedActivityAt,
         tutorId: associatedTutorId,
         tutorNome: tutor?.full_name ?? "Sem tutor",
         telefone: student.phone ?? "",
