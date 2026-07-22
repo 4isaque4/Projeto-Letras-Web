@@ -2979,7 +2979,7 @@ export default function ConteudoCriarPage() {
                         <div className="space-y-1.5">
                           <label className="text-sm font-medium text-slate-700">Para quem é este texto?</label>
                           <p className="text-xs text-slate-500">
-                            "Alfabetizador" fica visível no painel para guiar o tutor. "Alfabetizando" aparece na tela do app.
+                            "Alfabetizador" é a sua orientação para conduzir esta tela — o alfabetizando não vê. "Alfabetizando" é o texto que aparece na tela do app.
                           </p>
                           <select
                             value={(b as TextBlockData).audience}
@@ -2988,7 +2988,7 @@ export default function ConteudoCriarPage() {
                             }
                             className="w-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                           >
-                            <option value="educator">Alfabetizador — orientação para o tutor</option>
+                            <option value="educator">Alfabetizador — orientação nesta tela</option>
                             <option value="learner">Alfabetizando — texto visível no app</option>
                             <option value="both">Ambos</option>
                           </select>
@@ -3166,13 +3166,13 @@ export default function ConteudoCriarPage() {
           )}
 
           <section className="space-y-2 border border-slate-300 bg-white p-5">
-            <label className="block font-semibold text-slate-900">Orientações para o alfabetizador</label>
+            <label className="block font-semibold text-slate-900">Orientações para o alfabetizador — aula inteira</label>
             <p className="text-xs text-slate-500">
-              Visível apenas no painel. Use para descrever o objetivo pedagógico da aula, como o tutor deve conduzir o aluno, e o que observar durante a atividade.
+              Visível apenas no painel. Resumo da aula inteira: o objetivo pedagógico, como conduzir o alfabetizando e o que observar durante a atividade. Para orientar uma tela específica, use um bloco de texto marcado como "Alfabetizador".
             </p>
             <textarea
               rows={3}
-              placeholder="Ex: Nesta aula o aluno deve reconhecer a letra A em posição inicial. O alfabetizador deve pronunciar cada palavra e pedir que o aluno repita antes de responder."
+              placeholder="Ex: Nesta aula o alfabetizando deve reconhecer a letra A em posição inicial. Pronuncie cada palavra e peça que ele repita antes de responder."
               value={tutorNotes}
               onChange={(e) => setTutorNotes(e.target.value)}
               className="w-full border border-slate-300 px-3 py-2 text-sm leading-relaxed text-slate-900 placeholder:text-slate-400"
