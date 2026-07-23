@@ -1041,9 +1041,16 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
     const maxStage = stageNumbers.length > 0 ? Math.max(...stageNumbers) : 1;
 
     // Gate por etapa (mesma fonte da verdade da lista e do app mobile).
+    // O tema atribuído (metadata.assignedThemeId) entra igual à lista: sem ele o
+    // detalhe devolvia themeId=null para aluno ainda sem progresso, e o runner da
+    // Etapa 1 no mobile (que resolve o tema por aqui) ficava sem escopo.
+    const assignedThemeIdByLearner = student.metadata?.assignedThemeId
+      ? new Map([[student.id, student.metadata.assignedThemeId]])
+      : undefined;
     const stageStatusById = await computeLearnerStageStatusMap({
       learnerProfileIds: [studentId],
       progressRows: progress,
+      assignedThemeIdByLearner,
     });
     const stageStatus = stageStatusById.get(studentId) ?? null;
     const currentStageNumber = stageStatus?.currentStageNumber ?? maxStage;
