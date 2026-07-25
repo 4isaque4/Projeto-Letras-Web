@@ -217,14 +217,10 @@ function Etapa1LessonListScreen({
             })}
           </View>
         ))}
-
-        <Pressable style={styles.exitBtn} onPress={runner.exitToHome}>
-          <Text style={styles.exitText}>SAIR DA ETAPA 1</Text>
-        </Pressable>
       </ScrollView>
-      {/* Única saída da lista: as telas de aula e as de intro já trazem a barra
-          de 5 abas (LearnerScreenLayout / EducatorEtapa1IntroViews), mas a lista
-          ficava sem menu nenhum — beco sem saída. */}
+      {/* Única saída da lista: a aba "início" da barra de 5 abas já leva de
+          volta ao EducatorHome — um botão "SAIR DA ETAPA 1" à parte era
+          redundante com ela. */}
       <RunnerBottomMenu />
     </SafeAreaView>
   );
@@ -425,9 +421,6 @@ export function EducatorEtapa1LessonsView({ navigation, route }: Props) {
               </Text>
             </Pressable>
           </View>
-          <Pressable style={styles.exitBtn} onPress={exitToHome}>
-            <Text style={styles.exitText}>SAIR DA ETAPA 1</Text>
-          </Pressable>
         </ScrollView>
         <EducatorBottomMenu
           active="inicio"
@@ -560,16 +553,6 @@ const styles = StyleSheet.create({
   dotOpen: { backgroundColor: '#1e3a5f' },
   dotMuted: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#c8c8c8' },
   chevron: { fontSize: 18, color: '#1e3a5f', fontWeight: '700' },
-  exitBtn: {
-    marginTop: 10,
-    alignSelf: 'center',
-    borderWidth: 1,
-    borderColor: '#1e3a5f',
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 22,
-  },
-  exitText: { color: '#1e3a5f', fontWeight: '700', letterSpacing: 0.4 },
   doneWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 16 },
   doneTitle: { fontSize: 22, fontWeight: '700', color: '#1e3a5f', textAlign: 'center' },
   doneText: { fontSize: 16, color: '#333', textAlign: 'center', lineHeight: 24 },
