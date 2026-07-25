@@ -1,6 +1,8 @@
 # Deploy automático do painel (frontend Vite + API Express) em painel.letras.cloud.
 #
-# Dispara em push na branch de deploy ou manualmente (workflow_dispatch).
+# Dispara só depois que o Quality Gate terminar com sucesso na main (gate:
+# nunca publica código que falhou lint/typecheck/test/build), ou manualmente
+# (workflow_dispatch).
 # Secrets necessários (Settings > Secrets and variables > Actions):
 #   DEPLOY_HOST          IP do VPS
 #   DEPLOY_USER          usuário SSH (root)
@@ -9,9 +11,10 @@
 name: Deploy painel
 
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ["Quality Gate"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch: {}
 
 concurrency:
@@ -20,10 +23,13 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -54,4 +60,4 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
-          DEPLOY_BRANCH: ${{ github.ref_name }}
+          DEPLOY_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
