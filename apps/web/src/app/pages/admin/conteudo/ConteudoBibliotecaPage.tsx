@@ -36,6 +36,7 @@ const MIME_BY_KIND: Record<AssetKind, string> = {
   wav: "audio/wav",
   png: "image/png",
   jpg: "image/jpeg",
+  gif: "image/gif",
 };
 
 type FilterType = "all" | "imagem" | "audio" | "mp4";
