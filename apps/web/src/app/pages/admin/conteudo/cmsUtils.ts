@@ -25,6 +25,7 @@ export function assetKindLabel(kind: AssetKind) {
   if (kind === "mp3") return "Audio (MP3)";
   if (kind === "wav") return "Audio (WAV)";
   if (kind === "png") return "Imagem (PNG)";
+  if (kind === "gif") return "Imagem (GIF)";
   return "Imagem (JPG)";
 }
 
@@ -33,7 +34,7 @@ export function isAudioKind(kind: AssetKind): boolean {
 }
 
 export function isImageKind(kind: AssetKind): boolean {
-  return kind === "png" || kind === "jpg";
+  return kind === "png" || kind === "jpg" || kind === "gif";
 }
 
 export function isVideoKind(kind: AssetKind): boolean {
@@ -84,6 +85,7 @@ export function inferAssetKindFromFile(file: File): AssetKind | null {
   }
   if (mimeType.startsWith("image/png")) return "png";
   if (mimeType.startsWith("image/jpeg")) return "jpg";
+  if (mimeType.startsWith("image/gif")) return "gif";
 
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (extension === "mp4") return "mp4";
@@ -91,6 +93,7 @@ export function inferAssetKindFromFile(file: File): AssetKind | null {
   if (extension === "wav") return "wav";
   if (extension === "png") return "png";
   if (extension === "jpg" || extension === "jpeg") return "jpg";
+  if (extension === "gif") return "gif";
   return null;
 }
 
@@ -106,6 +109,7 @@ export function inferAssetKindFromPath(path: string): AssetKind | null {
   if (cleanPath.endsWith(".wav")) return "wav";
   if (cleanPath.endsWith(".png")) return "png";
   if (cleanPath.endsWith(".jpg") || cleanPath.endsWith(".jpeg")) return "jpg";
+  if (cleanPath.endsWith(".gif")) return "gif";
 
   if (value.includes("video")) return "mp4";
   if (value.includes("audio")) return "mp3";

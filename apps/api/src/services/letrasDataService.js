@@ -17,7 +17,7 @@ const OPTIONAL_SOURCE_ERROR_CODES = new Set(["PGRST205", "42P01"]);
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ACTIVITY_TYPES = new Set(["video", "quiz", "audio", "letra"]);
-const ASSET_KINDS = new Set(["png", "mp4", "mp3", "jpg", "wav"]);
+const ASSET_KINDS = new Set(["png", "jpg", "gif", "mp4", "mp3", "wav"]);
 const ASSET_STATUSES = new Set(["rascunho", "publicado", "arquivado"]);
 const ACTIVITY_PROGRESS_STATUSES = new Set([
   "nao_iniciado",
@@ -50,6 +50,7 @@ const ASSET_KIND_BY_EXTENSION = new Map([
   ["png", "png"],
   ["jpg", "jpg"],
   ["jpeg", "jpg"],
+  ["gif", "gif"],
   ["mp4", "mp4"],
   ["mp3", "mp3"],
   ["wav", "wav"],
@@ -57,6 +58,7 @@ const ASSET_KIND_BY_EXTENSION = new Map([
 const MIME_BY_ASSET_KIND = {
   png: "image/png",
   jpg: "image/jpeg",
+  gif: "image/gif",
   mp4: "video/mp4",
   mp3: "audio/mpeg",
   wav: "audio/wav",
@@ -492,6 +494,9 @@ function detectAssetKindFromUpload({ mimeType, fileName }) {
   }
   if (normalizedMime.startsWith("image/jpeg")) {
     return "jpg";
+  }
+  if (normalizedMime.startsWith("image/gif")) {
+    return "gif";
   }
   if (normalizedMime.startsWith("video/mp4")) {
     return "mp4";

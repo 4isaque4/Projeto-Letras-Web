@@ -108,7 +108,7 @@ function assetPublicUrl(storagePath: string) {
   return resolvePublicAssetUrl(storagePath, env.supabaseUrl ?? "");
 }
 
-function isImageAsset(a: Asset) { return a.kind === "png" || a.kind === "jpg"; }
+function isImageAsset(a: Asset) { return a.kind === "png" || a.kind === "jpg" || a.kind === "gif"; }
 function isAudioAsset(a: Asset) { return a.kind === "mp3" || a.kind === "wav"; }
 function isVideoAsset(a: Asset) { return a.kind === "mp4"; }
 function assetDisplayName(asset: Asset) {
