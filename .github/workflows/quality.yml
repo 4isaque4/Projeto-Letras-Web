@@ -15,9 +15,12 @@ permissions:
 
 jobs:
   quality:
+    # O nome do job é o check obrigatório da branch protection — renomear
+    # exige atualizar a proteção no mesmo momento, senão o merge trava.
+    # Apesar do nome, hoje o gate cobre api, web e mobile.
     name: Web/API quality
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -44,3 +47,5 @@ jobs:
           # estas variáveis — valores dummy bastam para o gate.
           SUPABASE_URL: https://dummy.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: dummy-key
+          # O check agora inclui o export web do Expo (build:mobile:web).
+          EXPO_PUBLIC_API_URL: https://painel.letras.cloud/api/v1

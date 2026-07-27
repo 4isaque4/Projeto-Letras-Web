@@ -1,8 +1,8 @@
 # Deploy automático do painel (frontend Vite + API Express) em painel.letras.cloud.
 #
 # Dispara só depois que o Quality Gate terminar com sucesso na main (gate:
-# nunca publica código que falhou lint/typecheck/test/build), ou manualmente
-# (workflow_dispatch).
+# nunca publica código que falhou lint/typecheck/test/build), e apenas se a
+# área do painel/API mudou. Também roda sob demanda (workflow_dispatch).
 # Secrets necessários (Settings > Secrets and variables > Actions):
 #   DEPLOY_HOST          IP do VPS
 #   DEPLOY_USER          usuário SSH (root)
@@ -30,31 +30,52 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+
+      # workflow_run não aceita `paths`, então o filtro é feito aqui.
+      - name: Detectar mudancas relevantes
+        id: filtro
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only HEAD^ HEAD | grep -qE '^(apps/web/|apps/api/|packages/contracts/|tools/deploy/deploy_painel_ci\.py)'; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "Sem mudanca em apps/web, apps/api ou packages/contracts — deploy do painel dispensado."
+          fi
 
       - uses: pnpm/action-setup@v4
+        if: steps.filtro.outputs.deploy == 'true'
         with:
-          version: 10
+          version: 10.5.2
 
       - uses: actions/setup-node@v4
+        if: steps.filtro.outputs.deploy == 'true'
         with:
           node-version: 20
           cache: pnpm
 
       - name: Restaurar .env.production (gitignored)
+        if: steps.filtro.outputs.deploy == 'true'
         run: printf '%s' "$WEB_ENV_PRODUCTION" > apps/web/.env.production
         env:
           WEB_ENV_PRODUCTION: ${{ secrets.WEB_ENV_PRODUCTION }}
 
       - name: Instalar dependências
+        if: steps.filtro.outputs.deploy == 'true'
         run: pnpm install --no-frozen-lockfile
 
       - name: Build do painel web
-        run: pnpm --filter web build
+        if: steps.filtro.outputs.deploy == 'true'
+        run: pnpm --filter @letras/web build
 
       - name: Instalar paramiko
+        if: steps.filtro.outputs.deploy == 'true'
         run: pip install paramiko
 
       - name: Deploy no VPS
+        if: steps.filtro.outputs.deploy == 'true'
         run: python tools/deploy/deploy_painel_ci.py
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
