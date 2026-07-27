@@ -2,6 +2,7 @@
   "name": "projeto-letras-monorepo",
   "private": true,
   "version": "0.0.1",
+  "packageManager": "pnpm@10.5.2",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -13,13 +14,17 @@
     "dev:web": "pnpm --filter @letras/web dev",
     "dev:front": "pnpm run dev:web",
     "dev:api": "pnpm --filter @letras/api dev",
+    "dev:mobile": "pnpm --filter mobile-app start",
     "build": "pnpm --filter @letras/web build",
     "build:web": "pnpm --filter @letras/web build",
     "build:front": "pnpm run build:web",
+    "build:shared": "pnpm --filter @letras/shared-types build && pnpm --filter @letras/shared-utils build",
+    "build:mobile:web": "pnpm --filter mobile-app build:web",
+    "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm --filter @letras/api test",
-    "quality": "node tools/quality/check-production-env.mjs && node tools/quality/check-product-copy.mjs",
+    "quality": "node tools/quality/check-production-env.mjs && node tools/quality/check-mobile-env.mjs && node tools/quality/check-product-copy.mjs",
     "check:fast": "pnpm quality && pnpm test",
-    "check": "pnpm quality && pnpm test && pnpm build",
+    "check": "pnpm quality && pnpm build:shared && pnpm typecheck && pnpm test && pnpm build && pnpm build:mobile:web",
     "hooks:install": "node tools/quality/install-git-hooks.mjs",
     "review:uncommitted": "node tools/quality/codex-review.mjs --uncommitted",
     "review:commit": "node tools/quality/codex-review.mjs --commit",
@@ -34,6 +39,7 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "@sentry/cli",
       "@tailwindcss/oxide",
       "esbuild"
     ]
