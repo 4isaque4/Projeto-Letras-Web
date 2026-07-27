@@ -66,8 +66,13 @@ const MIME_BY_ASSET_KIND = {
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirPath = dirname(currentFilePath);
-const monorepoRootPath = resolve(currentDirPath, "..", "..", "..");
-const mobileRefRootPath = resolve(monorepoRootPath, "..", "letras-mobile-ref");
+// De apps/api/src/services ate a raiz do monorepo sao quatro niveis. Antes
+// eram tres, o que parava em apps/ — por isso os caminhos padrao de import
+// (manifest de blueprint e conteudos das telas) nunca resolviam.
+const monorepoRootPath = resolve(currentDirPath, "..", "..", "..", "..");
+// Os conteudos viviam no repositorio letras-mobile-ref ate a consolidacao;
+// agora vivem neste monorepo.
+const mobileRefRootPath = monorepoRootPath;
 const DEFAULT_BLUEPRINTS_MANIFEST_PATH = resolve(
   monorepoRootPath,
   "assets",
