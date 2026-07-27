@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const mobileExamplePath = resolve("apps/mobile-app/.env.example");
+const mobileExamplePath = resolve("apps/mobile/.env.example");
 const apiExamplePath = resolve("apps/api/.env.example");
 const expectedMobileApi = "https://painel.letras.cloud/api/v1";
 
@@ -26,7 +26,7 @@ function parseEnv(path) {
 const errors = [];
 
 if (!existsSync(mobileExamplePath)) {
-  errors.push("apps/mobile-app/.env.example nao existe.");
+  errors.push("apps/mobile/.env.example nao existe.");
 } else {
   const { values, duplicates } = parseEnv(mobileExamplePath);
   const actual = values.get("EXPO_PUBLIC_API_URL");
@@ -34,7 +34,7 @@ if (!existsSync(mobileExamplePath)) {
     errors.push(`EXPO_PUBLIC_API_URL deve ser ${expectedMobileApi}, mas esta ${actual || "(ausente)"}`);
   }
   if (duplicates.size > 0) {
-    errors.push(`Variaveis duplicadas em apps/mobile-app/.env.example: ${Array.from(duplicates).join(", ")}`);
+    errors.push(`Variaveis duplicadas em apps/mobile/.env.example: ${Array.from(duplicates).join(", ")}`);
   }
 }
 

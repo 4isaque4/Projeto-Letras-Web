@@ -7,7 +7,7 @@ credenciais via ambiente (GitHub Actions):
   DEPLOY_USER      usuário SSH
   DEPLOY_PASSWORD  senha SSH
 
-Pré-requisito: apps/mobile-app/dist-fresh-build já exportado (o workflow
+Pré-requisito: apps/mobile/dist-fresh-build já exportado (o workflow
 roda `expo export` antes).
 
 Sequência:
@@ -40,8 +40,8 @@ if not HOST or not PASS:
 
 TS = time.strftime("%Y%m%d-%H%M%S")
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-LOCAL_SOURCE = os.path.join(REPO_ROOT, "apps", "mobile-app", "dist-fresh-build")
-LOCAL_DEPLOY = os.path.join(REPO_ROOT, "apps", "mobile-app", "dist-deploy")
+LOCAL_SOURCE = os.path.join(REPO_ROOT, "apps", "mobile", "dist-fresh-build")
+LOCAL_DEPLOY = os.path.join(REPO_ROOT, "apps", "mobile", "dist-deploy")
 REMOTE_BASE = "/srv/letras-mobile-web"
 REMOTE_RELEASE_DIR = f"{REMOTE_BASE}/_releases/{TS}-mobile-web"
 
