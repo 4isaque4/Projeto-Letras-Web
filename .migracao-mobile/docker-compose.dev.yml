@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: letras-db-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: letras
+      POSTGRES_DB: letras
+    ports:
+      - "5434:5432"
+    volumes:
+      - letras_pgdata:/var/lib/postgresql/data
+
+volumes:
+  letras_pgdata:
+    name: letras_pgdata_local

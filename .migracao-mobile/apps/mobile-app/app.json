@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Letras",
+    "slug": "letras-mobile-app",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundColor": "#E6F4FE"
+      }
+    },
+    "web": {
+      "favicon": "./assets/logo-letras.png"
+    },
+    "plugins": [
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permitir acesso as fotos para enviar sua imagem.",
+          "cameraPermission": "Permitir acesso a camera para tirar sua foto."
+        }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "react-native",
+          "organization": "spin-xs"
+        }
+      ]
+    ]
+  }
+}

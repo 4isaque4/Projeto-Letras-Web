@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "incremental": true,
+    "types": ["node"]
+  },
+  "include": ["src", "prisma/seed.ts", "scripts"]
+}

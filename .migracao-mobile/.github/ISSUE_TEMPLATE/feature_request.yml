@@ -1,0 +1,35 @@
+name: Melhoria
+description: Solicitar melhoria ou nova capacidade
+title: "[Melhoria] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo
+      description: Que problema do alfabetizador ou alfabetizando isso resolve?
+    validations:
+      required: true
+  - type: textarea
+    id: escopo
+    attributes:
+      label: Escopo proposto
+      description: Descreva o que entra e o que fica fora.
+    validations:
+      required: true
+  - type: dropdown
+    id: mvp
+    attributes:
+      label: Recorte de MVP
+      options:
+        - MVP-1 base operacional
+        - MVP-2 ensino assistido
+        - MVP-3 avancado
+        - Ainda nao definido
+    validations:
+      required: true
+  - type: textarea
+    id: validacao
+    attributes:
+      label: Validacao esperada
+      description: Como saberemos que esta pronto?

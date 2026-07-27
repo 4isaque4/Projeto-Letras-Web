@@ -1,0 +1,443 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  directUrl         = env("DIRECT_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
+}
+
+enum SessionRole {
+  LEARNER
+  EDUCATOR
+}
+
+enum ActivityType {
+  READING
+  WRITING
+  MATCHING
+  SPEAKING
+}
+
+enum CompletionStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum TutorLearnerLinkStatus {
+  PENDING
+  CONFIRMED
+  DENIED
+}
+
+enum SessionRequestStatus {
+  PENDING
+  CONFIRMED
+  DENIED
+}
+
+enum ContentAssetKind {
+  IMAGE
+  VIDEO
+  AUDIO
+  SVG
+  OTHER
+}
+
+enum MobileBlueprintStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SyncEntityType {
+  TUTOR_LEARNER_LINK
+  THEME
+  LEARNING_UNIT
+  ACTIVITY
+  CONTENT_ASSET
+  MOBILE_BLUEPRINT
+  LEARNER_PROFILE
+  EDUCATOR
+}
+
+enum SyncAction {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  IMPORTED
+  PUBLISHED
+}
+
+enum EducatorScoreEventType {
+  STAGE_COMPLETE
+  ADVANCE_BONUS_1H
+  ADVANCE_BONUS_24H
+  ADVANCE_BONUS_3D
+  INACTIVITY_PENALTY
+}
+
+model Educator {
+  id        String           @id @default(cuid())
+  name      String
+  email     String?          @unique
+  supabaseAuthUserId String? @unique
+  cpf       String?          @unique
+  phoneDigits String?
+  birthDate String?
+  uf        String?
+  city      String?
+  photoUri  String?
+  educationLevel String?
+  trainingArea String?
+  linkedin  String?
+  facebook  String?
+  instagram String?
+  xHandle   String?
+  passwordHash String?
+  totalScore Int              @default(0)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  learners  LearnerProfile[]
+  authSessions EducatorAuthSession[]
+  tutorLearnerLinks TutorLearnerLink[] @relation("LinkEducator")
+  sessionRequests LearnerSessionRequest[]
+  createdAssets ContentAsset[] @relation("AssetCreator")
+  createdBlueprints MobileBlueprint[] @relation("BlueprintCreator")
+  blueprintManifestImports BlueprintManifestImport[] @relation("BlueprintImporter")
+  syncEvents SyncEvent[] @relation("SyncActor")
+  scoreEvents EducatorScoreEvent[]
+  tutorialProgress EducatorTutorialProgress[]
+  notifications Notification[] @relation("EducatorNotifications")
+}
+
+model EducatorAuthSession {
+  id        String    @id @default(cuid())
+  educatorId String
+  token     String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  educator  Educator  @relation(fields: [educatorId], references: [id], onDelete: Cascade)
+
+  @@index([educatorId])
+  @@index([expiresAt])
+}
+
+model LearnerProfile {
+  id           String         @id @default(cuid())
+  displayName  String
+  notes        String?
+  educatorId   String?
+  cpfOrPassport String?       @unique
+  phoneDigits   String?       @unique
+  birthDate     String?
+  uf            String?
+  city          String?
+  photoUri      String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  educator     Educator?      @relation(fields: [educatorId], references: [id], onDelete: SetNull)
+  learnerThemes LearnerTheme[]
+  session      LearnerSession?
+  completions  Completion[]
+  tutorLearnerLinks TutorLearnerLink[]
+  sessionRequests LearnerSessionRequest[]
+
+  @@index([educatorId])
+  @@index([uf, city])
+}
+
+model Theme {
+  id            String         @id @default(cuid())
+  name          String         @unique
+  description   String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  learnerProfiles LearnerTheme[]
+  learningUnits LearningUnit[]
+}
+
+model LearnerTheme {
+  learnerProfileId String
+  themeId          String
+  assignedAt       DateTime      @default(now())
+
+  learnerProfile   LearnerProfile @relation(fields: [learnerProfileId], references: [id], onDelete: Cascade)
+  theme            Theme          @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@id([learnerProfileId, themeId])
+  @@index([themeId])
+}
+
+model LearningUnit {
+  id          String      @id @default(cuid())
+  themeId     String
+  title       String
+  description String?
+  order       Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  theme       Theme       @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  activities  Activity[]
+
+  @@index([themeId, order])
+}
+
+model Activity {
+  id             String       @id @default(cuid())
+  learningUnitId String
+  title          String?
+  prompt         String
+  content        Json?
+  instructorGuidance String?
+  learnerGuidance String?
+  order          Int          @default(0)
+  type           ActivityType @default(READING)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  learningUnit   LearningUnit @relation(fields: [learningUnitId], references: [id], onDelete: Cascade)
+  completions    Completion[]
+  assets         ActivityAsset[]
+
+  @@index([learningUnitId, order])
+}
+
+model LearnerSession {
+  id               String       @id @default(cuid())
+  learnerProfileId String       @unique
+  deviceId         String
+  role             SessionRole  @default(LEARNER)
+  connectedAt      DateTime     @default(now())
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  learnerProfile   LearnerProfile @relation(fields: [learnerProfileId], references: [id], onDelete: Cascade)
+  sessionState     SessionState?
+}
+
+model SessionState {
+  id                String         @id @default(cuid())
+  sessionId         String         @unique
+  currentView       String         @default("home")
+  currentActivityId String?
+  statePayload      Json?
+  isLocked          Boolean        @default(false)
+  helpRequestedAt   DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  session           LearnerSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+
+model Completion {
+  id               String           @id @default(cuid())
+  learnerProfileId String
+  activityId       String
+  status           CompletionStatus @default(IN_PROGRESS)
+  score            Float?
+  elapsedSeconds   Int?
+  completedAt      DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  learnerProfile   LearnerProfile   @relation(fields: [learnerProfileId], references: [id], onDelete: Cascade)
+  activity         Activity         @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@unique([learnerProfileId, activityId])
+  @@index([activityId])
+}
+
+model TutorLearnerLink {
+  id               String                 @id @default(cuid())
+  educatorId       String
+  learnerProfileId String
+  status           TutorLearnerLinkStatus @default(PENDING)
+  requestedBy      String?
+  requestedAt      DateTime               @default(now())
+  decidedBy        String?
+  respondedAt      DateTime?
+  responseReason   String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  educator         Educator               @relation("LinkEducator", fields: [educatorId], references: [id], onDelete: Cascade)
+  learnerProfile   LearnerProfile         @relation(fields: [learnerProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([educatorId, learnerProfileId])
+  @@index([status, requestedAt])
+  @@index([learnerProfileId])
+}
+
+model ContentAsset {
+  id                  String           @id @default(cuid())
+  key                 String?          @unique
+  kind                ContentAssetKind
+  title               String
+  description         String?
+  sourceUrl           String
+  mimeType            String?
+  originalFileName    String?
+  bytes               Int?
+  durationSeconds     Int?
+  checksum            String?
+  tags                String[]         @default([])
+  createdByEducatorId String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  createdByEducator   Educator?        @relation("AssetCreator", fields: [createdByEducatorId], references: [id], onDelete: SetNull)
+  activityAssets      ActivityAsset[]
+  tutorialProgress    EducatorTutorialProgress[]
+
+  @@index([kind, createdAt])
+  @@index([createdByEducatorId])
+}
+
+model ActivityAsset {
+  id         String   @id @default(cuid())
+  activityId String
+  assetId    String
+  role       String?
+  createdAt  DateTime @default(now())
+
+  activity   Activity     @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  asset      ContentAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, assetId])
+  @@index([assetId])
+}
+
+model MobileBlueprint {
+  id                  String               @id @default(cuid())
+  name                String
+  description         String?
+  stage               Int?
+  screenType          String
+  layoutJson          Json
+  previewImageUrl     String?
+  status              MobileBlueprintStatus @default(DRAFT)
+  createdByEducatorId String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  createdByEducator   Educator?            @relation("BlueprintCreator", fields: [createdByEducatorId], references: [id], onDelete: SetNull)
+
+  @@index([stage, status])
+  @@index([createdAt])
+  @@index([createdByEducatorId])
+}
+
+model BlueprintManifestImport {
+  id                  String   @id @default(cuid())
+  sourceName          String?
+  importedCount       Int
+  manifestJson        Json
+  importedByEducatorId String?
+  createdAt           DateTime @default(now())
+
+  importedByEducator  Educator? @relation("BlueprintImporter", fields: [importedByEducatorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([importedByEducatorId])
+}
+
+model SyncEvent {
+  id             String       @id @default(cuid())
+  entityType     SyncEntityType
+  entityId       String
+  action         SyncAction
+  actorEducatorId String?
+  payload        Json?
+  createdAt      DateTime     @default(now())
+
+  actorEducator  Educator?    @relation("SyncActor", fields: [actorEducatorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([actorEducatorId])
+}
+
+model EducatorScoreEvent {
+  id          String                  @id @default(cuid())
+  educatorId  String
+  learnerId   String?
+  type        EducatorScoreEventType
+  delta       Int
+  description String?
+  createdAt   DateTime                @default(now())
+
+  educator    Educator                @relation(fields: [educatorId], references: [id], onDelete: Cascade)
+
+  @@index([educatorId, createdAt])
+  @@index([learnerId])
+}
+
+model EducatorTutorialProgress {
+  id          String    @id @default(cuid())
+  educatorId  String
+  assetId     String
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+  watchCount  Int       @default(0)
+  positionSec Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  educator    Educator     @relation(fields: [educatorId], references: [id], onDelete: Cascade)
+  asset       ContentAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([educatorId, assetId])
+  @@index([educatorId])
+  @@index([assetId])
+}
+
+model LearnerSessionRequest {
+  id               String               @id @default(cuid())
+  learnerProfileId String
+  educatorId       String
+  status           SessionRequestStatus @default(PENDING)
+  denialReason     String?
+  requestedAt      DateTime             @default(now())
+  respondedAt      DateTime?
+
+  learnerProfile   LearnerProfile       @relation(fields: [learnerProfileId], references: [id], onDelete: Cascade)
+  educator         Educator             @relation(fields: [educatorId], references: [id], onDelete: Cascade)
+
+  @@index([learnerProfileId])
+  @@index([educatorId, status])
+}
+
+enum NotificationType {
+  HELP_REQUEST
+  AUTO_LOCK
+  POINTS_EARNED
+  SUPPORT_DEADLINE
+  MILESTONE
+}
+
+model Notification {
+  id         String           @id @default(cuid())
+  educatorId String
+  learnerId  String?
+  type       NotificationType
+  title      String
+  body       String?
+  deadlineAt DateTime?
+  metadata   Json?
+  readAt     DateTime?
+  createdAt  DateTime         @default(now())
+
+  educator   Educator         @relation("EducatorNotifications", fields: [educatorId], references: [id], onDelete: Cascade)
+
+  @@index([educatorId, createdAt])
+  @@index([educatorId, readAt])
+}

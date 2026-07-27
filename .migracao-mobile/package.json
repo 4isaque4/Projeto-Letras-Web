@@ -1,0 +1,29 @@
+{
+  "name": "letras",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.5.2",
+  "scripts": {
+    "prepare": "node tools/quality/install-git-hooks.mjs",
+    "postinstall": "pnpm --filter api prisma:generate",
+    "dev": "pnpm -r --parallel dev",
+    "dev:mobile:local": "./scripts/dev-mobile-local.sh local",
+    "dev:mobile:emulator": "./scripts/dev-mobile-local.sh emulator",
+    "dev:mobile:tunnel": "./scripts/dev-mobile-local.sh tunnel",
+    "dev:mobile:web": "./scripts/dev-mobile-local.sh web",
+    "build": "pnpm -r build",
+    "build:mobile:web": "pnpm --filter mobile-app build:web",
+    "build:shared": "pnpm --filter @letras/shared-types build && pnpm --filter @letras/shared-utils build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "quality": "node tools/quality/check-mobile-env.mjs && node tools/quality/check-product-copy.mjs",
+    "check:fast": "pnpm quality && pnpm typecheck && pnpm lint",
+    "check": "pnpm quality && pnpm typecheck && pnpm lint && pnpm build && pnpm build:mobile:web",
+    "hooks:install": "node tools/quality/install-git-hooks.mjs",
+    "review:uncommitted": "node tools/quality/codex-review.mjs --uncommitted",
+    "review:commit": "node tools/quality/codex-review.mjs --commit",
+    "db:generate": "pnpm --filter api prisma:generate",
+    "db:migrate": "pnpm --filter api prisma:migrate",
+    "db:seed": "pnpm --filter api prisma:seed"
+  }
+}

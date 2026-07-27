@@ -1,0 +1,56 @@
+<svg width="393" height="852" viewBox="0 0 393 852" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="393" height="852" fill="#EDEDED"/>
+
+  <!-- Header -->
+  <rect x="28" y="58" width="88" height="44" rx="3" fill="#FFFFFF" stroke="#111111" stroke-width="2"/>
+  <text x="72" y="86" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#111111">Letras</text>
+
+  <g transform="translate(333,65)">
+    <path d="M10 2C5.6 2 2 5.6 2 10V15H0V17H20V15H18V10C18 5.6 14.4 2 10 2Z" fill="#111111"/>
+    <circle cx="16" cy="1" r="6" fill="#111111"/>
+    <text x="16" y="4.7" text-anchor="middle" font-family="Arial, sans-serif" font-size="6" font-weight="700" fill="#FFFFFF">1</text>
+  </g>
+
+  <!-- Intro -->
+  <text x="28" y="168" font-family="Arial, sans-serif" font-size="26" font-weight="600" fill="#161616">Entrar ou Cadastrar</text>
+  <text x="28" y="198" font-family="Arial, sans-serif" font-size="16" fill="#303030">Acesse sua conta de Educador para continuar.</text>
+
+  <!-- Segmented control -->
+  <rect x="28" y="232" width="337" height="52" rx="8" fill="#DFDFDF"/>
+  <rect x="34" y="238" width="162" height="40" rx="6" fill="#FFFFFF"/>
+  <text x="115" y="263" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#152A4A">Entrar</text>
+  <text x="278" y="263" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" font-weight="500" fill="#666666">Cadastrar</text>
+
+  <!-- Form -->
+  <text x="28" y="322" font-family="Arial, sans-serif" font-size="15" font-weight="500" fill="#171717">CPF *</text>
+  <rect x="28" y="334" width="337" height="44" rx="3" fill="#E4E4E4"/>
+  <text x="40" y="362" font-family="Arial, sans-serif" font-size="14" fill="#7A7A7A">Somente números (11 dígitos)</text>
+
+  <text x="28" y="420" font-family="Arial, sans-serif" font-size="15" font-weight="500" fill="#171717">Senha *</text>
+  <rect x="28" y="432" width="337" height="44" rx="3" fill="#E4E4E4"/>
+  <circle cx="46" cy="453" r="3" fill="#676767"/>
+  <circle cx="58" cy="453" r="3" fill="#676767"/>
+  <circle cx="70" cy="453" r="3" fill="#676767"/>
+  <circle cx="82" cy="453" r="3" fill="#676767"/>
+  <circle cx="94" cy="453" r="3" fill="#676767"/>
+  <circle cx="106" cy="453" r="3" fill="#676767"/>
+
+  <rect x="28" y="500" width="20" height="20" rx="3" fill="#FFFFFF" stroke="#8A8A8A"/>
+  <text x="58" y="515" font-family="Arial, sans-serif" font-size="14" fill="#333333">Lembrar de mim</text>
+
+  <text x="365" y="515" text-anchor="end" font-family="Arial, sans-serif" font-size="14" fill="#1E3A66">Esqueci senha</text>
+
+  <!-- Primary CTA -->
+  <rect x="28" y="552" width="337" height="52" rx="6" fill="#17335B"/>
+  <text x="196.5" y="584" text-anchor="middle" font-family="Arial, sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">ENTRAR</text>
+
+  <!-- Secondary CTA -->
+  <rect x="28" y="620" width="337" height="52" rx="6" fill="#EDEDED" stroke="#17335B" stroke-width="2"/>
+  <text x="196.5" y="651" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#17335B">CRIAR CONTA</text>
+
+  <text x="196.5" y="708" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" fill="#565656">Após entrar, seguimos para o onboarding.</text>
+
+  <!-- Bottom menu placeholder -->
+  <rect x="0" y="795" width="393" height="57" fill="#E6E6E6"/>
+  <line x1="0" y1="795.5" x2="393" y2="795.5" stroke="#D3D3D3"/>
+</svg>

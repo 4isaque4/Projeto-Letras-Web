@@ -1,0 +1,128 @@
+Fiz a auditoria cruzando 4 fontes: Figma, painel web local, API local e o repo real do mobile em ../letras-mobile-ref.
+
+Resumo honesto: o fluxo atual ainda não está correspondente ao fluxo completo do Figma. A parte de aula do alfabetizando existe parcialmente, mas o fluxo do alfabetizador no mobile está bem incompleto e há alguns problemas críticos de contrato entre painel, API e mobile.
+
+O Que Funciona
+
+
+O painel web tem CRUD de temas, módulos, aulas e mídia.
+
+O mobile real busca conteúdo publicado pelo painel via /painel/conteudo?scope=cms.
+
+O mobile real já renderiza vídeo, imagem, exercício de encontrar letra e exercício de escolher imagens.
+
+Existe estrutura de sessão, pedido de ajuda e bloqueio/desbloqueio.
+
+O painel tem fila, ranking, relatórios e acompanhamento em versão web.
+
+O editor web já permite montar aulas compostas com texto, imagem, áudio, vídeo e exercícios.
+
+
+Problemas Críticos
+
+
+Rascunhos aparecem no mobile
+
+A API retorna aulas do CMS sem filtrar is_published. O mobile chama isso aqui: learnerFlowData.ts (line 24)
+
+E a API lista tudo aqui: letrasDataService.js (line 1150).
+
+Isso significa que uma aula marcada como rascunho pode aparecer no app do alfabetizando.
+
+
+
+Progresso não é gravado ao concluir aula
+
+Existe endpoint de progresso no backend mobile, mas o app mobile não chama /progress ao avançar/concluir. Ele só sincroniza estado da sessão: LearnerLessonScreenView.tsx (line 271)
+
+Resultado: dashboard, ranking, etapa, conclusão e histórico ficam inconsistentes.
+
+
+
+Blocos de texto e áudio criados no editor não aparecem corretamente no mobile real
+
+O editor salva blocos text, image, audio, video, exercícios etc. Mas o renderer real do alfabetizando basicamente mostra título, mídia e exercício. learnerSpeech/educatorGuidance não são renderizados no corpo da tela: LearnerLessonScreenView.tsx (line 819)
+
+Além disso, o mapper reconhece videoUrl, imageUrl, mediaUrl, mas não usa audioUrl de bloco composto: learnerFlowMapper.ts (line 691).
+
+
+
+Exercício “escolher imagens” pode exigir quantidade errada
+
+O mobile usa expectedSelections e cai em 1 quando não vem configurado. O editor hoje salva as imagens corretas, mas não necessariamente salva quantas devem ser selecionadas. Então um exercício com Elefante + Escorpião pode liberar com só 1 resposta correta.
+
+
+
+As telas do Figma da Etapa 1 são mais ricas que o mobile atual
+
+No Figma, a tela de aula tem: nome do alfabetizando, “Tela N de NN”, orientação para alfabetizador, vídeo grande, expandir vídeo, voltar/avançar, bloco “Está com dúvidas?” com tutorial, menu inferior. No mobile atual, progresso existe mas está com display: 'none': LearnerLessonScreenView.tsx (line 930).
+
+
+
+Realtime no painel local está quebrado
+
+No Playwright, o painel acusou WebSocket ws://localhost:8082/ws com 404. A topbar fica “Desconectado”. A API Express atual não expõe /ws, embora o contrato realtime diga que isso é necessário.
+
+
+
+Telas/Funções Do Figma Que Faltam
+
+
+Home do alfabetizador “não assistiu tutoriais”.
+
+Home do alfabetizador “assistiu tutoriais”, com pedidos de apoio/bloqueio, novo alfabetizando, lista, busca, telefone e WhatsApp.
+
+Tutorial de apoio com player e controle de conclusão.
+
+Cadastro de alfabetizando no mobile conforme Figma.
+
+Fluxo real de vínculo alfabetizador ↔ alfabetizando.
+
+Tela de acompanhar/status por etapa.
+
+Pontuação mobile do alfabetizador.
+
+Tela de cálculo/regras de pontuação.
+
+Notificações clicáveis.
+
+Tela de bloqueio/apoio com ação clara para ligar/WhatsApp.
+
+Conclusões de etapa com selo, compartilhamento e avanço para próxima etapa.
+
+Fluxo real de perfil completo, com persistência e validações equivalentes ao Figma.
+
+
+O Que Está Errado No Fluxo Do Alfabetizador
+
+O navigator mobile do alfabetizador só tem login, cadastro/perfil/onboarding e uma tela EducatorLearningMode: EducatorNavigator.tsx (line 14)
+
+A tela de pontuação no menu inferior volta para a própria tela de modo: EducatorLearningModeView.tsx (line 165)
+
+Os grupos são estado local/mockado, não fluxo persistido: EducatorLearningModeView.tsx (line 22).
+
+O Que Está Errado No Fluxo Do Alfabetizando
+
+
+O app começa com AppModeGate, uma tela técnica de escolher modo, que não parece ser tela final de produto.
+
+O alfabetizando é provisionado automaticamente/localmente quando não há backend, em vez de passar pelo fluxo de CPF/passaporte/telefone e vínculo: learner-session-repository.impl.ts (line 109).
+
+Menus tutorial, pontuação, perfil no layout do alfabetizando navegam para home.
+
+A aula funciona parcialmente, mas ainda não representa fielmente a tela Figma de Etapa 1.
+
+A conclusão mostra +50 pontos fixo e 1 de 1 aulas, não cálculo real.
+
+
+Prioridade Recomendada
+
+Corrigir publicação: mobile só deve consumir is_published=true e módulos/temas ativos.
+Unificar schema de aula entre editor web e mobile real, incluindo text, image, audio, video, exercise-match-letter, exercise-mark-images.
+Fazer o mobile gravar progresso real em /progress ao iniciar, avançar e concluir.
+Corrigir expectedSelections no exercício de escolher imagens.
+Implementar a tela de aula mobile fiel ao Figma: nome do alfabetizando, tela N de NN, orientação, mídia, tutorial de dúvida e botões originais.
+Completar fluxo do alfabetizador: tutoriais obrigatórios, home, cadastro de alfabetizando, pedidos de apoio/bloqueio, pontuação e perfil.
+Ativar realtime /ws ou ajustar env para o endpoint correto.
+
+Também bati no limite do Figma MCP depois de puxar metadados gerais e telas-chave, mas consegui validar os frames principais de Home do alfabetizador e Tela de Aula modelo vídeo.

@@ -1,0 +1,44 @@
+name: Bug
+description: Reportar erro ou regressao do Letras mobile/API
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto
+      description: Onde aconteceu e qual perfil foi afetado?
+    validations:
+      required: true
+  - type: textarea
+    id: passos
+    attributes:
+      label: Passos para reproduzir
+      placeholder: "1. Abrir...\n2. Tocar...\n3. Observar..."
+    validations:
+      required: true
+  - type: textarea
+    id: esperado
+    attributes:
+      label: Comportamento esperado
+    validations:
+      required: true
+  - type: textarea
+    id: evidencias
+    attributes:
+      label: Evidencias
+      description: Prints, logs, links de PR/commit ou mensagens de erro.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Mobile alfabetizando
+        - Mobile alfabetizador
+        - API
+        - Supabase/migrations
+        - Integracao web-mobile
+        - Realtime/sync
+        - Outro
+    validations:
+      required: true
