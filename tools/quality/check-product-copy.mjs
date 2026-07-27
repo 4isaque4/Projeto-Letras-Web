@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
 
-const roots = ["apps/mobile-app/src", "apps/web/src"];
+const roots = ["apps/mobile-app/src"];
 const allowedExtensions = new Set([".tsx", ".jsx"]);
 const ignoredDirs = new Set(["node_modules", "dist", "build", "coverage"]);
 const forbiddenPatterns = [

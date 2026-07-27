@@ -11,7 +11,6 @@
     "dev:mobile:emulator": "./scripts/dev-mobile-local.sh emulator",
     "dev:mobile:tunnel": "./scripts/dev-mobile-local.sh tunnel",
     "dev:mobile:web": "./scripts/dev-mobile-local.sh web",
-    "dev:web": "pnpm --filter web dev",
     "build": "pnpm -r build",
     "build:mobile:web": "pnpm --filter mobile-app build:web",
     "build:shared": "pnpm --filter @letras/shared-types build && pnpm --filter @letras/shared-utils build",
