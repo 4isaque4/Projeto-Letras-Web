@@ -117,13 +117,16 @@ function ExpandIcon() {
 function SoundWaveIcon({
   large = false,
   active = false,
+  disabled = false,
 }: {
   large?: boolean;
   active?: boolean;
+  disabled?: boolean;
 }) {
-  // Verde escuro quando o audio esta tocando (ou e o audio principal,
-  // sempre destacado). Verde claro indica "tocavel mas inativo".
-  const color = large || active ? "#2fa536" : "#9be39f";
+  // Verde escuro = liberado para ouvir (tocando ou apenas disponivel); o
+  // audio principal (large) esta sempre disponivel. Verde claro = ainda
+  // bloqueado pela trava progressiva (RN: so libera apos o item anterior).
+  const color = large || active || !disabled ? "#2fa536" : "#9be39f";
   const strokeWidth = large ? 4.5 : 4;
   return (
     <Svg
@@ -220,7 +223,7 @@ function SpeakerButton({
         disabled ? styles.audioBtnDisabled : null,
       ]}
     >
-      <SoundWaveIcon large={large} active={active} />
+      <SoundWaveIcon large={large} active={active} disabled={disabled} />
     </Pressable>
   );
 }
@@ -557,6 +560,14 @@ function LoadedLearnerLessonScreenView({
             setPlayingAudioKey((current) =>
               current === audioKey ? null : current,
             );
+            // Sem áudio de instrução configurado, a fala do navegador é o
+            // "áudio principal" — precisa marcar o gate igual ao caminho do
+            // expo-av abaixo, senão exercícios sem instructionAudioUrl nunca
+            // liberavam os áudios individuais das palavras (era isso que
+            // motivou o "sempre disponíveis" de antes).
+            if (audioKey.startsWith("instruction-")) {
+              setInstructionAudioPlayed(true);
+            }
           });
           if (spoke && audioKey) {
             setPlayingAudioKey(audioKey);
@@ -1332,17 +1343,27 @@ function LoadedLearnerLessonScreenView({
             />
           </View>
 
-          {screen.exercise.items.map((item, itemIndex) => {
+          {screen.exercise.items.map((item, itemIndex, matchItems) => {
             const isCompleted = completedMatchSet.has(item.id);
             const isWrongFlash = matchWrongIds.includes(item.id);
             const selectedLetter = matchSelectedOptions[item.id];
             const word = String(item.label || "").toUpperCase();
             const wordLetters = word.split("").filter(Boolean);
             const audioUrl = item.wordAudioUrl || item.audioUrl;
-            // Áudios individuais sempre disponíveis (salvo tela travada).
-            // O gate que exigia ouvir a instrução antes deixava os desenhos
-            // mudos quando o áudio principal não era tocado/registrado.
-            const isWordAudioEnabled = !isInteractionLocked;
+            // Trava didática pedida no relatório de bugs: o primeiro áudio só
+            // libera (verde escuro) depois que o áudio/fala de instrução
+            // principal terminar; cada áudio seguinte só libera depois que o
+            // item anterior for respondido corretamente. O bug antigo (todas
+            // as palavras mudas) era o gate de instrução nunca marcar
+            // instructionAudioPlayed quando a tela usava a fala do navegador
+            // em vez de um áudio real — corrigido acima, em playAudioUrl.
+            const previousItem =
+              itemIndex > 0 ? matchItems[itemIndex - 1] : null;
+            const isWordAudioEnabled =
+              !isInteractionLocked &&
+              (previousItem
+                ? completedMatchSet.has(previousItem.id)
+                : instructionAudioPlayed);
 
             return (
               <View key={item.id} style={styles.matchItem}>
@@ -2207,19 +2228,22 @@ const styles = StyleSheet.create({
     gap: 22,
   },
   matchImageWrap: {
-    width: 54,
-    height: 46,
+    // Igualado ao tamanho do exercicio "marcar imagens" (markItemImage,
+    // 78x78) — 54x46 ficava pequeno demais pra reconhecer no celular
+    // (relatado como bug).
+    width: 78,
+    height: 78,
     position: "relative",
     alignItems: "center",
     justifyContent: "center",
   },
   matchItemImage: {
-    width: 54,
-    height: 46,
+    width: 78,
+    height: 78,
   },
   matchItemImageFallback: {
-    width: 48,
-    height: 42,
+    width: 72,
+    height: 72,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: learnerTheme.border,
