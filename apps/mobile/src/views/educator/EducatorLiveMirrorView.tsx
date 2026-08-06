@@ -195,6 +195,25 @@ export function EducatorLiveMirrorView({ navigation, route }: Props) {
           >
             <Text style={styles.dataLinkText}>DADOS DO ALFABETIZANDO →</Text>
           </Pressable>
+
+          {/* Sem isto não havia nenhum caminho no app para rever/refazer a
+              Etapa 1 depois que o espelhamento libera — só digitando a URL
+              direto. Reaproveita o runner (mesma tela usada durante a
+              condução original), que já suporta reabrir aulas concluídas. */}
+          <Pressable
+            style={styles.dataLink}
+            onPress={() =>
+              learnerId &&
+              navigation.navigate('EducatorEtapa1Lessons', {
+                learnerId,
+                learnerName: route.params?.learnerName,
+                educatorId,
+              })
+            }
+            accessibilityRole="button"
+          >
+            <Text style={styles.dataLinkText}>REVER ETAPA 1 →</Text>
+          </Pressable>
         </View>
       </ScrollView>
 
