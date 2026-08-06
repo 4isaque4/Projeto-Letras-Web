@@ -459,34 +459,61 @@ export function useLearnerHomeViewModel(options: LearnerHomeViewModelOptions = {
     return () => subscription.remove();
   }, [learnerProfileId, drainOutbox]);
 
-  return {
-    loading,
-    errorMessage,
-    learnerProfileId,
-    themeId: overrideThemeId ?? null,
-    learnerName,
-    deviceId,
-    themeNames,
-    isLocked: polledIsLocked,
-    presence: realtime.presence,
-    helpAcknowledgedAt: realtime.helpAcknowledgedAt,
-    helpRequestedAt,
-    // Ajuda pendente = pediu ajuda e ainda nao recebeu o ack (help_received).
-    // Quando o educator destrava, helpAcknowledgedAt > helpRequestedAt e a
-    // UI volta ao estado normal do botao "PEDIR AJUDA".
-    isHelpPending: Boolean(
-      helpRequestedAt &&
-        (!realtime.helpAcknowledgedAt || realtime.helpAcknowledgedAt < helpRequestedAt),
-    ),
-    // Runner da Etapa 1 (educador conduzindo no próprio celular): o alfabetizador
-    // está ao lado, então os exercícios não travam por tentativas erradas.
-    isEducatorConducted,
-    initialize,
-    cleanup,
-    syncCurrentState,
-    requestHelp,
-    recordProgress,
-    drainOutbox,
-    setSessionLocked,
-  };
+  // Memoizado: sem isto, o objeto retornado muda de identidade a cada
+  // render (mesmo sem nenhum campo relevante mudar), e todo `useFocusEffect`
+  // que o tem como dependência (ex.: LearnerLessonScreenView) reexecuta o
+  // sync de progresso repetidamente na mesma tela em vez de só ao focar.
+  return useMemo(
+    () => ({
+      loading,
+      errorMessage,
+      learnerProfileId,
+      themeId: overrideThemeId ?? null,
+      learnerName,
+      deviceId,
+      themeNames,
+      isLocked: polledIsLocked,
+      presence: realtime.presence,
+      helpAcknowledgedAt: realtime.helpAcknowledgedAt,
+      helpRequestedAt,
+      // Ajuda pendente = pediu ajuda e ainda nao recebeu o ack (help_received).
+      // Quando o educator destrava, helpAcknowledgedAt > helpRequestedAt e a
+      // UI volta ao estado normal do botao "PEDIR AJUDA".
+      isHelpPending: Boolean(
+        helpRequestedAt &&
+          (!realtime.helpAcknowledgedAt || realtime.helpAcknowledgedAt < helpRequestedAt),
+      ),
+      // Runner da Etapa 1 (educador conduzindo no próprio celular): o alfabetizador
+      // está ao lado, então os exercícios não travam por tentativas erradas.
+      isEducatorConducted,
+      initialize,
+      cleanup,
+      syncCurrentState,
+      requestHelp,
+      recordProgress,
+      drainOutbox,
+      setSessionLocked,
+    }),
+    [
+      loading,
+      errorMessage,
+      learnerProfileId,
+      overrideThemeId,
+      learnerName,
+      deviceId,
+      themeNames,
+      polledIsLocked,
+      realtime.presence,
+      realtime.helpAcknowledgedAt,
+      helpRequestedAt,
+      isEducatorConducted,
+      initialize,
+      cleanup,
+      syncCurrentState,
+      requestHelp,
+      recordProgress,
+      drainOutbox,
+      setSessionLocked,
+    ],
+  );
 }
