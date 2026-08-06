@@ -322,7 +322,9 @@ export function useLearnerHomeViewModel(options: LearnerHomeViewModelOptions = {
       // complete` (que exige a aula atribuída) não conclui e o alfabetizando
       // ficava refazendo o mesmo exercício para sempre.
       const completeViaCanonicalProgress = async (): Promise<LessonCompletionResult | null> => {
-        const result = await httpClient.post<{ stageCompleted?: unknown }>('/painel/progress', {
+        const result = await httpClient.post<{
+          stageCompleted?: { points?: number } | null;
+        }>('/painel/progress', {
           learnerProfileId,
           activityId: canonicalActivityId,
           status: 'COMPLETED',
@@ -330,7 +332,14 @@ export function useLearnerHomeViewModel(options: LearnerHomeViewModelOptions = {
           ...(typeof elapsedSeconds === 'number' ? { elapsedSeconds } : {}),
           ...(typeof attempts === 'number' ? { attempts } : {}),
         });
-        return { lessonCompleted: true, stageCompleted: Boolean(result?.stageCompleted) };
+        // `points` só vem quando ESTA gravação fechou a etapa (o backend
+        // deduplica); é o valor que a celebração da etapa exibe.
+        const stagePoints = result?.stageCompleted?.points;
+        return {
+          lessonCompleted: true,
+          stageCompleted: Boolean(result?.stageCompleted),
+          ...(typeof stagePoints === 'number' ? { totalPoints: stagePoints } : {}),
+        };
       };
 
       try {

@@ -2281,7 +2281,18 @@ async function maybeCreditStageCompletion({ studentId, activityId }) {
     }),
   );
 
-  return { studentId: normalizedStudentId, tutorId, themeId, stageNumber };
+  // `points` viaja junto porque a tela de celebração da etapa (RN048) precisa
+  // dizer quantos pontos o alfabetizador acumulou. Sem isto ela caía no
+  // fallback `/painel/score/<alfabetizando>`, que lê learner_score_events — e
+  // a conclusão de etapa credita educator_score_events (do TUTOR), então a
+  // tela sempre exibia "acumulou 0 pontos".
+  return {
+    studentId: normalizedStudentId,
+    tutorId,
+    themeId,
+    stageNumber,
+    points: STAGE_COMPLETION_POINTS[stageNumber],
+  };
 }
 
 // RN085: bônus por avanço do alfabetizando após o gatilho mais recente de

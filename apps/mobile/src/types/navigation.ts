@@ -168,6 +168,9 @@ export type LearnerRootStackParamList = {
     // conclusão — que chega depois e sempre vê o dedupe. Sem carregar o
     // sinal para cá, a celebração da etapa (RN048) nunca aparecia.
     stageCompleted?: boolean;
+    // Pontos creditados ao alfabetizador por fechar a etapa, na mesma carona
+    // (a celebração exibe "acumulou NN pontos").
+    stagePoints?: number;
   };
   // Fase 2 (RN113/RN114): revisão da foto da atividade feita no papel —
   // FAZER OUTRA FOTO / ENVIAR FOTO; kind 'carta' reusa a tela para a carta

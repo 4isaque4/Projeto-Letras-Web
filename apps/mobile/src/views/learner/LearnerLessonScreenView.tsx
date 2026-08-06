@@ -1010,6 +1010,7 @@ function LoadedLearnerLessonScreenView({
       moduleLabel,
       moduleTitle,
       stageCompleted: completion?.stageCompleted === true,
+      stagePoints: completion?.totalPoints,
     });
   };
 

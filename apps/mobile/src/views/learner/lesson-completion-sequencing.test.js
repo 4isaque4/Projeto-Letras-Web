@@ -56,9 +56,11 @@ test("a tela de conclusão aceita o sinal de etapa vindo da última tela", async
     "utf8",
   );
 
+  // Tolerante a formatação (a desestruturação pode quebrar em várias linhas):
+  // exige apenas o alias e que ele venha de route.params.
   assert.match(
     conclusionSource,
-    /stageCompleted: stageCompletedFromScreen\s*\}\s*=\s*route\.params/,
+    /stageCompleted: stageCompletedFromScreen[\s\S]{0,200}?=\s*route\.params/,
     "a conclusão deve ler stageCompleted dos params da rota",
   );
 
@@ -68,5 +70,32 @@ test("a tela de conclusão aceita o sinal de etapa vindo da última tela", async
     conclusionSource,
     /stageCompletedFromScreen === true \|\| result\?\.stageCompleted === true/,
     "a conclusão deve considerar o sinal da última tela, não só o retorno local",
+  );
+});
+
+// Os pontos da etapa seguem o mesmo caminho do sinal: sem carona, a celebração
+// caía no fallback `/painel/score/<alfabetizando>`, que le learner_score_events
+// — mas a conclusao de etapa credita educator_score_events (do TUTOR). Dava
+// sempre "acumulou 0 pontos".
+test("os pontos da etapa viajam da última tela até a celebração", async () => {
+  const screenSource = await readFile(
+    new URL("./LearnerLessonScreenView.tsx", import.meta.url),
+    "utf8",
+  );
+  const conclusionSource = await readFile(
+    new URL("./LearnerLessonConclusionView.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    screenSource,
+    /navigation\.push\("LearnerLessonConclusion",\s*\{[\s\S]*?stagePoints: completion\?\.totalPoints/,
+    "goNextDefault deve repassar stagePoints",
+  );
+
+  assert.match(
+    conclusionSource,
+    /pointsEarned:\s*[\s\S]{0,80}?stagePointsFromScreen \?\?/,
+    "a celebração deve priorizar os pontos vindos da última tela",
   );
 });

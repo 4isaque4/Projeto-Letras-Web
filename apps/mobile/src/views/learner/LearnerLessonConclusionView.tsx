@@ -16,7 +16,12 @@ type Props = NativeStackScreenProps<LearnerRootStackParamList, 'LearnerLessonCon
 const TRANSITION_DELAY_MS = 1500;
 
 export function LearnerLessonConclusionView({ navigation, route }: Props) {
-  const { moduleId, lessonId, stageCompleted: stageCompletedFromScreen } = route.params;
+  const {
+    moduleId,
+    lessonId,
+    stageCompleted: stageCompletedFromScreen,
+    stagePoints: stagePointsFromScreen,
+  } = route.params;
   const { getLesson } = useLearnerFlowData();
   const learnerSession = useLearnerSession();
   const lesson = getLesson(moduleId, lessonId);
@@ -34,12 +39,15 @@ export function LearnerLessonConclusionView({ navigation, route }: Props) {
       navigation.replace('LearnerStageConclusion', {
         stageNumber: lesson.stageNumber,
         stageTitle: `Etapa ${lesson.stageNumber}`,
-        pointsEarned: completionResultRef.current?.totalPoints,
+        // Mesma lógica do sinal de conclusão: os pontos vêm com a gravação da
+        // última tela; a regravação daqui volta deduplicada e sem pontos.
+        pointsEarned:
+          stagePointsFromScreen ?? completionResultRef.current?.totalPoints,
       });
       return;
     }
     navigation.navigate('LearnerHome');
-  }, [lesson, navigation]);
+  }, [lesson, navigation, stagePointsFromScreen]);
 
   useFocusEffect(useCallback(() => {
     let cancelled = false;
