@@ -972,7 +972,12 @@ function LoadedLearnerLessonScreenView({
   };
 
   const goNextDefault = async () => {
-    await learnerSession.recordProgress({
+    // O resultado importa: se esta gravação foi a que fechou a etapa, o
+    // backend sinaliza `stageCompleted` AQUI e só aqui (dedupe por etapa em
+    // recordEducatorScoreEvent). Descartar isso fazia a celebração da etapa
+    // (RN048) nunca aparecer, porque a tela de conclusão refaz a gravação e
+    // sempre recebe o dedupe.
+    const completion = await learnerSession.recordProgress({
       activityId: screen.id,
       status: "COMPLETED",
     });
@@ -1004,6 +1009,7 @@ function LoadedLearnerLessonScreenView({
       lessonId,
       moduleLabel,
       moduleTitle,
+      stageCompleted: completion?.stageCompleted === true,
     });
   };
 

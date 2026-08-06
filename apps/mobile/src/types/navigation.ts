@@ -161,6 +161,13 @@ export type LearnerRootStackParamList = {
     lessonId: string;
     moduleLabel: string;
     moduleTitle: string;
+    // Sinal de "esta aula fechou a etapa", vindo da ÚLTIMA tela da aula. O
+    // backend só sinaliza a conclusão de etapa UMA vez (dedupe por
+    // `stage:<tutor>:<aluno>:<etapa>` em recordEducatorScoreEvent); quem
+    // recebe esse sinal é a gravação da última tela, não a da tela de
+    // conclusão — que chega depois e sempre vê o dedupe. Sem carregar o
+    // sinal para cá, a celebração da etapa (RN048) nunca aparecia.
+    stageCompleted?: boolean;
   };
   // Fase 2 (RN113/RN114): revisão da foto da atividade feita no papel —
   // FAZER OUTRA FOTO / ENVIAR FOTO; kind 'carta' reusa a tela para a carta

@@ -10,10 +10,13 @@ import { useLearnerSession } from './learnerSessionContext';
 import type { LessonCompletionResult } from './learnerAccessPolicy.js';
 
 type Props = NativeStackScreenProps<LearnerRootStackParamList, 'LearnerLessonConclusion'>;
-const TRANSITION_DELAY_MS = 700;
+// Tempo que o "Aula concluída!" fica na tela antes de voltar à lista. 700ms
+// (valor anterior) contava a partir do fim da gravação e passava batido — o
+// alfabetizador relatou não ver confirmação nenhuma ao terminar o exercício.
+const TRANSITION_DELAY_MS = 1500;
 
 export function LearnerLessonConclusionView({ navigation, route }: Props) {
-  const { moduleId, lessonId } = route.params;
+  const { moduleId, lessonId, stageCompleted: stageCompletedFromScreen } = route.params;
   const { getLesson } = useLearnerFlowData();
   const learnerSession = useLearnerSession();
   const lesson = getLesson(moduleId, lessonId);
@@ -62,8 +65,14 @@ export function LearnerLessonConclusionView({ navigation, route }: Props) {
       if (cancelled) return;
       completionResultRef.current = result;
       setIsSaved(true);
+      // `stageCompletedFromScreen` vem da última tela da aula, que é quem
+      // recebe o sinal fresco do backend; o `result` daqui é a segunda
+      // gravação da mesma etapa e sempre volta deduplicado (stageCompleted
+      // false). Qualquer um dos dois sendo verdadeiro fecha a etapa.
+      const didCompleteStage =
+        stageCompletedFromScreen === true || result?.stageCompleted === true;
       navigationTimeoutRef.current = setTimeout(
-        () => resolveNextStep(result?.stageCompleted === true),
+        () => resolveNextStep(didCompleteStage),
         TRANSITION_DELAY_MS,
       );
     };
@@ -83,7 +92,7 @@ export function LearnerLessonConclusionView({ navigation, route }: Props) {
       if (navigationTimeoutRef.current) clearTimeout(navigationTimeoutRef.current);
       navigationTimeoutRef.current = null;
     };
-  }, [learnerSession, lesson, lessonId, moduleId, resolveNextStep]));
+  }, [learnerSession, lesson, lessonId, moduleId, resolveNextStep, stageCompletedFromScreen]));
 
   if (!lesson) {
     return <LearnerScreenLayout activeMenu="inicio" onMenuHome={() => navigation.navigate('LearnerHome')}><Text style={styles.error}>Conclusão indisponível.</Text></LearnerScreenLayout>;
