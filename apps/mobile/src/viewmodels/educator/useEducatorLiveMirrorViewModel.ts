@@ -86,9 +86,18 @@ export function useEducatorLiveMirrorViewModel(params: {
       setColdIsLocked(Boolean(state?.isLocked));
       setColdUpdatedAt(state?.updatedAt ?? session?.updatedAt ?? null);
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : 'Não foi possível carregar a última tela registrada.',
-      );
+      const message = error instanceof Error ? error.message : '';
+      // 404 aqui significa "este alfabetizando ainda não abriu uma sessão
+      // própria" (comum: Etapa 1 foi conduzida pelo educador, sem sessão
+      // real criada) — estado normal coberto pelo empty state "Sem tela
+      // registrada ainda.", não um erro para mostrar ao alfabetizador.
+      if (/^Request failed \(404\)/.test(message)) {
+        setColdSnapshot(null);
+        setColdIsLocked(false);
+        setColdUpdatedAt(null);
+      } else {
+        setErrorMessage(message || 'Não foi possível carregar a última tela registrada.');
+      }
     } finally {
       setLoading(false);
     }
