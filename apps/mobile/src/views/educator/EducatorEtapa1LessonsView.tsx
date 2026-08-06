@@ -35,8 +35,17 @@ import { LearnerStageConclusionView } from '../learner/LearnerStageConclusionVie
 import { LearnerPhotoReviewView } from '../learner/LearnerPhotoReviewView';
 import {
   EducatorEtapa1AberturaScreen,
+  EducatorEtapa1OrientacoesScreen,
   EtapaIntroMenu,
 } from './EducatorEtapa1IntroViews';
+import { LearnerHintVideoOverlay } from '../learner/components/LearnerHintVideoOverlay';
+
+// Vídeo de referência para o card "Tutorial da Etapa 1" na tela de
+// Orientações — o vídeo real dessa etapa ainda não existe no painel
+// (relatado no report de bugs); usamos o tutorial de boas-vindas como
+// placeholder até existir uma origem própria por etapa.
+const ETAPA1_TUTORIAL_PLACEHOLDER_URL =
+  'https://wfyjprjjhmcejovfozug.supabase.co/storage/v1/object/public/cms-videos/media-library/LETRAS-01.mp4';
 
 type Props = NativeStackScreenProps<EducatorRootStackParamList, 'EducatorEtapa1Lessons'>;
 
@@ -367,18 +376,22 @@ export function EducatorEtapa1LessonsView({ navigation, route }: Props) {
   // ponto salvo antes de a retomada conseguir lê-lo.
   const visitedLessonRef = useRef(false);
 
-  // Entrada da Etapa 1: Tela de Abertura → aula. A tela de "Orientações"
-  // (texto + card "Tutorial da Etapa 1") era conteúdo FIXO no código, não vinha
-  // do painel — removida por decisão do Israel (2026-07-23) até existir uma
-  // origem real para esse vídeo por etapa. `null` = ainda lendo a posição
-  // salva: quem já estava no meio de uma aula pula a abertura e retoma direto.
-  const [introStep, setIntroStep] = useState<'abertura' | 'done' | null>(null);
+  // Entrada da Etapa 1: Orientações → Tela de Abertura → aula. A tela de
+  // "Orientações" (texto + card "Tutorial da Etapa 1") tinha sido removida em
+  // 2026-07-23 por não ter vídeo real; restaurada a pedido do relatório de bugs
+  // (report cita a tela pelo nome do Figma e pede a correção completa) — o
+  // vídeo passa a ser um placeholder (ver ETAPA1_TUTORIAL_PLACEHOLDER_URL) até
+  // existir um vídeo próprio por etapa, e assisti-lo não é obrigatório. `null`
+  // = ainda lendo a posição salva: quem já estava no meio de uma aula pula
+  // direto as duas telas de entrada e retoma de onde parou.
+  const [introStep, setIntroStep] = useState<'orientacoes' | 'abertura' | 'done' | null>(null);
+  const [showOrientacoesVideo, setShowOrientacoesVideo] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       const pos = await getEtapa1Position(learnerId);
-      if (!cancelled) setIntroStep(pos ? 'done' : 'abertura');
+      if (!cancelled) setIntroStep(pos ? 'done' : 'orientacoes');
     })();
     return () => {
       cancelled = true;
@@ -451,13 +464,33 @@ export function EducatorEtapa1LessonsView({ navigation, route }: Props) {
     );
   }
 
+  if (introStep === 'orientacoes') {
+    return (
+      <>
+        <EducatorEtapa1OrientacoesScreen
+          educatorId={educatorId}
+          menu={introMenu}
+          onIniciar={() => setIntroStep('abertura')}
+          onAbrirTutorial={() => setShowOrientacoesVideo(true)}
+        />
+        {showOrientacoesVideo ? (
+          <LearnerHintVideoOverlay
+            videoUrl={ETAPA1_TUTORIAL_PLACEHOLDER_URL}
+            title="Tutorial da Etapa 1"
+            onClose={() => setShowOrientacoesVideo(false)}
+          />
+        ) : null}
+      </>
+    );
+  }
+
   if (introStep === 'abertura') {
     return (
       <EducatorEtapa1AberturaScreen
         educatorId={educatorId}
         learnerName={effectiveName ?? 'Alfabetizando'}
         menu={introMenu}
-        onVoltar={exitToHome}
+        onVoltar={() => setIntroStep('orientacoes')}
         onAvancar={() => setIntroStep('done')}
       />
     );
