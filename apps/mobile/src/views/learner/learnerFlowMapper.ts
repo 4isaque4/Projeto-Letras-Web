@@ -990,6 +990,33 @@ function mergeEducatorTextIntoFollowingBlock(
     }
   }
 
+  // Texto educator-only no FINAL da lista (depois do ultimo bloco nao-educador,
+  // ex.: instrucao de "escreva a letra no quadro" apos a imagem) nao tem um
+  // proximo bloco pra herdar — sem isto ele era descartado e a tela virava so
+  // a imagem, sem nenhuma orientacao (relatado como bug: "criei uma aula com
+  // textos antes e depois da imagem e so apareceu a imagem"). Anexa ao final
+  // das notes da ultima tela em vez de perder o conteudo.
+  if (pendingNotes.length > 0) {
+    if (result.length > 0) {
+      const last = result[result.length - 1];
+      const existingNotes = toOptionalText(last.notes);
+      result[result.length - 1] = {
+        ...last,
+        notes: existingNotes
+          ? `${existingNotes}\n\n${pendingNotes.join("\n\n")}`
+          : pendingNotes.join("\n\n"),
+      };
+    } else {
+      result.push({
+        id: "trailing-educator-notes",
+        type: "text",
+        audience: "learner",
+        content: "",
+        notes: pendingNotes.join("\n\n"),
+      });
+    }
+  }
+
   return result;
 }
 
