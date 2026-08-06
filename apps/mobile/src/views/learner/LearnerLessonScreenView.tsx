@@ -341,6 +341,11 @@ function LoadedLearnerLessonScreenView({
   const { moduleId, lessonId, screenIndex, moduleLabel, moduleTitle } =
     route.params;
   const learnerSession = useLearnerSession();
+  // Etapas 2 e 3: o ALUNO navega sozinho e o app fala por ele. Na Etapa 1 o
+  // alfabetizador conduz e LÊ o conteúdo em voz alta (card de texto visível) —
+  // precisa vir cedo aqui porque o autoplay de narração logo abaixo depende
+  // dele para não tocar áudio que ninguém pediu numa tela conduzida.
+  const isLearnerDriven = (lesson.stageNumber ?? 1) >= 2;
   const wrongSelectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -784,9 +789,12 @@ function LoadedLearnerLessonScreenView({
     stopCurrentAudio,
   ]);
 
-  // Autoplay narração quando tela muda (texto vira áudio para o alfabetizando)
+  // Autoplay narração quando tela muda (texto vira áudio para o alfabetizando).
+  // Restrito à Etapa 2+: na Etapa 1 o alfabetizador está lendo o card de texto
+  // em voz alta (ver textContentCard) — um áudio automático por cima disso é
+  // ruído que ninguém pediu (relatado como bug).
   useEffect(() => {
-    if (screen.exercise) return;
+    if (screen.exercise || !isLearnerDriven) return;
     const text = screen.learnerSpeech;
     const audioUrl = screen.narrationAudioUrl;
     if (!text && !audioUrl) return;
@@ -1532,7 +1540,7 @@ function LoadedLearnerLessonScreenView({
   // Alfabetizando"): só logo, alto-falante verde grande, card de conteúdo,
   // AVANÇAR verde preenchida e botão amarelo PRECISO DE AJUDA. Sem textos,
   // sem box de orientação (que é da visão do educador na Etapa 1).
-  const isLearnerDriven = (lesson.stageNumber ?? 1) >= 2;
+  // (isLearnerDriven é calculado mais acima, perto do topo do componente.)
   const usesMinimalChrome = isExerciseScreen || isLearnerDriven;
 
   return (
