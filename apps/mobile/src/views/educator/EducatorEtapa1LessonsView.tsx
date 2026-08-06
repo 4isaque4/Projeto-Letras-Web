@@ -79,7 +79,7 @@ function Etapa1LessonListScreen({
   navigation,
 }: NativeStackScreenProps<LearnerRootStackParamList, 'LearnerHome'>) {
   const runner = useRunner();
-  const { modules, loading, progressLoading, error, completedLessonIds, refresh, firstStage } =
+  const { modules, loading, error, completedLessonIds, refresh, firstStage } =
     useLearnerFlowData();
 
   // Reforça progresso atualizado sempre que a lista ganha foco (voltar de uma
@@ -110,77 +110,14 @@ function Etapa1LessonListScreen({
     [modules, runner.themeId, firstStage],
   );
 
-  // Fila da trilha: a próxima aula a conduzir é a primeira não concluída (as
-  // aulas já vêm na ordem da trilha do painel); se todas estiverem concluídas,
-  // não há o que abrir e a lista fica visível com os ✓.
-  const nextLesson = useMemo(() => {
-    for (const moduleItem of etapa1Modules) {
-      const index = moduleItem.lessons.findIndex(
-        (lesson) => !completedLessonIds.has(lesson.progressId),
-      );
-      if (index >= 0) return { moduleItem, lesson: moduleItem.lessons[index], index };
-    }
-    return null;
-  }, [etapa1Modules, completedLessonIds]);
-
-  // Entrada direta na aula (one-shot por montagem do runner). Fiel ao Figma
-  // ("Alfabetizador Online"): a tela de abertura leva direto para a Tela 1 do
-  // exercício, sem lista de módulos como ponto de escolha — a lista fica só
-  // como alvo do VOLTAR e da conclusão de aula. Se havia uma aula em
-  // andamento, retoma exatamente onde parou; senão, abre a próxima da fila
-  // já na 1ª tela (sem passar pela tela de intro da aula, que repetia a de
-  // abertura).
-  const openedRef = useRef(false);
-  useEffect(() => {
-    // `progressLoading` cobre a busca de completedLessonIds em si (ver
-    // learnerFlowData.ts): sem esperar por ele, esta decisão poderia usar o
-    // progresso da rodada anterior e reabrir uma aula que acabou de fechar.
-    if (openedRef.current || loading || progressLoading) return;
-    let cancelled = false;
-    void (async () => {
-      const pos = await getEtapa1Position(runner.learnerId);
-      if (cancelled || openedRef.current) return;
-      const p = (pos?.params ?? {}) as {
-        moduleId?: string;
-        lessonId?: string;
-        moduleLabel?: string;
-        moduleTitle?: string;
-        screenIndex?: number;
-      };
-      // Só retoma uma posição que ainda existe na Etapa 1 deste tema — posição
-      // velha (outro tema, aula despublicada) cairia em "Conteúdo não encontrado".
-      const saved =
-        p.moduleId && p.lessonId
-          ? etapa1Modules
-              .find((m) => m.id === p.moduleId)
-              ?.lessons.find((l) => l.id === p.lessonId)
-          : undefined;
-      if (saved) {
-        openedRef.current = true;
-        navigation.navigate('LearnerLessonScreen', {
-          moduleId: p.moduleId!,
-          lessonId: p.lessonId!,
-          moduleLabel: p.moduleLabel ?? saved.moduleLabel,
-          moduleTitle: p.moduleTitle ?? '',
-          screenIndex: typeof p.screenIndex === 'number' ? p.screenIndex : 0,
-        });
-        return;
-      }
-      if (!nextLesson) return;
-      openedRef.current = true;
-      navigation.navigate('LearnerLessonScreen', {
-        moduleId: nextLesson.moduleItem.id,
-        lessonId: nextLesson.lesson.id,
-        moduleLabel: nextLesson.lesson.moduleLabel,
-        moduleTitle: nextLesson.moduleItem.title,
-        screenIndex: 0,
-      });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [navigation, runner.learnerId, loading, progressLoading, etapa1Modules, nextLesson]);
-
+  // A lista de aulas é sempre o ponto de entrada da Etapa 1: o alfabetizador
+  // escolhe qual aula conduzir. Já existiu aqui uma "entrada direta" que
+  // navegava sozinha para a Tela 1 do exercício (o Figma desenha a Etapa 1
+  // como sequência linear, sem tela de escolha), mas ela tirava do
+  // alfabetizador a visão do que já foi feito e do que vem a seguir —
+  // removida por decisão do Isaque (2026-08-06), que prevalece sobre o
+  // protótipo. `saveEtapa1Position` segue gravando a posição — quem volta no
+  // meio de uma aula pula as telas de Orientações/Abertura e cai direto aqui.
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
