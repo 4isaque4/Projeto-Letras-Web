@@ -3772,12 +3772,34 @@ export async function createLearningActivity({
 
   await ensureModuleExists(normalizedModuleId);
 
+  // Sem sortOrder explicito, o default sempre foi 0 — toda aula nova empatava
+  // com as demais (a maioria do conteudo real nunca informa sortOrder) e a
+  // ordem de exibicao virava um desempate por id (aleatorio), nao a ordem de
+  // criacao (relatado como bug: "criei a letra U hoje e outra letra dias
+  // atras" e a nova nao ficou por ultimo). Sem sortOrder informado, calcula
+  // a proxima posicao (max atual do modulo + 1) para a aula nova sempre cair
+  // no fim da trilha por padrao.
+  let resolvedSortOrder = normalizeInteger(sortOrder, Number.NaN);
+  if (!Number.isFinite(resolvedSortOrder)) {
+    const { data: lastActivity, error: lastActivityError } = await client
+      .from("learning_activities")
+      .select("sort_order")
+      .eq("module_id", normalizedModuleId)
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastActivityError) {
+      throw new HttpError(400, `Falha ao calcular posicao da atividade: ${lastActivityError.message}`);
+    }
+    resolvedSortOrder = normalizeInteger(lastActivity?.sort_order, -1) + 1;
+  }
+
   const payload = {
     module_id: normalizedModuleId,
     type: normalizedType,
     title: normalizedTitle,
     instructions: normalizeNullableText(instructions),
-    sort_order: normalizeInteger(sortOrder, 0),
+    sort_order: resolvedSortOrder,
     is_published: normalizeBoolean(isPublished, false),
   };
 
