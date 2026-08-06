@@ -397,7 +397,12 @@ export function useConteudoData() {
           title: input.title,
           type: input.type,
           instructions: input.instructions || undefined,
-          sortOrder: toInt(input.sortOrder ?? 0, 0),
+          // Sem sortOrder explicito (fluxo normal de "nova aula"), deixa o
+          // servico calcular a proxima posicao (fim da trilha) — enviar 0
+          // aqui fazia toda aula nova empatar em sort_order=0 com as demais
+          // e a ordem virar um desempate por id (bug: "a ultima tela criada"
+          // nao ficava por ultimo).
+          sortOrder: input.sortOrder === undefined ? undefined : toInt(input.sortOrder, 0),
           isPublished: Boolean(input.isPublished),
         })) as Activity;
 

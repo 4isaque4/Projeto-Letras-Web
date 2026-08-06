@@ -95,7 +95,34 @@ interface CompositeMarkBlock {
   exercise: { items: MarkImageItem[] };
 }
 
-type CompositeBlock = CompositeVideoBlock | CompositeMatchBlock | CompositeMarkBlock;
+// Blocos livres do schema letras-stage2-v1 (ver LessonBlockEditor/mobile
+// learnerFlowMapper) — nomes de campo diferentes do V2Block (content/imageUrl/
+// caption/label em vez de url/caption unificados).
+interface CompositeTextBlock {
+  type: "text";
+  content: string;
+  audience?: "educator" | "learner" | "both" | "tutor" | "alfabetizador";
+}
+
+interface CompositeImageBlock {
+  type: "image" | "gif";
+  imageUrl: string | null;
+  caption?: string | null;
+}
+
+interface CompositeAudioBlock {
+  type: "audio";
+  audioUrl: string | null;
+  label?: string | null;
+}
+
+type CompositeBlock =
+  | CompositeVideoBlock
+  | CompositeMatchBlock
+  | CompositeMarkBlock
+  | CompositeTextBlock
+  | CompositeImageBlock
+  | CompositeAudioBlock;
 
 interface CompositeInstructions {
   screenTemplate: "composite";
@@ -401,6 +428,63 @@ function VideoBlockView({
   );
 }
 
+// Blocos livres (text/image/gif/audio) do schema letras-stage2-v1 — mesma
+// origem de dados real usada pelo app mobile (learnerFlowMapper.ts). O preview
+// não os desenhava (só video/match-letter/mark-images), então qualquer aula
+// composta majoritariamente por texto e imagem — a maioria do conteúdo real —
+// aparecia em branco ("o preview não está funcionando").
+function CompositeTextView({ block }: { block: CompositeTextBlock }) {
+  const audience = String(block.audience ?? "").trim().toLowerCase();
+  const audienceLabel =
+    audience === "educator" || audience === "tutor" || audience === "alfabetizador"
+      ? "Alfabetizador"
+      : audience === "learner"
+        ? "Alfabetizando"
+        : null;
+  return (
+    <div
+      className={`rounded border px-4 py-3 text-sm ${
+        audienceLabel === "Alfabetizador"
+          ? "border-blue-200 bg-blue-50 text-blue-900"
+          : audienceLabel === "Alfabetizando"
+            ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+            : "border-slate-200 bg-slate-50 text-slate-700"
+      }`}
+    >
+      {audienceLabel && (
+        <p className="mb-1 text-[10px] font-semibold uppercase opacity-60">{audienceLabel}</p>
+      )}
+      <p className="whitespace-pre-wrap leading-relaxed">{block.content}</p>
+    </div>
+  );
+}
+
+function CompositeImageView({ block }: { block: CompositeImageBlock }) {
+  const url = toUrl(block.imageUrl);
+  return (
+    <div className="overflow-hidden rounded border border-slate-200 bg-white">
+      {url ? (
+        <img src={url} alt={block.caption ?? ""} className="mx-auto max-h-56 object-contain" />
+      ) : (
+        <div className="flex h-32 items-center justify-center bg-slate-100">
+          <ImageIcon className="h-6 w-6 text-slate-300" />
+        </div>
+      )}
+      {block.caption && <p className="px-3 py-2 text-center text-xs text-slate-500">{block.caption}</p>}
+    </div>
+  );
+}
+
+function CompositeAudioView({ block }: { block: CompositeAudioBlock }) {
+  const url = toUrl(block.audioUrl);
+  return (
+    <div className="flex items-center gap-3 rounded border border-teal-200 bg-teal-50 px-4 py-3">
+      <PreviewSoundButton src={url} />
+      <span className="text-sm text-teal-800">{block.label || "Áudio"}</span>
+    </div>
+  );
+}
+
 function V2BlocksView({ blocks }: { blocks: V2Block[] }) {
   return (
     <div className="space-y-4">
@@ -531,6 +615,15 @@ function RenderInstructions({ parsed }: { parsed: ParsedInstructions }) {
       <div className="space-y-4">
         {(parsed as CompositeInstructions).blocks.map((block, index) => (
           <div key={index}>
+            {block.type === "text" ? (
+              <CompositeTextView block={block as CompositeTextBlock} />
+            ) : null}
+            {block.type === "image" || block.type === "gif" ? (
+              <CompositeImageView block={block as CompositeImageBlock} />
+            ) : null}
+            {block.type === "audio" ? (
+              <CompositeAudioView block={block as CompositeAudioBlock} />
+            ) : null}
             {block.type === "video" ? (
               <VideoBlockView
                 videoUrl={(block as CompositeVideoBlock).videoUrl}
