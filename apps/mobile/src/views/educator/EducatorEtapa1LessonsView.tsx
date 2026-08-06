@@ -114,11 +114,13 @@ function Etapa1LessonListScreen({
     return null;
   }, [etapa1Modules, completedLessonIds]);
 
-  // Entrada direta na aula (one-shot por montagem do runner). O alfabetizador
-  // veio da tela de abertura e espera cair no exercício — a lista fica só como
-  // alvo do VOLTAR e da conclusão de aula. Se havia uma aula em andamento,
-  // retoma exatamente onde parou; senão, abre a próxima da fila já na 1ª tela
-  // (sem passar pela tela de intro da aula, que repetia a de abertura).
+  // Entrada direta na aula (one-shot por montagem do runner). Fiel ao Figma
+  // ("Alfabetizador Online"): a tela de abertura leva direto para a Tela 1 do
+  // exercício, sem lista de módulos como ponto de escolha — a lista fica só
+  // como alvo do VOLTAR e da conclusão de aula. Se havia uma aula em
+  // andamento, retoma exatamente onde parou; senão, abre a próxima da fila
+  // já na 1ª tela (sem passar pela tela de intro da aula, que repetia a de
+  // abertura).
   const openedRef = useRef(false);
   useEffect(() => {
     // `progressLoading` cobre a busca de completedLessonIds em si (ver

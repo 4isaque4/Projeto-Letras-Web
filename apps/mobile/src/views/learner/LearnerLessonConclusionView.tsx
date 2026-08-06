@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
@@ -20,6 +20,10 @@ export function LearnerLessonConclusionView({ navigation, route }: Props) {
   const completedRecordedRef = useRef<string | null>(null);
   const completionResultRef = useRef<LessonCompletionResult | null>(null);
   const navigationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Sem isto a tela só mostrava um spinner de carregamento e voltava direto
+  // para a lista — sem nenhuma confirmação visual de que a aula concluiu
+  // (a celebração com pontos só existe quando a ETAPA inteira fecha, RN048).
+  const [isSaved, setIsSaved] = useState(false);
 
   const resolveNextStep = useCallback((stageCompleted: boolean) => {
     if (!lesson) { navigation.navigate('LearnerHome'); return; }
@@ -57,6 +61,7 @@ export function LearnerLessonConclusionView({ navigation, route }: Props) {
     const scheduleNavigation = (result: LessonCompletionResult | null) => {
       if (cancelled) return;
       completionResultRef.current = result;
+      setIsSaved(true);
       navigationTimeoutRef.current = setTimeout(
         () => resolveNextStep(result?.stageCompleted === true),
         TRANSITION_DELAY_MS,
@@ -84,11 +89,41 @@ export function LearnerLessonConclusionView({ navigation, route }: Props) {
     return <LearnerScreenLayout activeMenu="inicio" onMenuHome={() => navigation.navigate('LearnerHome')}><Text style={styles.error}>Conclusão indisponível.</Text></LearnerScreenLayout>;
   }
 
-  return <LearnerScreenLayout minimalChrome><View style={styles.wrapper}><ActivityIndicator color={learnerTheme.primary} size="large" /><Text style={styles.message}>Registrando a conclusão da aula...</Text></View></LearnerScreenLayout>;
+  return (
+    <LearnerScreenLayout minimalChrome>
+      <View style={styles.wrapper}>
+        {isSaved ? (
+          <>
+            <View style={styles.checkCircle}>
+              <Text style={styles.checkMark}>✓</Text>
+            </View>
+            <Text style={styles.messageSuccess}>Aula concluída!</Text>
+          </>
+        ) : (
+          <>
+            <ActivityIndicator color={learnerTheme.primary} size="large" />
+            <Text style={styles.message}>Registrando a conclusão da aula...</Text>
+          </>
+        )}
+      </View>
+    </LearnerScreenLayout>
+  );
 }
 
 const styles = StyleSheet.create({
   wrapper: { marginTop: 120, alignItems: 'center', gap: 14 },
   message: { color: learnerTheme.text, fontSize: 14 },
+  messageSuccess: { color: learnerTheme.successText, fontSize: 16, fontWeight: '700' },
+  checkCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: learnerTheme.successBg,
+    borderWidth: 2,
+    borderColor: learnerTheme.successBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkMark: { color: learnerTheme.successText, fontSize: 28, fontWeight: '800' },
   error: { color: learnerTheme.danger, fontSize: 14 },
 });
