@@ -932,21 +932,65 @@ function getCompositeBlocks(
   }
 
   // Blocos marcados como audience=educator sao orientacoes para o alfabetizador
-  // e nao devem virar telas do fluxo do alfabetizando.
-  const filtered = blocks.filter((block): block is Record<string, unknown> => {
-    if (!block || typeof block !== "object" || Array.isArray(block))
-      return false;
-    const audience = String((block as Record<string, unknown>).audience ?? "")
+  // e nao devem virar telas do fluxo do alfabetizando — mas o texto deles nao
+  // pode ser descartado antes de mergeEducatorTextIntoFollowingBlock rodar,
+  // senao ela nunca ve esse conteudo (a ordem aqui importa).
+  const validBlocks = blocks.filter(
+    (block): block is Record<string, unknown> =>
+      Boolean(block) && typeof block === "object" && !Array.isArray(block),
+  );
+
+  return mergeAudioIntoFollowingExercise(
+    mergeEducatorTextIntoFollowingBlock(validBlocks),
+  );
+}
+
+// Blocos de texto audience=educator (ex.: "Leia o seguinte para o
+// alfabetizando:") viravam orientacao do alfabetizador no Figma, mas o filtro
+// acima simplesmente os descartava — sem nenhum lugar pra esse texto ir, o
+// mapeamento do bloco seguinte caia no fallback de educatorGuidance
+// (instructionText), que e o MESMO texto de learnerSpeech, duplicando a
+// orientacao na tela do alfabetizando. Aqui a gente acumula o texto desses
+// blocos e injeta como `notes` (prioridade maxima de educatorGuidance) no
+// proximo bloco nao-educador, em vez de jogar fora.
+function mergeEducatorTextIntoFollowingBlock(
+  blocks: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const result: Record<string, unknown>[] = [];
+  let pendingNotes: string[] = [];
+
+  for (const block of blocks) {
+    const audience = String(block.audience ?? "")
       .trim()
       .toLowerCase();
-    return (
-      audience !== "educator" &&
-      audience !== "tutor" &&
-      audience !== "alfabetizador"
-    );
-  });
+    const isEducatorOnly =
+      audience === "educator" ||
+      audience === "tutor" ||
+      audience === "alfabetizador";
+    if (isEducatorOnly) {
+      const blockType = String(block.type ?? "")
+        .trim()
+        .toLowerCase();
+      if (blockType === "text") {
+        const text = toOptionalText(block.content);
+        if (text) pendingNotes.push(text);
+      }
+      continue;
+    }
 
-  return mergeAudioIntoFollowingExercise(filtered);
+    if (pendingNotes.length > 0) {
+      const existingNotes = toOptionalText(block.notes);
+      result.push({
+        ...block,
+        notes: existingNotes || pendingNotes.join("\n\n"),
+      });
+      pendingNotes = [];
+    } else {
+      result.push(block);
+    }
+  }
+
+  return result;
 }
 
 function buildBlockExercisePayload(
