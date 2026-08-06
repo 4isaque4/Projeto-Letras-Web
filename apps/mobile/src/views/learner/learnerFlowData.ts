@@ -197,6 +197,12 @@ export function useLearnerFlowData() {
   const [loading, setLoading] = useState(cachedModules === null);
   const [error, setError] = useState<string | null>(null);
   const [completedLessonIds, setCompletedLessonIds] = useState<Set<string>>(new Set());
+  // Distinto de `loading` (que só cobre o catálogo de módulos, cacheado): cobre
+  // a busca de progresso em si. Quem decide "qual aula abrir automaticamente"
+  // (runner da Etapa 1) precisa esperar por este flag também — senão decide
+  // com `completedLessonIds` da rodada anterior e reabre uma aula que acabou
+  // de ser concluída.
+  const [progressLoading, setProgressLoading] = useState(true);
   // Override autoritativo do painel (quando o endpoint stage-status responde);
   // null = usar apenas o rollup local.
   const [remoteRollup, setRemoteRollup] = useState<StageRollup | null>(null);
@@ -245,36 +251,43 @@ export function useLearnerFlowData() {
     }
 
     if (learnerProfileId && !learnerProfileId.startsWith('learner-local-profile-')) {
-      const ids = await fetchCompletedProgressIds(learnerProfileId);
-      setCompletedLessonIds(ids);
+      setProgressLoading(true);
+      try {
+        const ids = await fetchCompletedProgressIds(learnerProfileId);
+        setCompletedLessonIds(ids);
 
-      // Status autoritativo do painel para o tema do alfabetizando: prioriza o
-      // tema da sessão (runner do educador injeta o tema atribuído ao aluno).
-      // Cada LearnerFlowModule.id é o id do tema; a jornada é travada em um tema,
-      // então sem tema na sessão usamos o primeiro presente. Falha/404 → mantém
-      // só o rollup local (fallback).
-      const themeId = sessionThemeId ?? activeModules[0]?.id ?? null;
-      if (themeId) {
-        const status = await fetchStageStatus(learnerProfileId, themeId);
-        setRemoteRollup(
-          status
-            ? {
-                unlockedStages: new Set(
-                  status.stages.filter((s) => s.unlocked).map((s) => s.stageNumber),
-                ),
-                currentStage: status.currentStageNumber,
-                etapa1Completed: status.etapa1Completed,
-                // Menor etapa-entidade (inclui uma Etapa 1 vazia, que não aparece
-                // nos módulos/conteúdo) — fonte da verdade do "quem é a Etapa 1".
-                firstStage: status.stages.length
-                  ? Math.min(...status.stages.map((s) => s.stageNumber))
-                  : 1,
-              }
-            : null,
-        );
-      } else {
-        setRemoteRollup(null);
+        // Status autoritativo do painel para o tema do alfabetizando: prioriza o
+        // tema da sessão (runner do educador injeta o tema atribuído ao aluno).
+        // Cada LearnerFlowModule.id é o id do tema; a jornada é travada em um tema,
+        // então sem tema na sessão usamos o primeiro presente. Falha/404 → mantém
+        // só o rollup local (fallback).
+        const themeId = sessionThemeId ?? activeModules[0]?.id ?? null;
+        if (themeId) {
+          const status = await fetchStageStatus(learnerProfileId, themeId);
+          setRemoteRollup(
+            status
+              ? {
+                  unlockedStages: new Set(
+                    status.stages.filter((s) => s.unlocked).map((s) => s.stageNumber),
+                  ),
+                  currentStage: status.currentStageNumber,
+                  etapa1Completed: status.etapa1Completed,
+                  // Menor etapa-entidade (inclui uma Etapa 1 vazia, que não aparece
+                  // nos módulos/conteúdo) — fonte da verdade do "quem é a Etapa 1".
+                  firstStage: status.stages.length
+                    ? Math.min(...status.stages.map((s) => s.stageNumber))
+                    : 1,
+                }
+              : null,
+          );
+        } else {
+          setRemoteRollup(null);
+        }
+      } finally {
+        setProgressLoading(false);
       }
+    } else {
+      setProgressLoading(false);
     }
   }, [learnerProfileId, sessionThemeId, skipAccessCatalog]);
 
@@ -305,6 +318,7 @@ export function useLearnerFlowData() {
     modules,
     etapa1IntroVideoUrl,
     loading,
+    progressLoading,
     error,
     completedLessonIds,
     refresh: load,

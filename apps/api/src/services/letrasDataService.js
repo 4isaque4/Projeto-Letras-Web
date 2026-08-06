@@ -5565,6 +5565,30 @@ export async function upsertActivityProgressFromMobile({
 
   const normalizedLockReason = normalizeNullableText(lockReason);
 
+  // Nunca deixa um IN_PROGRESS (ou LOCKED) sobrescrever uma atividade ja
+  // concluida. Sem esta guarda, o foco de uma tela seguinte do mesmo
+  // exercicio composto (ou uma reentrada indevida na aula) reabre
+  // "em_andamento" o que o aluno ja tinha terminado, e a aula nunca fecha
+  // do ponto de vista de quem acompanha o progresso.
+  if (mappedStatus !== "concluido") {
+    const { data: existing } = await client
+      .from("activity_progress")
+      .select(
+        "id, student_id, activity_id, status, attempts, score, source_platform, last_interacted_at, completed_at, metadata, created_at, updated_at",
+      )
+      .eq("student_id", normalizedLearnerId)
+      .eq("activity_id", normalizedActivityId)
+      .maybeSingle();
+
+    if (existing?.status === "concluido") {
+      return {
+        skipped: true,
+        reason: "Atividade ja concluida; gravacao de status anterior ignorada.",
+        progress: existing,
+      };
+    }
+  }
+
   const nowIso = new Date().toISOString();
   const payload = {
     student_id: normalizedLearnerId,

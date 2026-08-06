@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   NativeStackScreenProps,
   createNativeStackNavigator,
@@ -69,7 +70,18 @@ function Etapa1LessonListScreen({
   navigation,
 }: NativeStackScreenProps<LearnerRootStackParamList, 'LearnerHome'>) {
   const runner = useRunner();
-  const { modules, loading, error, completedLessonIds, refresh, firstStage } = useLearnerFlowData();
+  const { modules, loading, progressLoading, error, completedLessonIds, refresh, firstStage } =
+    useLearnerFlowData();
+
+  // Reforça progresso atualizado sempre que a lista ganha foco (voltar de uma
+  // aula recém-concluída, ou reabrir este alfabetizando do zero): sem isto,
+  // `completedLessonIds` fica com o snapshot do momento em que a lista montou
+  // e a aula que acabou de fechar ainda aparece como pendente.
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
 
   // A "Etapa 1" conduzida pelo educador = menor etapa-ENTIDADE do tema (mesma
   // fonte da verdade do painel), não a menor etapa com conteúdo. Assim, se a
@@ -109,7 +121,10 @@ function Etapa1LessonListScreen({
   // (sem passar pela tela de intro da aula, que repetia a de abertura).
   const openedRef = useRef(false);
   useEffect(() => {
-    if (openedRef.current || loading) return;
+    // `progressLoading` cobre a busca de completedLessonIds em si (ver
+    // learnerFlowData.ts): sem esperar por ele, esta decisão poderia usar o
+    // progresso da rodada anterior e reabrir uma aula que acabou de fechar.
+    if (openedRef.current || loading || progressLoading) return;
     let cancelled = false;
     void (async () => {
       const pos = await getEtapa1Position(runner.learnerId);
@@ -153,7 +168,7 @@ function Etapa1LessonListScreen({
     return () => {
       cancelled = true;
     };
-  }, [navigation, runner.learnerId, loading, etapa1Modules, nextLesson]);
+  }, [navigation, runner.learnerId, loading, progressLoading, etapa1Modules, nextLesson]);
 
   return (
     <SafeAreaView style={styles.safe}>

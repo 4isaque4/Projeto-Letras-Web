@@ -205,6 +205,33 @@ describe("mobile-web support and lock contracts", () => {
     );
   });
 
+  it("never lets IN_PROGRESS downgrade an activity already marked concluido", async () => {
+    const supabase = createProgressSupabase({
+      activity_progress: [
+        {
+          id: "progress-1",
+          student_id: STUDENT_ID,
+          activity_id: ACTIVITY_ID,
+          status: "concluido",
+          completed_at: "2026-05-14T10:00:00.000Z",
+          metadata: {},
+        },
+      ],
+    });
+    __setSupabaseAdminForTests(supabase);
+
+    const result = await upsertActivityProgressFromMobile({
+      learnerProfileId: STUDENT_ID,
+      activityId: ACTIVITY_ID,
+      status: "IN_PROGRESS",
+    });
+
+    assert.equal(result.skipped, true);
+    assert.equal(result.progress.status, "concluido");
+    assert.equal(supabase.rows("activity_progress")[0].status, "concluido");
+    assert.equal(supabase.rows("activity_progress")[0].completed_at, "2026-05-14T10:00:00.000Z");
+  });
+
   it("deletes a mobile-only educator even when its id is UUID-shaped", async () => {
     const mobileEducatorId = "44444444-4444-4444-8444-444444444444";
     const supabase = new FakeSupabase({
