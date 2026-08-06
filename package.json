@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "prepare": "node tools/quality/install-git-hooks.mjs",
-    "dev": "concurrently -k -n web,api -c cyan,magenta \"pnpm --filter @letras/web dev\" \"pnpm --filter @letras/api dev\"",
+    "dev": "concurrently -k -n web,api,mobile -c cyan,magenta,green \"pnpm --filter @letras/web dev\" \"pnpm --filter @letras/api dev\" \"pnpm --filter @letras/mobile start\"",
     "dev:local": "pnpm dev",
     "dev:web": "pnpm --filter @letras/web dev",
     "dev:front": "pnpm run dev:web",
