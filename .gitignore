@@ -39,3 +39,8 @@ Thumbs.db
 *.mov
 *.mp4
 docs/insumos/design-etapa1/fotos-etapa-1-referencia/
+
+# Saídas do export do Expo (o bundle web passa de 2 MB)
+apps/mobile/dist-web-check/
+apps/mobile/dist-fresh-build/
+apps/mobile/dist-deploy/

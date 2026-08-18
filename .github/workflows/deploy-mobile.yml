@@ -1,0 +1,79 @@
+# Deploy automático do app mobile (Expo web) em mobile.letras.cloud.
+#
+# Dispara só depois que o Quality Gate terminar com sucesso na main (gate:
+# nunca publica código que falhou lint/typecheck/test/build), e apenas se a
+# área do mobile mudou. Também roda sob demanda (workflow_dispatch).
+# Secrets necessários (Settings > Secrets and variables > Actions):
+#   DEPLOY_HOST      IP do VPS
+#   DEPLOY_USER      usuário SSH (root)
+#   DEPLOY_PASSWORD  senha SSH
+name: Deploy mobile web
+
+on:
+  workflow_run:
+    workflows: ["Quality Gate"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-mobile
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+
+      # workflow_run não aceita `paths`, então o filtro é feito aqui.
+      - name: Detectar mudancas relevantes
+        id: filtro
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          elif git diff --name-only HEAD^ HEAD | grep -qE '^(apps/mobile/|packages/shared-types/|packages/shared-utils/|packages/contracts/|tools/deploy/deploy_mobile_web_ci\.py)'; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "Sem mudanca em apps/mobile ou nos pacotes compartilhados — deploy do mobile dispensado."
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.filtro.outputs.deploy == 'true'
+        with:
+          version: 10.5.2
+
+      - uses: actions/setup-node@v4
+        if: steps.filtro.outputs.deploy == 'true'
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Instalar dependências
+        if: steps.filtro.outputs.deploy == 'true'
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Exportar bundle web do Expo
+        if: steps.filtro.outputs.deploy == 'true'
+        working-directory: apps/mobile
+        run: npx expo export --platform web --output-dir dist-fresh-build
+        env:
+          EXPO_PUBLIC_API_URL: https://painel.letras.cloud/api/v1
+
+      - name: Instalar paramiko
+        if: steps.filtro.outputs.deploy == 'true'
+        run: pip install paramiko
+
+      - name: Deploy no VPS
+        if: steps.filtro.outputs.deploy == 'true'
+        run: python tools/deploy/deploy_mobile_web_ci.py
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}

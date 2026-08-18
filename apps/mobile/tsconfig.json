@@ -1,0 +1,19 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@letras/shared-types": [
+        "../../packages/shared-types/src"
+      ],
+      "@letras/shared-utils": [
+        "../../packages/shared-utils/src"
+      ]
+    }
+  },
+  "exclude": [
+    "dist-web-check",
+    "dist-web-release",
+    "dist-web-release-deploy"
+  ]
+}

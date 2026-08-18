@@ -66,8 +66,13 @@ const MIME_BY_ASSET_KIND = {
 
 const currentFilePath = fileURLToPath(import.meta.url);
 const currentDirPath = dirname(currentFilePath);
-const monorepoRootPath = resolve(currentDirPath, "..", "..", "..");
-const mobileRefRootPath = resolve(monorepoRootPath, "..", "letras-mobile-ref");
+// De apps/api/src/services ate a raiz do monorepo sao quatro niveis. Antes
+// eram tres, o que parava em apps/ — por isso os caminhos padrao de import
+// (manifest de blueprint e conteudos das telas) nunca resolviam.
+const monorepoRootPath = resolve(currentDirPath, "..", "..", "..", "..");
+// Os conteudos viviam no repositorio letras-mobile-ref ate a consolidacao;
+// agora vivem neste monorepo.
+const mobileRefRootPath = monorepoRootPath;
 const DEFAULT_BLUEPRINTS_MANIFEST_PATH = resolve(
   monorepoRootPath,
   "assets",
@@ -2276,7 +2281,18 @@ async function maybeCreditStageCompletion({ studentId, activityId }) {
     }),
   );
 
-  return { studentId: normalizedStudentId, tutorId, themeId, stageNumber };
+  // `points` viaja junto porque a tela de celebração da etapa (RN048) precisa
+  // dizer quantos pontos o alfabetizador acumulou. Sem isto ela caía no
+  // fallback `/painel/score/<alfabetizando>`, que lê learner_score_events — e
+  // a conclusão de etapa credita educator_score_events (do TUTOR), então a
+  // tela sempre exibia "acumulou 0 pontos".
+  return {
+    studentId: normalizedStudentId,
+    tutorId,
+    themeId,
+    stageNumber,
+    points: STAGE_COMPLETION_POINTS[stageNumber],
+  };
 }
 
 // RN085: bônus por avanço do alfabetizando após o gatilho mais recente de
@@ -3767,12 +3783,34 @@ export async function createLearningActivity({
 
   await ensureModuleExists(normalizedModuleId);
 
+  // Sem sortOrder explicito, o default sempre foi 0 — toda aula nova empatava
+  // com as demais (a maioria do conteudo real nunca informa sortOrder) e a
+  // ordem de exibicao virava um desempate por id (aleatorio), nao a ordem de
+  // criacao (relatado como bug: "criei a letra U hoje e outra letra dias
+  // atras" e a nova nao ficou por ultimo). Sem sortOrder informado, calcula
+  // a proxima posicao (max atual do modulo + 1) para a aula nova sempre cair
+  // no fim da trilha por padrao.
+  let resolvedSortOrder = normalizeInteger(sortOrder, Number.NaN);
+  if (!Number.isFinite(resolvedSortOrder)) {
+    const { data: lastActivity, error: lastActivityError } = await client
+      .from("learning_activities")
+      .select("sort_order")
+      .eq("module_id", normalizedModuleId)
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastActivityError) {
+      throw new HttpError(400, `Falha ao calcular posicao da atividade: ${lastActivityError.message}`);
+    }
+    resolvedSortOrder = normalizeInteger(lastActivity?.sort_order, -1) + 1;
+  }
+
   const payload = {
     module_id: normalizedModuleId,
     type: normalizedType,
     title: normalizedTitle,
     instructions: normalizeNullableText(instructions),
-    sort_order: normalizeInteger(sortOrder, 0),
+    sort_order: resolvedSortOrder,
     is_published: normalizeBoolean(isPublished, false),
   };
 
@@ -5559,6 +5597,30 @@ export async function upsertActivityProgressFromMobile({
   }
 
   const normalizedLockReason = normalizeNullableText(lockReason);
+
+  // Nunca deixa um IN_PROGRESS (ou LOCKED) sobrescrever uma atividade ja
+  // concluida. Sem esta guarda, o foco de uma tela seguinte do mesmo
+  // exercicio composto (ou uma reentrada indevida na aula) reabre
+  // "em_andamento" o que o aluno ja tinha terminado, e a aula nunca fecha
+  // do ponto de vista de quem acompanha o progresso.
+  if (mappedStatus !== "concluido") {
+    const { data: existing } = await client
+      .from("activity_progress")
+      .select(
+        "id, student_id, activity_id, status, attempts, score, source_platform, last_interacted_at, completed_at, metadata, created_at, updated_at",
+      )
+      .eq("student_id", normalizedLearnerId)
+      .eq("activity_id", normalizedActivityId)
+      .maybeSingle();
+
+    if (existing?.status === "concluido") {
+      return {
+        skipped: true,
+        reason: "Atividade ja concluida; gravacao de status anterior ignorada.",
+        progress: existing,
+      };
+    }
+  }
 
   const nowIso = new Date().toISOString();
   const payload = {
