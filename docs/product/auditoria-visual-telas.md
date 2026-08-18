@@ -108,7 +108,7 @@ Não existe uma paleta única — o app tem **dois contextos de cor**:
 | 38 | `Etapa 2 - Orientações` | `learner/LearnerLessonIntroView.tsx` *(confirmar)* | Orientação de início da Etapa 2 | ⬜ |
 | 39 | `Etapa 2 - Tela de Abertura` | `learner/LearnerLessonIntroView.tsx` *(confirmar)* | Abertura da Etapa 2 | ⬜ |
 | 40 | `Etapa 2 - Orientação sobre navegação (1)/(2)` | `learner/components/LearnerHintVideoOverlay.tsx` *(confirmar)* | Explicação de como navegar entre telas | ⬜ |
-| 41 | `Etapa 2 - Demonstração da tela de orientação do alfabetizando (1)…(17)` | — | Storyboard passo-a-passo (17 quadros), provavelmente material de treinamento/apresentação, não 17 telas distintas do app | 📄 *(confirmar)* |
+| 41 | `Etapa 2 - Demonstração da tela de orientação do alfabetizando (1)…(17)` + variantes `-1` (24 arquivos) | — | **Confirmado por inspeção de todos os 24 arquivos** (não só suposição): é uma cartilha de treinamento pro alfabetizador, ensinando o significado de cada ícone que aparece na tela do alfabetizando — cada frame numerado tem a tela completa + texto explicativo; cada variante `-1` é o recorte isolado só do ícone, provavelmente usado como imagem de apoio em outro lugar (vídeo/tutorial) | 📄 confirmado — não são telas de produção, mas ver achados de cor abaixo, esses sim valem |
 | 42 | `Etapa 2 - Áudio informando que seguirá com a alfabetização (1)/(2)` | `learner/LearnerLessonScreenView.tsx` (narração automática) | Aviso sonoro de transição dentro da aula | ⬜ |
 | 43 | `Etapas 2 e 3 - Modelo de Ensino ao Alfabetizando (1)/(2)/(3)` | `learner/LearnerLessonScreenView.tsx` (`isLearnerDriven`, tela padrão) | Modelo-base da aula conduzida pelo próprio aluno (Etapas 2+) | ⬜ |
 | 44 | `Etapas 2 e 3 - Modelo de Exercício de Marcar Caixas (1)…(6)` | `learner/LearnerLessonScreenView.tsx` (`screenTemplate: "exercise-mark-images"`) + `learner/components/LearnerActionButtons.tsx` | Grid de imagens (animais) pra marcar, ícone de som verde, AVANÇAR verde (claro quando desabilitado) | ✅ **coerente**: verde do ícone de som e do AVANÇAR batem com o token `brandGreen`/`successBorder`; `LearnerActionButtons.tsx` é uma das telas mais limpas do app (só 4 cores, todas certas) |
@@ -125,11 +125,11 @@ Não existe uma paleta única — o app tem **dois contextos de cor**:
 
 | # | Figma | Função prevista | Status |
 |---|---|---|---|
-| 51 | `Etapa 3 - Orientações` | Orientações da Etapa 3 | 🚫 não encontrado componente dedicado |
-| 52 | `Etapa 3 - Tela de Abertura` | Abertura da Etapa 3 | 🚫 não encontrado componente dedicado |
-| 53 | `Etapa 3 - Acompanhamento` | Acompanhamento a distância pelo alfabetizador | 🚫 não encontrado componente dedicado |
-| 54 | `Etapa 3 - Comparativo de Atividade` | Comparação de fotos do exercício (antes/depois) | ✅ **na verdade implementado** — `educator/EducatorComparativoView.tsx`, já ligado na navegação, busca `ActivityPhoto` da API. Cores majoritariamente corretas (`#111111`, `#6b7280` certos) + `#1e3a5f` (6º candidato de azul-marinho) + `#15803d` (mais um verde) |
-| 55 | `Etapa 3 - Demonstração de Tela com Pedido de Apoio` | Pedido de apoio na Etapa 3 | 🚫 não encontrado componente dedicado (provavelmente reaproveita o mesmo banner "AGUARDANDO AJUDA" do item 46, comum a Etapas 2/3) |
+| 51 | `Etapa 3 - Orientações` | "ALFABETIZAÇÃO - ETAPA 3 / Esta Etapa é totalmente on-line..." + vídeo + AVANÇAR — mesmíssimo layout de `EducatorEtapa1IntroViews.tsx`, mas esse componente não recebe `stageNumber` (não é genérico) | 🚫 conteúdo já especificado no Figma, falta generalizar o componente da Etapa 1 pra aceitar outras etapas |
+| 52 | `Etapa 3 - Tela de Abertura` | Lista de conteúdos ("Alfabeto, Estudo das letras E-Z, Sílabas, Consciência fonêmica, Escrita de palavras") + VOLTAR/AVANÇAR — mesmo padrão do item 29 | 🚫 mesma nota do item 51 |
+| 53 | `Etapa 3 - Acompanhamento` | "STATUS DOS ALFABETIZANDOS NA ETAPA 3": barra de progresso por aluno + pedidos de apoio/bloqueio com telefone/WhatsApp | 🚫 não achado no mobile — **pode já existir equivalente no painel web** (CLAUDE.md cita "dashboard, fila de atendimento, timeline por aluno" no painel), vale checar lá antes de assumir 100% não implementado |
+| 54 | `Etapa 3 - Comparativo de Atividade` | "Atividade solicitada" (referência) + "Atividade entregue" (foto) + **retorno de avaliação por IA em texto** ("Aproveitamento: parece a letra O em versão minúscula, porém pode melhorar") + ligar/WhatsApp + APROVAR TAREFA | ⚠️ **parcialmente implementado**: `educator/EducatorComparativoView.tsx` já existe, ligado na navegação, busca `ActivityPhoto` da API — mas o texto gerado por IA ("parece a letra O...") é a parte de RN077/114-116 que não confirmei se está implementada; a UI de comparação existe, a avaliação automática pode não estar. Cores: `#111111`/`#6b7280` certos, + `#1e3a5f` (6º azul) + `#15803d` (mais um verde) |
+| 55 | `Etapa 3 - Demonstração de Tela com Pedido de Apoio` | Pedido de apoio na Etapa 3 | ⬜ ainda não abri este arquivo especificamente (é da série "Ajuda ao Alfabetizando", provavelmente reaproveita o mesmo banner "AGUARDANDO AJUDA" do item 46) |
 | 56 | `Conclusão da Etapa 3` | Celebração final | 🚫 não encontrado — mas `LearnerStageConclusionView.tsx` (item 35) já é genérico por `stageNumber`, pode já suportar Etapa 3 sem tela dedicada nova |
 | 57 | `Carta enviada` / `Foto da carta de agradecimento` | Carta de agradecimento do alfabetizando ao alfabetizador (RN050/062/092) | 🚫 confirmado não implementado — **não confundir com o certificado** (item 35, esse sim já tem modal funcional) |
 
@@ -156,6 +156,19 @@ Sem arquivo Figma exato (gap — só existe a splash "Entrada - Alfabetizador", 
 | Texto secundário | `#333333` | `#333333` | ✅ |
 | Label/botão ENTRAR | `#101010` | `#111111` | ⚠️ |
 | Estilo do botão ENTRAR | caixa preenchida | texto+ícone sem fundo (protótipo antigo) | ⚠️ *(pode ser decisão posterior — confirmar)* |
+
+### Cartilha de treinamento "Demonstração da tela de orientação" — dicionário de ícones confirmado
+Abri os 24 arquivos (17 numerados + 7 recortes `-1`) integralmente. Não são telas de produção, mas funcionam como especificação oficial de cor por ícone/estado — mais confiável que inferir da tela de uso real, porque aqui cada ícone aparece isolado:
+
+| Ícone/estado | Cor no Figma | Bate com o código? |
+|---|---|---|
+| Ícone de som (verde) | verde | ✅ `#2fa536`/`#2F9711` |
+| "FOTOGRAFAR ATIVIDADE" (ativo) | verde | ✅ |
+| "PRECISO DE AJUDA" (botão de solicitar) | **amarelo** | ❌ código usa `#e30613` vermelho — **confirma de novo o achado prioritário já registrado** |
+| "AGUARDANDO AJUDA" (banner travado, depois de clicar) | vermelho | ✅ bate com `#e11d2c` |
+| Veredito ✗ (círculo de erro) | vermelho-alaranjado sólido | a confirmar valor exato — código usa `#ef4444` |
+| Veredito ✓ (círculo de acerto) | verde escuro | a confirmar valor exato — código usa `#2fa536` |
+| Quadrado de letra: neutro/selecionado/errado/certo | cinza / **amarelo** / vermelho vivo (borda, sem preenchimento) / verde vivo (borda, sem preenchimento) | ⚠️ código (`letterSquareWrong`/`letterSquareFilled`) usa preenchimento tinto claro (`#fee2e2`/`#dbf5e4`) em vez de borda vivamente colorida sem preenchimento — **e não existe estado amarelo/"selecionado" implementado** |
 
 ### Telas de aula da Etapa 1 (todos os 5 modelos, `LearnerLessonScreenView.tsx`)
 Estrutura bate perfeitamente com o Figma nos 5 modelos (texto/imagem/áudio/vídeo/letra) — mesmo layout, mesmos elementos, mesma ordem. É a tela mais estruturalmente coerente encontrada até agora.
