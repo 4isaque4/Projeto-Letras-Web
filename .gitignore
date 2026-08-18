@@ -40,6 +40,9 @@ Thumbs.db
 *.mp4
 docs/insumos/design-etapa1/fotos-etapa-1-referencia/
 
+# Capturas de rede (HAR) podem conter token/cookie de sessão em texto claro
+*.har
+
 # Saídas do export do Expo (o bundle web passa de 2 MB)
 apps/mobile/dist-web-check/
 apps/mobile/dist-fresh-build/
