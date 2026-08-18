@@ -191,6 +191,8 @@ export function EducatorHomeView({ navigation, route }: Props) {
   const [tutorialsLoading, setTutorialsLoading] = useState(true);
   const [pendingSessionRequests, setPendingSessionRequests] = useState<Array<{ id: string; requestedAt: string; learnerProfile: { id: string; displayName: string } }>>([]);
   const learnerRequestSequenceRef = useRef(0);
+  const learnerFetchInFlightRef = useRef(false);
+  const learnerFetchQueuedRef = useRef(false);
 
   useEffect(() => {
     if (educatorId) return;
@@ -205,12 +207,27 @@ export function EducatorHomeView({ navigation, route }: Props) {
   }, [educatorId]);
 
   const fetchLearners = useCallback(async () => {
-    const requestSequence = ++learnerRequestSequenceRef.current;
     if (!educatorId) {
-      if (requestSequence === learnerRequestSequenceRef.current) setIsLoading(false);
+      setIsLoading(false);
       return;
     }
+    // Eventos realtime (lock/unlock a cada resposta do aluno) chamam isto
+    // repetidamente enquanto uma sessão está sendo espelhada. Sem esta trava,
+    // cada evento disparava uma nova busca por cima da anterior ainda em voo
+    // contra um endpoint já lento — as chamadas se empilhavam e travavam a
+    // conexão com o resto do app (relatado como "botão/áudio demorando").
+    // Chamadas que chegam enquanto uma busca já está em voo marcam
+    // learnerFetchQueuedRef em vez de serem apenas descartadas, e o `finally`
+    // dispara exatamente uma busca de seguimento — assim nunca fica mais de
+    // uma requisição concorrente, mas o estado mais recente não se perde.
+    if (learnerFetchInFlightRef.current) {
+      learnerFetchQueuedRef.current = true;
+      return;
+    }
+    learnerFetchInFlightRef.current = true;
+    learnerFetchQueuedRef.current = false;
 
+    const requestSequence = ++learnerRequestSequenceRef.current;
     setIsLoading(true);
     try {
       const raw = await httpClient.get<LearnerItem[] | { items: LearnerItem[] }>(
@@ -232,8 +249,14 @@ export function EducatorHomeView({ navigation, route }: Props) {
     } catch {
       // Mantem lista vazia, mas sinaliza que a lista NÃO é confiável.
       if (requestSequence === learnerRequestSequenceRef.current) setLearnersFailed(true);
+    } finally {
+      learnerFetchInFlightRef.current = false;
     }
     if (requestSequence === learnerRequestSequenceRef.current) setIsLoading(false);
+    if (learnerFetchQueuedRef.current) {
+      learnerFetchQueuedRef.current = false;
+      void fetchLearners();
+    }
   }, [educatorId]);
 
   const fetchLockedSessions = useCallback(async () => {
