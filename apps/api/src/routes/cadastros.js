@@ -546,9 +546,14 @@ cadastrosRouter.get("/alfabetizandos", async (req, res) => {
     const students = await getProfiles({ role: "alfabetizando" });
     const studentMap = mapById(students);
 
-    const links = await getTutorStudentLinks({
-      studentIds: students.map((item) => item.id),
-    });
+    // Antes buscava vinculos de TODOS os alfabetizandos da plataforma e
+    // filtrava por tutor em JS depois — um IN (...) com todo mundo, em toda
+    // chamada. Com tutorId resolvido, escopa a query no banco.
+    const links = await getTutorStudentLinks(
+      tutorId.length > 0
+        ? { tutorIds: [tutorId] }
+        : { studentIds: students.map((item) => item.id) },
+    );
 
     const confirmedLinks = links.filter((item) => item.status === "confirmado");
     // Aluno recém-cadastrado ainda não tem vínculo confirmado, mas guarda o
