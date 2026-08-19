@@ -22,10 +22,13 @@ import {
   formatRelativeTime,
   getActivityProgress,
   getContentAssets,
+  getEducatorScoreEvents,
+  getLearnerScoreEvents,
   getLearningActivities,
   getLearningModules,
   getLearningStages,
   getMediaLibrary,
+  getMobileLearners,
   getPanelLearningActivities,
   getPanelLearningModules,
   getPanelLearningThemes,
@@ -426,6 +429,36 @@ painelRouter.get("/dashboard/tutor", async (req, res) => {
     const progressByStudent = groupProgressByStudent(progress.filter((row) => studentIds.includes(row.student_id)));
     const stageMap = buildStageMap(activities, modules);
 
+    // RN085/RN096: pontuação real vem do ledger de eventos, nao de
+    // activity_progress.score (mesma causa raiz corrigida em GET /ranking).
+    const learnerScoreEvents = studentIds.length > 0 ? await getLearnerScoreEvents({ studentIds }) : [];
+    const learnerPointsByStudent = new Map();
+    for (const event of learnerScoreEvents) {
+      const current = learnerPointsByStudent.get(event.student_id) ?? 0;
+      learnerPointsByStudent.set(event.student_id, current + (Number(event.points) || 0));
+    }
+
+    // Alunos vinculados podem existir só no schema mobile (LearnerProfile) e
+    // nunca terem sido espelhados em `profiles` — sem esse fallback, um aluno
+    // real aparece como "Sem nome" no dashboard do alfabetizador.
+    const referencedStudentIds = new Set(
+      [...studentIds, ...pendingLinks.map((link) => link.student_id), ...supportRequests.map((request) => request.student_id)].filter(
+        Boolean,
+      ),
+    );
+    const missingStudentIds = [...referencedStudentIds].filter((id) => !studentById.has(id));
+    const mobileLearners = missingStudentIds.length > 0 ? await getMobileLearners({ ids: missingStudentIds }) : [];
+    const mobileLearnerNameById = new Map(
+      mobileLearners.map((learner) => [
+        learner.id,
+        typeof learner.displayName === "string" && learner.displayName.trim().length > 0
+          ? learner.displayName.trim()
+          : null,
+      ]),
+    );
+    const resolveStudentName = (studentId) =>
+      studentById.get(studentId)?.full_name ?? mobileLearnerNameById.get(studentId) ?? "Sem nome";
+
     const activeToday = studentIds.filter((studentId) => {
       const rows = progressByStudent.get(studentId) ?? [];
       return daysSince(getStudentLastInteraction(rows)) <= 0;
@@ -438,14 +471,14 @@ painelRouter.get("/dashboard/tutor", async (req, res) => {
     const pedidosRecentes = [
       ...supportRequests.map((request) => ({
         id: request.id,
-        aluno: studentById.get(request.student_id)?.full_name ?? "Sem nome",
+        aluno: resolveStudentName(request.student_id),
         tipo: "Pedido de ajuda",
         tempo: formatRelativeTime(request.requested_at || request.created_at),
         prioridade: request.priority || "alta",
       })),
       ...pendingLinks.map((link) => ({
         id: link.id,
-        aluno: studentById.get(link.student_id)?.full_name ?? "Sem nome",
+        aluno: resolveStudentName(link.student_id),
         tipo: "Vinculo pendente",
         tempo: formatRelativeTime(link.requested_at || link.created_at),
         prioridade: "alta",
@@ -459,7 +492,7 @@ painelRouter.get("/dashboard/tutor", async (req, res) => {
         )[0];
         return {
           id: `lock-${studentId}`,
-          aluno: studentById.get(studentId)?.full_name ?? "Sem nome",
+          aluno: resolveStudentName(studentId),
           tipo: "Aluno travado",
           tempo: formatRelativeTime(latestRow?.last_interacted_at || latestRow?.updated_at),
           prioridade: "alta",
@@ -470,10 +503,7 @@ painelRouter.get("/dashboard/tutor", async (req, res) => {
     const alunosEvoluindo = studentIds
       .map((studentId) => {
         const rows = progressByStudent.get(studentId) ?? [];
-        const totalScore = rows
-          .map((row) => Number(row.score))
-          .filter((value) => Number.isFinite(value))
-          .reduce((a, b) => a + b, 0);
+        const totalScore = learnerPointsByStudent.get(studentId) ?? 0;
 
         const maxStage = rows.reduce(
           (max, row) => Math.max(max, stageMap.getStageNumberByActivityId(row.activity_id)),
@@ -481,7 +511,7 @@ painelRouter.get("/dashboard/tutor", async (req, res) => {
         );
         return {
           id: studentId,
-          aluno: studentById.get(studentId)?.full_name ?? "Sem nome",
+          aluno: resolveStudentName(studentId),
           evolucao: `+${Math.round(totalScore)} pts`,
           etapa: toStageLabel(maxStage),
           totalScore,
@@ -1365,13 +1395,38 @@ painelRouter.get("/fila", async (_req, res) => {
     const activityById = mapById(activities);
     const moduleById = mapById(modules);
 
+    // Vinculo/progresso/pedido de ajuda podem referenciar um aluno que so
+    // existe no schema mobile (LearnerProfile) e nunca foi espelhado em
+    // `profiles` — sem esse fallback, um aluno real aparece como "Sem nome"
+    // na Fila de Atendimento (ver CLAUDE.md §3, "não duplicar entidades entre
+    // schema painel e mobile").
+    const referencedStudentIds = new Set(
+      [
+        ...links.map((link) => link.student_id),
+        ...progress.map((row) => row.student_id),
+        ...supportRequests.map((request) => request.student_id),
+      ].filter(Boolean),
+    );
+    const missingStudentIds = [...referencedStudentIds].filter((id) => !studentById.has(id));
+    const mobileLearners = missingStudentIds.length > 0 ? await getMobileLearners({ ids: missingStudentIds }) : [];
+    const mobileLearnerNameById = new Map(
+      mobileLearners.map((learner) => [
+        learner.id,
+        typeof learner.displayName === "string" && learner.displayName.trim().length > 0
+          ? learner.displayName.trim()
+          : null,
+      ]),
+    );
+    const resolveStudentName = (studentId) =>
+      studentById.get(studentId)?.full_name ?? mobileLearnerNameById.get(studentId) ?? "Sem nome";
+
     const pendingLinks = links
       .filter((link) => link.status === "pendente")
       .map((link) => ({
         id: link.id,
         queueType: "vinculo",
         tipo: "Vinculo pendente",
-        aluno: studentById.get(link.student_id)?.full_name ?? "Sem nome",
+        aluno: resolveStudentName(link.student_id),
         etapa: "Cadastro",
         atividade: "Confirmacao de vinculo",
         status: link.status,
@@ -1388,7 +1443,7 @@ painelRouter.get("/fila", async (_req, res) => {
           id: row.id,
           queueType: "progresso",
           tipo: "Aluno travado",
-          aluno: studentById.get(row.student_id)?.full_name ?? "Sem nome",
+          aluno: resolveStudentName(row.student_id),
           etapa: toStageLabel(module?.stage_number ?? 1),
           atividade: activity?.title ?? "Atividade",
           status: row.status,
@@ -1431,7 +1486,7 @@ painelRouter.get("/fila", async (_req, res) => {
         id: request.id,
         queueType: "ajuda",
         tipo: "Pedido de ajuda",
-        aluno: studentById.get(request.student_id)?.full_name ?? "Sem nome",
+        aluno: resolveStudentName(request.student_id),
         etapa: module ? toStageLabel(module.stage_number ?? 1) : "Atendimento",
         atividade: activity?.title ?? toActivityLabel(request.current_view),
         status: request.status,
@@ -1576,27 +1631,43 @@ painelRouter.patch("/fila/:id", async (req, res) => {
 
 painelRouter.get("/ranking", async (_req, res) => {
   try {
-    const [students, tutors, links, progress, activities, modules] = await Promise.all([
-      getProfiles({ role: "alfabetizando" }),
-      getProfiles({ role: "tutor" }),
-      getTutorStudentLinks({ statuses: ["confirmado"] }),
-      getActivityProgress(),
-      getLearningActivities(),
-      getLearningModules(),
-    ]);
+    const [students, tutors, links, progress, activities, modules, learnerScoreEvents, educatorScoreEvents] =
+      await Promise.all([
+        getProfiles({ role: "alfabetizando" }),
+        getProfiles({ role: "tutor" }),
+        getTutorStudentLinks({ statuses: ["confirmado"] }),
+        getActivityProgress(),
+        getLearningActivities(),
+        getLearningModules(),
+        getLearnerScoreEvents(),
+        getEducatorScoreEvents(),
+      ]);
 
     const studentById = mapById(students);
     const tutorById = mapById(tutors);
     const stageMap = buildStageMap(activities, modules);
     const progressByStudent = groupProgressByStudent(progress);
 
+    // RN085/RN096: pontuação real vem do ledger de eventos (learner_score_events
+    // / educator_score_events), nunca de activity_progress.score — esse campo
+    // guarda o score bruto da atividade (ex.: acerto de quiz), não os pontos de
+    // gamificação, e somá-lo produzia totais incoerentes (inclusive fracionados
+    // para tutores) e um extrato sempre zerado.
+    const learnerPointsByStudent = new Map();
+    for (const event of learnerScoreEvents) {
+      const current = learnerPointsByStudent.get(event.student_id) ?? 0;
+      learnerPointsByStudent.set(event.student_id, current + (Number(event.points) || 0));
+    }
+
+    const educatorPointsByEducator = new Map();
+    for (const event of educatorScoreEvents) {
+      const current = educatorPointsByEducator.get(event.educator_id) ?? 0;
+      educatorPointsByEducator.set(event.educator_id, current + (Number(event.points) || 0));
+    }
+
     const rankingAlunos = students
       .map((student) => {
         const rows = progressByStudent.get(student.id) ?? [];
-        const points = rows
-          .map((row) => Number(row.score))
-          .filter((value) => Number.isFinite(value))
-          .reduce((a, b) => a + b, 0);
         const maxStage = rows.reduce(
           (max, row) => Math.max(max, stageMap.getStageNumberByActivityId(row.activity_id)),
           1,
@@ -1609,7 +1680,7 @@ painelRouter.get("/ranking", async (_req, res) => {
             typeof student.metadata?.group_name === "string" && student.metadata.group_name.length > 0
               ? student.metadata.group_name
               : "Sem grupo",
-          pontos: Math.round(points),
+          pontos: Math.round(learnerPointsByStudent.get(student.id) ?? 0),
           etapa: toStageLabel(maxStage),
         };
       })
@@ -1629,20 +1700,12 @@ painelRouter.get("/ranking", async (_req, res) => {
           const rows = progressByStudent.get(studentId) ?? [];
           return daysSince(getStudentLastInteraction(rows)) <= 7;
         }).length;
-        const tutorPoints = uniqueStudentIds.reduce((acc, studentId) => {
-          const rows = progressByStudent.get(studentId) ?? [];
-          const score = rows
-            .map((row) => Number(row.score))
-            .filter((value) => Number.isFinite(value))
-            .reduce((a, b) => a + b, 0);
-          return acc + score;
-        }, 0);
 
         return {
           id: tutor.id,
           nome: tutor.full_name,
           alunos: uniqueStudentIds.length,
-          pontos: Math.round(tutorPoints),
+          pontos: Math.round(educatorPointsByEducator.get(tutor.id) ?? 0),
           taxa:
             uniqueStudentIds.length > 0
               ? `${Math.round((activeStudentCount / uniqueStudentIds.length) * 100)}%`
@@ -1655,18 +1718,65 @@ painelRouter.get("/ranking", async (_req, res) => {
         ...item,
       }));
 
-    const ledger = progress
-      .filter((row) => Number.isFinite(Number(row.score)))
-      .sort((a, b) => new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime())
+    const describeLearnerEvent = (event) => {
+      const name = studentById.get(event.student_id)?.full_name ?? "Alfabetizando";
+      if (event.event_type === "first_completion") {
+        return `${name} - Concluiu uma atividade`;
+      }
+      return `${name} - Ajuste de pontuacao`;
+    };
+
+    const describeEducatorEvent = (event) => {
+      const name = tutorById.get(event.educator_id)?.full_name ?? "Alfabetizador";
+      if (event.event_type === "stage_completed") {
+        return `${name} (alfabetizador) - Aluno concluiu a Etapa ${event.stage_number ?? ""}`.trim();
+      }
+      if (event.event_type === "support_bonus") {
+        return `${name} (alfabetizador) - Bonus por apoio ao aluno`;
+      }
+      if (event.event_type === "inactivity_penalty") {
+        return `${name} (alfabetizador) - Penalidade por inatividade`;
+      }
+      return `${name} (alfabetizador) - Ajuste de pontuacao`;
+    };
+
+    // Saldo = pontuacao acumulada da propria entidade (aluno ou tutor) ate
+    // aquele evento, nao um saldo global — por isso o ledger e calculado em
+    // ordem cronologica crescente antes de ser invertido para exibicao.
+    const chronologicalEvents = [
+      ...learnerScoreEvents.map((event) => ({
+        id: `learner:${event.id}`,
+        entityKey: `student:${event.student_id}`,
+        createdAt: event.created_at,
+        points: Number(event.points) || 0,
+        descricao: describeLearnerEvent(event),
+      })),
+      ...educatorScoreEvents.map((event) => ({
+        id: `educator:${event.id}`,
+        entityKey: `educator:${event.educator_id}`,
+        createdAt: event.created_at,
+        points: Number(event.points) || 0,
+        descricao: describeEducatorEvent(event),
+      })),
+    ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+    const runningBalanceByEntity = new Map();
+    const ledgerWithBalance = chronologicalEvents.map((event) => {
+      const previousBalance = runningBalanceByEntity.get(event.entityKey) ?? 0;
+      const balance = previousBalance + event.points;
+      runningBalanceByEntity.set(event.entityKey, balance);
+      return { ...event, saldo: balance };
+    });
+
+    const ledger = ledgerWithBalance
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 50)
-      .map((row, index) => ({
-        id: row.id,
-        data: formatDateTime(row.updated_at || row.created_at),
-        descricao: `${studentById.get(row.student_id)?.full_name ?? "Aluno"} - ${
-          row.status === "concluido" ? "Atividade concluida" : "Atualizacao de progresso"
-        }`,
-        pontos: Number(row.score) >= 0 ? `+${Number(row.score).toFixed(0)}` : `${Number(row.score).toFixed(0)}`,
-        saldo: Number(row.score).toFixed(0),
+      .map((event, index) => ({
+        id: event.id,
+        data: formatDateTime(event.createdAt),
+        descricao: event.descricao,
+        pontos: event.points >= 0 ? `+${event.points}` : `${event.points}`,
+        saldo: `${event.saldo}`,
         ordem: index + 1,
       }));
 

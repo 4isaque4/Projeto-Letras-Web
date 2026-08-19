@@ -722,7 +722,7 @@ async function getMobileEducators({ ids } = {}) {
   return runOptionalQuery(query, "Falha ao listar educadores do schema mobile");
 }
 
-async function getMobileLearners({ ids, educatorIds } = {}) {
+export async function getMobileLearners({ ids, educatorIds } = {}) {
   const client = requireSupabase();
   let query = client
     .from("LearnerProfile")
@@ -2068,6 +2068,44 @@ async function resolveEducatorDisplayName(educatorId) {
   }
 
   return normalizeText(mobileEducator?.name) || "Alfabetizador";
+}
+
+// Fonte canônica de pontos do alfabetizando (RN085/RN096). Usada pelo ranking
+// e pelo extrato de pontos do painel — nunca somar `activity_progress.score`
+// para exibir pontuação: aquele campo guarda score bruto da atividade (ex.:
+// acerto de quiz), não os pontos de gamificação.
+export async function getLearnerScoreEvents({ studentIds } = {}) {
+  const client = requireSupabase();
+  let query = client
+    .from("learner_score_events")
+    .select("id, student_id, activity_id, event_type, points, payload, created_at")
+    .order("created_at", { ascending: false })
+    .limit(2000);
+
+  if (studentIds) {
+    if (studentIds.length === 0) return [];
+    query = query.in("student_id", studentIds);
+  }
+
+  return runOptionalQuery(query, "Falha ao listar eventos de pontuacao dos alfabetizandos");
+}
+
+// Fonte canônica de pontos do alfabetizador (RN085/RN093/RN096), espelhando
+// getEducatorScoreSummary mas para múltiplos educadores de uma vez.
+export async function getEducatorScoreEvents({ educatorIds } = {}) {
+  const client = requireSupabase();
+  let query = client
+    .from("educator_score_events")
+    .select("id, educator_id, student_id, event_type, stage_number, points, payload, created_at")
+    .order("created_at", { ascending: false })
+    .limit(2000);
+
+  if (educatorIds) {
+    if (educatorIds.length === 0) return [];
+    query = query.in("educator_id", educatorIds);
+  }
+
+  return runOptionalQuery(query, "Falha ao listar eventos de pontuacao dos alfabetizadores");
 }
 
 export async function getEducatorScoreSummary(educatorId) {
