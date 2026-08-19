@@ -116,13 +116,17 @@ WebSocket: `ws://localhost:8080/ws` (dev), `wss://api.letras.cloud/ws` (prod). E
 
 ## 4. Estrutura do monorepo
 
+Desde a consolidação em 2026-08-18 (PR #65, `arch/monorepo-contratos` → `main`), o app mobile vive **neste mesmo repositório** — não é mais um repo separado. O histórico do antigo repo (`github.com/IsraelNunes/letras`) foi preservado via `git subtree`; as Actions de lá foram desativadas manualmente para não haver deploy duplicado.
+
 - `apps/web/` — painel React + Vite (deploy: `painel.letras.cloud`)
 - `apps/api/` — API Express (mesmo host, rota `/api/v1`)
-- `packages/*` — contratos e libs compartilhadas
+- `apps/mobile/` — app Expo/React Native (deploy: `mobile.letras.cloud`, export web via `expo export --platform web`)
+- `packages/contracts`, `packages/shared-types`, `packages/shared-utils` — contratos e libs compartilhadas entre os 3 apps
 - `infra/supabase/migrations/` — migrations SQL
 - `docs/` — documentação de produto, arquitetura, operações
-- `artifacts/` — scripts de deploy gerados
-- `C:\Projetos\letras-mobile-ref\` — app Expo/React Native (repo separado, deploy: `mobile.letras.cloud`)
+- `tools/deploy/` — scripts de deploy (Paramiko) usados pelo CI
+
+Pacotes do workspace usam o namespace `@letras/*` (`@letras/web`, `@letras/api`, `@letras/mobile`, `@letras/shared-types`, `@letras/shared-utils`).
 
 ### Stack web
 
@@ -167,20 +171,14 @@ Toda issue vira PR dedicado (1 issue = 1 PR). PR deve fechar a issue via `Closes
 
 ## 7. Deploy
 
-### Painel web (painel.letras.cloud)
+Deploy é automático via GitHub Actions (`.github/workflows/`), não manual. Cada push/merge na `main` dispara o **Quality Gate** (`quality.yml`, job `Web/API quality` — nome preservado de propósito, a branch protection exige esse check; hoje ele cobre os 3 apps: build:shared, typecheck, test, build do painel, export web do Expo). Só depois do Quality Gate terminar com sucesso na `main`, os deploys disparam via `workflow_run`:
 
-Build local com `VITE_API_BASE_URL` correto (garantido pelo `apps/web/.env.production`), depois upload via Paramiko SFTP usando um script em `artifacts/deploy_painel_<data>.py`. Padrão:
+- **`deploy-painel.yml`** — só roda se o diff do commit tocar `apps/web/`, `apps/api/` ou `packages/contracts/`. Build do painel (`pnpm --filter @letras/web build`) + upload via Paramiko SFTP (`tools/deploy/deploy_painel_ci.py`) para `/srv/letras-painel/_releases/<timestamp>/`, promove pra `dist/`, smoke test via `curl`.
+- **`deploy-mobile.yml`** — só roda se o diff tocar `apps/mobile/` ou os pacotes compartilhados. `expo export --platform web` + upload via Paramiko (`tools/deploy/deploy_mobile_web_ci.py`) para `/srv/letras-mobile-web/_releases/<timestamp>-mobile-web/`, com pós-processamento de paths (`/_expo/` → `/mobile-expo/`, `/assets/` → `/mobile-assets/`) para não colidir com o painel no mesmo host.
 
-1. Upload `apps/web/dist/` para `/srv/letras-painel/_releases/painel-<timestamp>/`
-2. Backup de `/srv/letras-painel/dist` para `_releases/painel-<timestamp>-prelive/`
-3. Promove release nova para `dist/`
-4. Smoke test via `curl` em `https://painel.letras.cloud/` e `/api/v1/painel/conteudo`
+Os dois workflows também aceitam `workflow_dispatch` (deploy manual sob demanda) e usam `concurrency` group próprio para não sobrepor deploys.
 
-Infra: host Linux (root@76.13.160.193). Não usar sshpass/plink (não disponíveis no ambiente Windows). Paramiko é o caminho.
-
-### Mobile (mobile.letras.cloud)
-
-App Expo separado, repo `C:\Projetos\letras-mobile-ref`. Deploy web mobile usa Nginx vhost isolado em `mobile.letras.cloud` com TLS via certbot.
+Infra: host Linux único (`root@76.13.160.193`, hostname `srv1291010`, Ubuntu 24.04), serve `painel.letras.cloud` e `mobile.letras.cloud` via vhosts Nginx separados (TLS via certbot). Secrets do GitHub Actions: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PASSWORD`, `WEB_ENV_PRODUCTION`. Não usar sshpass/plink (não disponíveis no ambiente Windows) — Paramiko é o caminho, tanto no CI quanto em scripts locais.
 
 ---
 
