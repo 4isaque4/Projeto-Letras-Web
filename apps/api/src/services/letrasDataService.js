@@ -4970,6 +4970,29 @@ export async function createAuthUserWithProfile({
     throw new HttpError(400, "A senha deve ter pelo menos 6 caracteres.");
   }
 
+  // `profiles.cpf` tem unique constraint no banco (cobre alfabetizando,
+  // alfabetizador e admin na mesma tabela), mas ela só dispararia depois de
+  // já ter criado o usuario em auth.users — deixando um usuario orfao (sem
+  // profile) e devolvendo um 500 generico em vez de rejeitar o cadastro
+  // duplicado de forma clara. Checar antes evita os dois problemas e garante
+  // a regra "mesmo CPF não pode ter mais de um papel no sistema".
+  const normalizedCpf = normalizeText(cpf);
+  if (normalizedCpf) {
+    const { data: existingCpfProfile } = await client
+      .from("profiles")
+      .select("id, role")
+      .eq("cpf", normalizedCpf)
+      .maybeSingle();
+    if (existingCpfProfile) {
+      throw new HttpError(
+        409,
+        existingCpfProfile.role === role
+          ? "Ja existe um cadastro com este CPF."
+          : `Este CPF ja esta cadastrado como ${existingCpfProfile.role}. Um mesmo CPF nao pode ter mais de um papel no sistema.`,
+      );
+    }
+  }
+
   const { data: userData, error: userError } = await client.auth.admin.createUser({
     email: normalizedEmail,
     password: normalizedPassword,

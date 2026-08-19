@@ -194,6 +194,27 @@ authRouter.post("/educators/register", async (req, res) => {
       ? String(email).toLowerCase().trim()
       : `tutor.${cpfDigits}@letras.app`;
 
+    // profiles.cpf tem unique constraint cobrindo todos os papeis na mesma
+    // tabela — checar antes evita criar um usuario em auth.users so pra
+    // descartar em seguida, e evita expor o erro cru do Postgres. Mesmo CPF
+    // nao pode ter mais de um papel no sistema (ex.: ja cadastrado como
+    // alfabetizando).
+    if (cpfDigits) {
+      const { data: existingCpfProfile } = await client
+        .from("profiles")
+        .select("id, role")
+        .eq("cpf", cpfDigits)
+        .maybeSingle();
+      if (existingCpfProfile) {
+        return res.status(409).json({
+          message:
+            existingCpfProfile.role === "tutor"
+              ? "Ja existe um cadastro com este CPF."
+              : `Este CPF ja esta cadastrado como ${existingCpfProfile.role}. Um mesmo CPF nao pode ter mais de um papel no sistema.`,
+        });
+      }
+    }
+
     const { randomBytes } = await import("node:crypto");
     const resolvedPassword = password && String(password).trim().length >= 8
       ? String(password).trim()
