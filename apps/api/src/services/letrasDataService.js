@@ -5008,6 +5008,36 @@ export async function createAuthUserWithProfile({
     throw new HttpError(400, "A senha deve ter pelo menos 6 caracteres.");
   }
 
+  // `profiles.cpf` tem unique constraint no banco (cobre alfabetizando,
+  // alfabetizador e admin na mesma tabela), mas ela compara string exata —
+  // "06604997111" e "066.049.971-11" contam como valores diferentes pro
+  // Postgres, entao a constraint (e um .eq() ingenuo aqui) deixa passar uma
+  // colisao real quando os dois cadastros usam formatacao diferente (caso
+  // real encontrado: alfabetizando cadastrada com o mesmo CPF do proprio
+  // alfabetizador, um em dígitos, outro pontuado). Por isso a comparacao e
+  // feita em dígitos, no mesmo padrao ja usado em GET
+  // /cadastros/alfabetizandos/buscar. Checar antes de criar o usuario em
+  // auth.users tambem evita deixar um usuario orfao (sem profile) e um 500
+  // generico no lugar de uma rejeicao clara.
+  const normalizedCpfDigits = normalizeDigits(cpf, 11);
+  if (normalizedCpfDigits) {
+    const { data: cpfCandidates } = await client
+      .from("profiles")
+      .select("id, role, cpf")
+      .not("cpf", "is", null);
+    const existingCpfProfile = (cpfCandidates ?? []).find(
+      (candidate) => normalizeDigits(candidate.cpf, 11) === normalizedCpfDigits,
+    );
+    if (existingCpfProfile) {
+      throw new HttpError(
+        409,
+        existingCpfProfile.role === role
+          ? "Ja existe um cadastro com este CPF."
+          : `Este CPF ja esta cadastrado como ${existingCpfProfile.role}. Um mesmo CPF nao pode ter mais de um papel no sistema.`,
+      );
+    }
+  }
+
   const { data: userData, error: userError } = await client.auth.admin.createUser({
     email: normalizedEmail,
     password: normalizedPassword,
