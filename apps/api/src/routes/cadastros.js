@@ -10,6 +10,7 @@ import {
   getActivityProgress,
   getEducatorNotifications,
   getMobileLearnerSessionState,
+  getMobileLearners,
   getLearningActivities,
   getLearningModules,
   getProfiles,
@@ -1314,17 +1315,28 @@ cadastrosRouter.get("/vinculos", async (_req, res) => {
     const profiles = await getProfiles({ ids: profileIds });
     const profileById = mapById(profiles);
 
+    // Vinculo pode referenciar um aluno que so existe no schema mobile
+    // (LearnerProfile), nunca espelhado em `profiles` — sem esse fallback a
+    // tela "Vinculos e Convites" mostra "Sem nome"/sem CPF/telefone para um
+    // aluno real, dificultando a decisao de confirmar ou negar (RN098-100).
+    const missingStudentIds = [...new Set(links.map((item) => item.student_id))].filter(
+      (id) => id && !profileById.has(id),
+    );
+    const mobileLearners = missingStudentIds.length > 0 ? await getMobileLearners({ ids: missingStudentIds }) : [];
+    const mobileLearnerById = mapById(mobileLearners);
+
     const items = links.map((link) => {
       const student = profileById.get(link.student_id);
+      const mobileStudent = student ? null : mobileLearnerById.get(link.student_id);
       const tutor = profileById.get(link.tutor_id);
       return {
         id: link.id,
         status: link.status,
         data: formatDateTime(link.requested_at || link.created_at),
         motivo: link.reason ?? "",
-        aluno: student?.full_name ?? "Sem nome",
-        cpf: student?.cpf ?? "",
-        telefone: student?.phone ?? "",
+        aluno: student?.full_name ?? mobileStudent?.displayName ?? "Sem nome",
+        cpf: student?.cpf ?? mobileStudent?.cpfOrPassport ?? "",
+        telefone: student?.phone ?? mobileStudent?.phoneDigits ?? "",
         tutor: tutor?.full_name ?? "Sem tutor",
         tutorId: link.tutor_id,
         studentId: link.student_id,
@@ -1453,18 +1465,28 @@ cadastrosRouter.get("/sessoes-confirmacao", async (req, res) => {
     const studentIds = [...new Set(pending.map((l) => l.student_id))];
     const profiles = studentIds.length ? await getProfiles({ ids: studentIds }) : [];
     const profileById = mapById(profiles);
+
+    // O aluno que solicita vinculo pelo celular (RN101-105) pode ainda nao
+    // ter espelho em `profiles` — sem esse fallback, o alfabetizador via a
+    // tela de confirmacao em branco (sem nome/CPF/telefone) e nao tinha como
+    // verificar quem estava pedindo o vinculo antes de confirmar ou negar.
+    const missingStudentIds = studentIds.filter((id) => id && !profileById.has(id));
+    const mobileLearners = missingStudentIds.length > 0 ? await getMobileLearners({ ids: missingStudentIds }) : [];
+    const mobileLearnerById = mapById(mobileLearners);
+
     const items = pending.map((l) => {
       const s = profileById.get(l.student_id);
+      const mobileStudent = s ? null : mobileLearnerById.get(l.student_id);
       const metadata = getProfileMetadata(s);
       return {
         id: l.id,
         requestedAt: l.requested_at ?? l.created_at ?? null,
         learnerProfile: {
           id: l.student_id,
-          displayName: s?.full_name ?? "Sem nome",
-          cpfOrPassport: s?.cpf ?? null,
+          displayName: s?.full_name ?? mobileStudent?.displayName ?? "Sem nome",
+          cpfOrPassport: s?.cpf ?? mobileStudent?.cpfOrPassport ?? null,
           // Tela de confirmação do educador exibe os dados completos do aluno.
-          phoneDigits: s?.phone ?? null,
+          phoneDigits: s?.phone ?? mobileStudent?.phoneDigits ?? null,
           birthDate: metadataText(metadata, ["birthDate", "birth_date", "dataNascimento", "data_nascimento"]) || null,
           uf: metadataText(metadata, ["uf", "state", "estado"]).toUpperCase() || null,
           city: metadataText(metadata, ["city", "cidade"]) || null,
