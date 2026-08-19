@@ -291,6 +291,7 @@ A fonte original só tem placeholders ("RN000 - [Onde] - Texto") pra essas duas 
 
 ## Notas de qualidade da fonte
 
+- **`RN029` não existe** — a numeração original salta de `RN028` direto pra `RN030` (confirmado na página 3 do PDF). Não é uma regra perdida na transcrição, é um número pulado pelo autor original.
 - Números de RN duplicados no original: `RN006` (aparece 2x, Cadastro de Perfil 2 e 3), `RN061–RN063` (rotulados como "Etapa 1 - Conclusão" mas no contexto de Etapa 2, provável erro de digitação da fonte).
 - `RN010` não define quantos vídeos tutoriais existem — texto da própria regra diz que isso "precisa ser editável".
 - `RN030` repete a mesma condição duas vezes de forma redundante — mantido como está na fonte, não corrigido aqui.
