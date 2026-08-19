@@ -1,5 +1,16 @@
 import { NativeModules, Platform } from 'react-native';
 
+// A API local e o Express de `apps/api`, que sobe em 8080 com prefixo
+// /api/v1 (ver apps/api/src/config/env.js). Ate 27/07 existia um NestJS em
+// :3000 e era ele que estes fallbacks endereçavam; a consolidacao em monorepo
+// eliminou esse servico, entao apontar para 3000 hoje e apontar para o vazio.
+const LOCAL_API_PORT = 8080;
+const LOCAL_API_PATH = '/api/v1';
+
+function localApiUrl(host: string): string {
+  return `http://${host}:${LOCAL_API_PORT}${LOCAL_API_PATH}`;
+}
+
 function normalize(url: string): string {
   return url.trim().replace(/\/$/, '');
 }
@@ -55,7 +66,7 @@ export function resolveApiBaseUrl(): string {
       }
     }
 
-    return 'http://localhost:3000';
+    return localApiUrl('localhost');
   }
 
   const scriptUrl = (NativeModules as { SourceCode?: { scriptURL?: string } })?.SourceCode?.scriptURL;
@@ -67,14 +78,24 @@ export function resolveApiBaseUrl(): string {
     const normalizedExplicit = normalize(explicit);
     const explicitHost = hostFromBaseUrl(normalizedExplicit);
 
+    // `localhost` dentro do device/emulador aponta para o proprio aparelho, nao
+    // para a maquina do dev — por isso o host precisa ser trocado. Mas trocamos
+    // SO o host: a porta e o caminho que o dev configurou em
+    // EXPO_PUBLIC_API_URL sao preservados. Antes a URL inteira era descartada e
+    // substituida por uma constante, o que jogava fora tambem a porta e o
+    // prefixo /api/v1 — quem apontava para uma API local em outra porta era
+    // silenciosamente redirecionado para outro lugar.
     const isWrongHostOnNative = isNativeRuntime && isLoopbackHost(explicitHost);
-    if (isWrongHostOnNative) {
-      if (metroHost && isIpv4(metroHost) && !isLoopbackHost(metroHost)) {
-        return `http://${metroHost}:3000`;
-      }
+    if (isWrongHostOnNative && explicitHost) {
+      const reachableHost =
+        metroHost && isIpv4(metroHost) && !isLoopbackHost(metroHost)
+          ? metroHost
+          : Platform.OS === 'android'
+            ? '10.0.2.2'
+            : null;
 
-      if (Platform.OS === 'android') {
-        return 'http://10.0.2.2:3000';
+      if (reachableHost) {
+        return normalizedExplicit.replace(explicitHost, reachableHost);
       }
     }
 
@@ -82,12 +103,12 @@ export function resolveApiBaseUrl(): string {
   }
 
   if (metroHost && isIpv4(metroHost)) {
-    return `http://${metroHost}:3000`;
+    return localApiUrl(metroHost);
   }
 
   if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:3000';
+    return localApiUrl('10.0.2.2');
   }
 
-  return 'http://localhost:3000';
+  return localApiUrl('localhost');
 }
