@@ -119,7 +119,7 @@ WebSocket: `ws://localhost:8080/ws` (dev), `wss://api.letras.cloud/ws` (prod). E
 - `infra/supabase/migrations/` — migrations SQL
 - `docs/` — documentação de produto, arquitetura, operações
 - `artifacts/` — scripts de deploy gerados
-- `C:\Projetos\letras-mobile-ref\` — app Expo/React Native (repo separado, deploy: `mobile.letras.cloud`)
+- `apps/mobile/` — app Expo/React Native (deploy: `mobile.letras.cloud`). Desde 2026-07-27 vive NESTE repo: o repositorio `IsraelNunes/letras` foi absorvido por subtree e esta congelado (ver `docs/HISTORICO-CONSOLIDACAO.md`)
 
 ### Stack web
 
@@ -177,7 +177,7 @@ Infra: host Linux (root@76.13.160.193). Não usar sshpass/plink (não disponíve
 
 ### Mobile (mobile.letras.cloud)
 
-App Expo separado, repo `C:\Projetos\letras-mobile-ref`. Deploy web mobile usa Nginx vhost isolado em `mobile.letras.cloud` com TLS via certbot.
+App Expo em `apps/mobile/` deste monorepo. `.github/workflows/deploy-mobile.yml` dispara apos o Quality Gate passar na `main`, e so quando `apps/mobile/` ou os pacotes compartilhados mudam. Nginx vhost isolado em `mobile.letras.cloud` com TLS via certbot.
 
 ---
 
