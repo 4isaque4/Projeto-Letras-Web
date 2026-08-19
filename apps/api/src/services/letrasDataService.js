@@ -722,7 +722,7 @@ async function getMobileEducators({ ids } = {}) {
   return runOptionalQuery(query, "Falha ao listar educadores do schema mobile");
 }
 
-async function getMobileLearners({ ids, educatorIds } = {}) {
+export async function getMobileLearners({ ids, educatorIds } = {}) {
   const client = requireSupabase();
   let query = client
     .from("LearnerProfile")
@@ -2068,6 +2068,44 @@ async function resolveEducatorDisplayName(educatorId) {
   }
 
   return normalizeText(mobileEducator?.name) || "Alfabetizador";
+}
+
+// Fonte canônica de pontos do alfabetizando (RN085/RN096). Usada pelo ranking
+// e pelo extrato de pontos do painel — nunca somar `activity_progress.score`
+// para exibir pontuação: aquele campo guarda score bruto da atividade (ex.:
+// acerto de quiz), não os pontos de gamificação.
+export async function getLearnerScoreEvents({ studentIds } = {}) {
+  const client = requireSupabase();
+  let query = client
+    .from("learner_score_events")
+    .select("id, student_id, activity_id, event_type, points, payload, created_at")
+    .order("created_at", { ascending: false })
+    .limit(2000);
+
+  if (studentIds) {
+    if (studentIds.length === 0) return [];
+    query = query.in("student_id", studentIds);
+  }
+
+  return runOptionalQuery(query, "Falha ao listar eventos de pontuacao dos alfabetizandos");
+}
+
+// Fonte canônica de pontos do alfabetizador (RN085/RN093/RN096), espelhando
+// getEducatorScoreSummary mas para múltiplos educadores de uma vez.
+export async function getEducatorScoreEvents({ educatorIds } = {}) {
+  const client = requireSupabase();
+  let query = client
+    .from("educator_score_events")
+    .select("id, educator_id, student_id, event_type, stage_number, points, payload, created_at")
+    .order("created_at", { ascending: false })
+    .limit(2000);
+
+  if (educatorIds) {
+    if (educatorIds.length === 0) return [];
+    query = query.in("educator_id", educatorIds);
+  }
+
+  return runOptionalQuery(query, "Falha ao listar eventos de pontuacao dos alfabetizadores");
 }
 
 export async function getEducatorScoreSummary(educatorId) {
@@ -4970,6 +5008,36 @@ export async function createAuthUserWithProfile({
     throw new HttpError(400, "A senha deve ter pelo menos 6 caracteres.");
   }
 
+  // `profiles.cpf` tem unique constraint no banco (cobre alfabetizando,
+  // alfabetizador e admin na mesma tabela), mas ela compara string exata —
+  // "06604997111" e "066.049.971-11" contam como valores diferentes pro
+  // Postgres, entao a constraint (e um .eq() ingenuo aqui) deixa passar uma
+  // colisao real quando os dois cadastros usam formatacao diferente (caso
+  // real encontrado: alfabetizando cadastrada com o mesmo CPF do proprio
+  // alfabetizador, um em dígitos, outro pontuado). Por isso a comparacao e
+  // feita em dígitos, no mesmo padrao ja usado em GET
+  // /cadastros/alfabetizandos/buscar. Checar antes de criar o usuario em
+  // auth.users tambem evita deixar um usuario orfao (sem profile) e um 500
+  // generico no lugar de uma rejeicao clara.
+  const normalizedCpfDigits = normalizeDigits(cpf, 11);
+  if (normalizedCpfDigits) {
+    const { data: cpfCandidates } = await client
+      .from("profiles")
+      .select("id, role, cpf")
+      .not("cpf", "is", null);
+    const existingCpfProfile = (cpfCandidates ?? []).find(
+      (candidate) => normalizeDigits(candidate.cpf, 11) === normalizedCpfDigits,
+    );
+    if (existingCpfProfile) {
+      throw new HttpError(
+        409,
+        existingCpfProfile.role === role
+          ? "Ja existe um cadastro com este CPF."
+          : `Este CPF ja esta cadastrado como ${existingCpfProfile.role}. Um mesmo CPF nao pode ter mais de um papel no sistema.`,
+      );
+    }
+  }
+
   const { data: userData, error: userError } = await client.auth.admin.createUser({
     email: normalizedEmail,
     password: normalizedPassword,
@@ -5966,9 +6034,19 @@ export async function updateTutorStudentLink(id, updates) {
     throw new HttpError(400, "ID do vinculo invalido.");
   }
 
+  // Decisao 2026-05-17 (docs/product/decisoes-etapa1-etapa2-2026-05-17.md):
+  // negar vinculo exige motivo. GET /fila/:id (painel) ja validava isso,
+  // mas /cadastros/vinculos/:id e /cadastros/sessoes-confirmacao/:id (via
+  // app mobile do alfabetizador) chamavam esta funcao sem nenhuma
+  // validacao server-side — só o app cliente impedia o envio vazio.
+  const normalizedReason = normalizeText(updates.reason);
+  if (updates.status === "negado" && (!normalizedReason || normalizedReason.length < 3)) {
+    throw new HttpError(400, "Informe um motivo (minimo 3 caracteres) para negar o vinculo.");
+  }
+
   const payload = {
     status: updates.status,
-    reason: normalizeText(updates.reason) || null,
+    reason: normalizedReason || null,
     decided_by: normalizeText(updates.decidedBy) || null,
     decided_at: updates.status === "confirmado" || updates.status === "negado" ? new Date().toISOString() : null,
   };

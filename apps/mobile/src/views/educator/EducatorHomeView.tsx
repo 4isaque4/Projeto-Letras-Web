@@ -193,6 +193,9 @@ export function EducatorHomeView({ navigation, route }: Props) {
   const learnerRequestSequenceRef = useRef(0);
   const learnerFetchInFlightRef = useRef(false);
   const learnerFetchQueuedRef = useRef(false);
+  const lockedSessionsRequestSequenceRef = useRef(0);
+  const openHelpAlertsRequestSequenceRef = useRef(0);
+  const pendingSessionRequestsSequenceRef = useRef(0);
 
   useEffect(() => {
     if (educatorId) return;
@@ -261,9 +264,18 @@ export function EducatorHomeView({ navigation, route }: Props) {
 
   const fetchLockedSessions = useCallback(async () => {
     if (!educatorId) return;
+    // A tela dispara este fetch tanto no mount quanto no listener de 'focus'
+    // (o React Navigation emite 'focus' também na entrada inicial da tela) —
+    // as duas requisições correm em paralelo e, sem essa trava de sequência,
+    // a resposta que chega por último (não necessariamente a mais recente)
+    // vence, fazendo uma sessão bloqueada aparecer e sumir sozinha logo após
+    // o login (relatado como bug por um dev).
+    const requestSequence = ++lockedSessionsRequestSequenceRef.current;
     try {
       const data = await httpClient.get<LockedSession[]>(`/cadastros/sessoes-bloqueadas?educatorId=${educatorId}`);
-      setLockedSessions(data);
+      if (requestSequence === lockedSessionsRequestSequenceRef.current) {
+        setLockedSessions(data);
+      }
     } catch {
       // Mantem bloqueios vazios.
     }
@@ -271,6 +283,8 @@ export function EducatorHomeView({ navigation, route }: Props) {
 
   const fetchOpenHelpAlerts = useCallback(async () => {
     if (!educatorId) return;
+    // Mesma corrida de mount+focus do fetchLockedSessions acima.
+    const requestSequence = ++openHelpAlertsRequestSequenceRef.current;
     try {
       const requests = await httpClient.get<Array<{
         requestId: string;
@@ -278,14 +292,16 @@ export function EducatorHomeView({ navigation, route }: Props) {
         message?: string | null;
         timestamp: string;
       }>>(`/painel/support-requests?tutorId=${encodeURIComponent(educatorId)}`);
-      setSeededAlerts(requests.map((request) => ({
-        requestId: request.requestId,
-        learnerId: request.learnerId,
-        displayName: request.learnerId,
-        phoneDigits: null,
-        message: request.message ?? undefined,
-        timestamp: request.timestamp,
-      })));
+      if (requestSequence === openHelpAlertsRequestSequenceRef.current) {
+        setSeededAlerts(requests.map((request) => ({
+          requestId: request.requestId,
+          learnerId: request.learnerId,
+          displayName: request.learnerId,
+          phoneDigits: null,
+          message: request.message ?? undefined,
+          timestamp: request.timestamp,
+        })));
+      }
     } catch {
       // O socket continua sendo a via principal; esta leitura garante retomada.
     }
@@ -293,11 +309,15 @@ export function EducatorHomeView({ navigation, route }: Props) {
 
   const fetchPendingSessionRequests = useCallback(async () => {
     if (!educatorId) return;
+    // Mesma corrida de mount+focus do fetchLockedSessions acima.
+    const requestSequence = ++pendingSessionRequestsSequenceRef.current;
     try {
       const data = await httpClient.get<Array<{ id: string; requestedAt: string; learnerProfile: { id: string; displayName: string } }>>(
         `/cadastros/sessoes-confirmacao?educatorId=${educatorId}`,
       );
-      setPendingSessionRequests(data);
+      if (requestSequence === pendingSessionRequestsSequenceRef.current) {
+        setPendingSessionRequests(data);
+      }
     } catch {
       // Silencioso — não bloqueia o fluxo principal.
     }

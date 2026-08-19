@@ -194,6 +194,34 @@ authRouter.post("/educators/register", async (req, res) => {
       ? String(email).toLowerCase().trim()
       : `tutor.${cpfDigits}@letras.app`;
 
+    // profiles.cpf tem unique constraint cobrindo todos os papeis na mesma
+    // tabela, mas ela compara string exata — "06604997111" e
+    // "066.049.971-11" contam como valores diferentes pro Postgres, entao um
+    // .eq() ingenuo (e a propria constraint) deixam passar uma colisao real
+    // quando os dois cadastros usam formatacao diferente (caso real
+    // encontrado em producao). Por isso a comparacao busca todos os cpf
+    // cadastrados e compara em digitos, mesmo padrao ja usado em GET
+    // /cadastros/alfabetizandos/buscar. Checar antes evita tambem criar um
+    // usuario em auth.users so pra descartar em seguida, e evita expor o
+    // erro cru do Postgres.
+    if (cpfDigits) {
+      const { data: cpfCandidates } = await client
+        .from("profiles")
+        .select("id, role, cpf")
+        .not("cpf", "is", null);
+      const existingCpfProfile = (cpfCandidates ?? []).find(
+        (candidate) => String(candidate.cpf ?? "").replace(/\D/g, "") === cpfDigits,
+      );
+      if (existingCpfProfile) {
+        return res.status(409).json({
+          message:
+            existingCpfProfile.role === "tutor"
+              ? "Ja existe um cadastro com este CPF."
+              : `Este CPF ja esta cadastrado como ${existingCpfProfile.role}. Um mesmo CPF nao pode ter mais de um papel no sistema.`,
+        });
+      }
+    }
+
     const { randomBytes } = await import("node:crypto");
     const resolvedPassword = password && String(password).trim().length >= 8
       ? String(password).trim()
