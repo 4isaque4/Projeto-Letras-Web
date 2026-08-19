@@ -1639,70 +1639,71 @@ export function mapPainelToModules(
           );
         });
 
-      const lessons: LearnerFlowLesson[] = units
-        .map((unit, unitIndex): LearnerFlowLesson | null => {
-          const stageNumber = resolveUnitStageNumber(
-            unit,
-            stageNumberByStageId,
-          );
-          if (stageNumber === null) {
-            if (__DEV__) {
-              // eslint-disable-next-line no-console
-              console.warn(
-                `[learnerFlow] módulo ${unit.id} sem etapa resolvível — excluído do fluxo.`,
-              );
-            }
-            return null;
+      // Cada aula (activity) publicada do módulo vira sua PRÓPRIA entrada na
+      // lista — antes, todas as aulas de um módulo eram fundidas numa só
+      // (título/progressId da primeira, telas de todas concatenadas), então
+      // um módulo com "Encontrar a letra A/E/L" na trilha só mostrava
+      // "Encontrar a letra A" com as telas das 3 juntas; E e L nunca
+      // apareciam como itens próprios (bug relatado ao vivo pelo usuário).
+      const lessons: LearnerFlowLesson[] = units.flatMap((unit) => {
+        const stageNumber = resolveUnitStageNumber(unit, stageNumberByStageId);
+        if (stageNumber === null) {
+          if (__DEV__) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[learnerFlow] módulo ${unit.id} sem etapa resolvível — excluído do fluxo.`,
+            );
           }
+          return [];
+        }
 
-          const unitActivities = activitiesByModule.get(unit.id) ?? [];
-          const linkedBlueprints = blueprintsByModule.get(unit.id) ?? [];
+        const unitActivities = activitiesByModule.get(unit.id) ?? [];
+        const linkedBlueprints = blueprintsByModule.get(unit.id) ?? [];
 
-          const screens: LearnerFlowScreen[] = unitActivities.flatMap(
-            (activity, activityIndex): LearnerFlowScreen[] => {
-              const activityAssets = assetsByActivity.get(activity.id) ?? [];
-              const assetReferences: ActivityAssetReference[] = activityAssets
-                .map((asset) => {
-                  const url = asset.sourceUrl || asset.storage_path || null;
-                  if (!url) return null;
-                  return {
-                    url,
-                    kind: resolveAssetKind(asset.kind, url),
-                  };
-                })
-                .filter((item): item is ActivityAssetReference =>
-                  Boolean(item),
+        return unitActivities
+          .map((activity, activityIndex): LearnerFlowLesson | null => {
+            const activityAssets = assetsByActivity.get(activity.id) ?? [];
+            const assetReferences: ActivityAssetReference[] = activityAssets
+              .map((asset) => {
+                const url = asset.sourceUrl || asset.storage_path || null;
+                if (!url) return null;
+                return {
+                  url,
+                  kind: resolveAssetKind(asset.kind, url),
+                };
+              })
+              .filter((item): item is ActivityAssetReference => Boolean(item));
+            const mainAsset = activityAssets[0] ?? null;
+            const followUpAsset = activityAssets[1] ?? null;
+            const instructions = getActivityInstructions(activity);
+            const compositeBlocks = getCompositeBlocks(instructions);
+
+            let screens: LearnerFlowScreen[];
+            if (compositeBlocks) {
+              screens = compositeBlocks.map((block, blockIndex) => {
+                const mappedScreen = mapCompositeBlockToScreen(
+                  activity,
+                  block,
+                  blockIndex,
+                  assetReferences,
                 );
-              const mainAsset = activityAssets[0] ?? null;
-              const followUpAsset = activityAssets[1] ?? null;
-              const instructions = getActivityInstructions(activity);
-              const compositeBlocks = getCompositeBlocks(instructions);
-              if (compositeBlocks) {
-                return compositeBlocks.map((block, blockIndex) => {
-                  const mappedScreen = mapCompositeBlockToScreen(
-                    activity,
-                    block,
-                    blockIndex,
-                    assetReferences,
-                  );
-                  return {
-                    ...mappedScreen,
-                    hintVideoUrl: resolveHintVideoUrl(
-                      activity.hint_video_id,
-                      mediaById,
-                      mediaBySlug,
-                      mappedScreen.screenTemplate,
-                    ),
-                  };
-                });
-              }
-
+                return {
+                  ...mappedScreen,
+                  hintVideoUrl: resolveHintVideoUrl(
+                    activity.hint_video_id,
+                    mediaById,
+                    mediaBySlug,
+                    mappedScreen.screenTemplate,
+                  ),
+                };
+              });
+            } else {
               const guidanceFromInstruction = parseGuidance(
                 instructions,
                 assetReferences,
               );
 
-              return [
+              screens = [
                 {
                   id: activity.id,
                   title: normalizeText(
@@ -1718,12 +1719,7 @@ export function mapPainelToModules(
                     mainAsset?.kind,
                     mainAsset?.sourceUrl || mainAsset?.storage_path || null,
                   ),
-                  highlightMessage:
-                    activityIndex ===
-                      Math.floor((unitActivities.length - 1) / 2) &&
-                    unitActivities.length > 2
-                      ? "Metade da aula! Continue assim!"
-                      : null,
+                  highlightMessage: null,
                   hintVideoUrl: resolveHintVideoUrl(
                     activity.hint_video_id,
                     mediaById,
@@ -1764,58 +1760,57 @@ export function mapPainelToModules(
                   exercise: guidanceFromInstruction.exercise,
                 },
               ];
-            },
-          );
+            }
 
-          const fallbackScreen: LearnerFlowScreen = {
-            id: `${unit.id}-screen-1`,
-            title: normalizeText(unit.title, `Aula ${unitIndex + 1}`),
-            educatorGuidance: normalizeText(
-              unit.description,
-              "Adicione atividades nesta aula para montar as telas do fluxo mobile.",
-            ),
-            learnerSpeech: null,
-            narrationAudioUrl: null,
-            mediaUrl: null,
-            mediaKind: null,
-            highlightMessage:
-              linkedBlueprints.length > 0
-                ? `${linkedBlueprints.length} tela(s) base vinculada(s)`
-                : null,
-            followUpActivity: null,
-            screenTemplate: "default",
-            lockReason: null,
-            lockMessage: null,
-            lockAudioUrl: null,
-            exercise: null,
-            hintVideoUrl: null,
-          };
+            const fallbackScreen: LearnerFlowScreen = {
+              id: `${activity.id}-screen-1`,
+              title: normalizeText(activity.title, `Aula ${activityIndex + 1}`),
+              educatorGuidance: normalizeText(
+                unit.description,
+                "Adicione conteúdo nesta aula para montar as telas do fluxo mobile.",
+              ),
+              learnerSpeech: null,
+              narrationAudioUrl: null,
+              mediaUrl: null,
+              mediaKind: null,
+              highlightMessage:
+                linkedBlueprints.length > 0
+                  ? `${linkedBlueprints.length} tela(s) base vinculada(s)`
+                  : null,
+              followUpActivity: null,
+              screenTemplate: "default",
+              lockReason: null,
+              lockMessage: null,
+              lockAudioUrl: null,
+              exercise: null,
+              hintVideoUrl: null,
+            };
 
-          const safeScreens = screens.length > 0 ? screens : [fallbackScreen];
-          const primaryActivityTitle = unitActivities[0]?.title;
+            const safeScreens = screens.length > 0 ? screens : [fallbackScreen];
 
-          return {
-            id: unit.id,
-            progressId: unitActivities[0]?.id ?? unit.id,
-            title: normalizeText(
-              primaryActivityTitle,
-              normalizeText(unit.title, "Aula"),
-            ),
-            objective: buildLessonObjective(unit.description, safeScreens[0]),
-            moduleLabel: `MÓDULO ${themeIndex + 1}`,
-            moduleTitle: normalizeText(theme.title || theme.name, "Módulo"),
-            stageNumber,
-            screens: safeScreens,
-            conclusionTitle: "Aula Concluída!",
-            conclusionMessage:
-              "Parabéns! Você concluiu esta aula. Continue praticando para avançar no módulo.",
-            accessStatus: "available",
-            progressStatus: "not_started",
-            attemptCount: 0,
-            pointsAwarded: 0,
-          };
-        })
-        .filter((lesson): lesson is LearnerFlowLesson => lesson !== null);
+            return {
+              id: activity.id,
+              progressId: activity.id,
+              title: normalizeText(
+                activity.title,
+                normalizeText(unit.title, `Aula ${activityIndex + 1}`),
+              ),
+              objective: buildLessonObjective(unit.description, safeScreens[0]),
+              moduleLabel: `MÓDULO ${themeIndex + 1}`,
+              moduleTitle: normalizeText(theme.title || theme.name, "Módulo"),
+              stageNumber,
+              screens: safeScreens,
+              conclusionTitle: "Aula Concluída!",
+              conclusionMessage:
+                "Parabéns! Você concluiu esta aula. Continue praticando para avançar no módulo.",
+              accessStatus: "available",
+              progressStatus: "not_started",
+              attemptCount: 0,
+              pointsAwarded: 0,
+            };
+          })
+          .filter((lesson): lesson is LearnerFlowLesson => lesson !== null);
+      });
 
       return {
         id: theme.id,
