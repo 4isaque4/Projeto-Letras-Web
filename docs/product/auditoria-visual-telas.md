@@ -164,11 +164,15 @@ Abri os 24 arquivos (17 numerados + 7 recortes `-1`) integralmente. Não são te
 |---|---|---|
 | Ícone de som (verde) | verde | ✅ `#2fa536`/`#2F9711` |
 | "FOTOGRAFAR ATIVIDADE" (ativo) | verde | ✅ |
-| "PRECISO DE AJUDA" (botão de solicitar) | **amarelo** | ❌ código usa `#e30613` vermelho — **confirma de novo o achado prioritário já registrado** |
+| "PRECISO DE AJUDA" (botão de solicitar) | **amarelo**, muda pra vermelho só depois do clique (RN109: *"o botão irá mudar e aparecerá o botão vermelho"*) | ❌ código usa `#e30613` vermelho **sempre** — não muda de cor, não distingue "posso pedir ajuda" de "já travou esperando ajuda". Achado com evidência tripla agora: visual (3 frames Figma) + textual (RN109) |
 | "AGUARDANDO AJUDA" (banner travado, depois de clicar) | vermelho | ✅ bate com `#e11d2c` |
 | Veredito ✗ (círculo de erro) | vermelho-alaranjado sólido | a confirmar valor exato — código usa `#ef4444` |
 | Veredito ✓ (círculo de acerto) | verde escuro | a confirmar valor exato — código usa `#2fa536` |
-| Quadrado de letra: neutro/selecionado/errado/certo | cinza / **amarelo** / vermelho vivo (borda, sem preenchimento) / verde vivo (borda, sem preenchimento) | ⚠️ código (`letterSquareWrong`/`letterSquareFilled`) usa preenchimento tinto claro (`#fee2e2`/`#dbf5e4`) em vez de borda vivamente colorida sem preenchimento — **e não existe estado amarelo/"selecionado" implementado** |
+| Quadrado de letra: neutro/amarelo/errado/certo | cinza / **amarelo** / vermelho vivo (borda, sem preenchimento) / verde vivo (borda, sem preenchimento) | ⚠️ código (`letterSquareWrong`/`letterSquareFilled` em `LearnerLessonScreenView.tsx`) usa preenchimento tinto claro (`#fee2e2`/`#dbf5e4`) em vez de borda vivamente colorida sem preenchimento — **e não existe o estado amarelo intermediário** |
+
+**Confirmado por regra de negócio, não só por imagem (RN117)**: essa tela é literalmente uma aula que ensina o "dicionário de cores" dos quadros de exercício — texto da regra original: *"Quando o áudio citar sobre o quadro com a borda cinza... borda amarela... borda vermelha e o símbolo de erro... borda verde e o símbolo de certo"*. Confirma que o quadro amarelo é um estado real do produto, não um acessório do frame de treinamento.
+
+**Diferente do "Marcar Caixas" (`exercise-mark-images`), que já está correto**: RN123 pede "clicar em uma caixa, sua cor deve mudar de cinza para amarelo queimado" pro estado de seleção — e o código (`markItemSelected` em `LearnerLessonScreenView.tsx`, `#f59e0b`/`#fef3c7`, com comentário citando o Figma) já implementa exatamente isso. **O quadrado amarelo que falta é só no exercício de letra (`exercise-match-letter`/"Marcar o Quadrado da Letra"), não no de Marcar Caixas.**
 
 ### Telas de aula da Etapa 1 (todos os 5 modelos, `LearnerLessonScreenView.tsx`)
 Estrutura bate perfeitamente com o Figma nos 5 modelos (texto/imagem/áudio/vídeo/letra) — mesmo layout, mesmos elementos, mesma ordem. É a tela mais estruturalmente coerente encontrada até agora.
