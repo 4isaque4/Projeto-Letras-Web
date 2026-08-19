@@ -1718,8 +1718,29 @@ painelRouter.get("/ranking", async (_req, res) => {
         ...item,
       }));
 
+    // Mesmo fallback de nome ja aplicado na Fila de Atendimento e no dashboard
+    // do alfabetizador: o aluno pode ter perfil no painel sem `full_name`, com
+    // o nome real so no registro do schema mobile. Sem isto, o MESMO aluno
+    // aparece nomeado na Fila e como "Alfabetizando" generico aqui no extrato.
+    const missingNameStudentIds = [
+      ...new Set(learnerScoreEvents.map((event) => event.student_id).filter(Boolean)),
+    ].filter((id) => !studentById.get(id)?.full_name);
+    const mobileLearnersForLedger =
+      missingNameStudentIds.length > 0 ? await getMobileLearners({ ids: missingNameStudentIds }) : [];
+    const mobileLedgerNameById = new Map(
+      mobileLearnersForLedger.map((learner) => [
+        learner.id,
+        typeof learner.displayName === "string" && learner.displayName.trim().length > 0
+          ? learner.displayName.trim()
+          : null,
+      ]),
+    );
+
     const describeLearnerEvent = (event) => {
-      const name = studentById.get(event.student_id)?.full_name ?? "Alfabetizando";
+      const name =
+        studentById.get(event.student_id)?.full_name ||
+        mobileLedgerNameById.get(event.student_id) ||
+        "Alfabetizando";
       if (event.event_type === "first_completion") {
         return `${name} - Concluiu uma atividade`;
       }
@@ -1727,7 +1748,7 @@ painelRouter.get("/ranking", async (_req, res) => {
     };
 
     const describeEducatorEvent = (event) => {
-      const name = tutorById.get(event.educator_id)?.full_name ?? "Alfabetizador";
+      const name = tutorById.get(event.educator_id)?.full_name || "Alfabetizador";
       if (event.event_type === "stage_completed") {
         return `${name} (alfabetizador) - Aluno concluiu a Etapa ${event.stage_number ?? ""}`.trim();
       }
