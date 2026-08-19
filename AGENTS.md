@@ -2,10 +2,13 @@
 
 Carregado automaticamente por todo agente Codex neste repositório. Consolida conceitos de produto, arquitetura e processo que **não podem ser inferidos apenas lendo o código**. Leia antes de sugerir código, copy de UI, nomes de entidade ou exemplos.
 
+Este arquivo espelha o `CLAUDE.md` do mesmo repositório (mesmo conteúdo, adaptado pro agente Codex). Ao atualizar um, atualize o outro.
+
 Fontes primárias (se divergir deste arquivo, as fontes prevalecem e este arquivo deve ser atualizado):
 
 - [docs/product/glossario.md](docs/product/glossario.md)
-- [docs/product/regras-negocio-mvp-alfabetizacao.md](docs/product/regras-negocio-mvp-alfabetizacao.md) — RN001 a RN123
+- [docs/product/regras-negocio-completo.md](docs/product/regras-negocio-completo.md) — RN001 a RN123, texto completo (fonte primária de verdade)
+- [docs/product/regras-negocio-mvp-alfabetizacao.md](docs/product/regras-negocio-mvp-alfabetizacao.md) — só o recorte de MVP e dependências externas; **não tem o detalhe das RNs**, usar o arquivo acima pra isso
 - [docs/product/decisoes-etapa1-etapa2-2026-05-17.md](docs/product/decisoes-etapa1-etapa2-2026-05-17.md) — escopo congelado p/ Etapas 1 e 2
 - [docs/product/etapa1-web-execucao.md](docs/product/etapa1-web-execucao.md)
 - [docs/product/wireframe.md](docs/product/wireframe.md)
@@ -55,7 +58,13 @@ Templates de tela importados via `/admin/conteudo/importar-telas`. Servem de bas
 
 ### Etapa (stage)
 
-Divisão macro da jornada: Etapa 1 (tutoriais, base), Etapa 2 (reconhecimento de letras). Atributo do módulo, não do tema.
+Divisão macro da jornada, com **progressão de autonomia em 3 níveis** (não é um corte binário Etapa 1 vs. resto). Atributo do módulo, não do tema.
+
+- **Etapa 1**: presencial, o alfabetizador conduz tudo e lê o conteúdo em voz alta pro alfabetizando — "Somente você [alfabetizador] irá acessar a plataforma" (RN037-050).
+- **Etapa 2**: ainda presencial (alfabetizador junto), mas é a fase de transição — o alfabetizando passa a aprender pelo próprio celular, não mais pelo ensino direto do alfabetizador; é aqui que ele "treina" pra ficar sozinho (RN051-060, RN106-123).
+- **Etapa 3**: totalmente on-line, sem presença física do alfabetizador — ele só acompanha à distância e recebe avaliação por IA das atividades enviadas por foto (RN064-083).
+
+No código, a flag `isLearnerDriven = stageNumber >= 2` (`LearnerLessonScreenView.tsx`) trata Etapa 2 e 3 como idênticas em autonomia — não captura a distinção presencial (Etapa 2) vs. totalmente remoto (Etapa 3) que a regra de negócio descreve. Não assumir que isso é bug sem investigar; pode ser que a distinção presencial/remoto seja só uma orientação ao alfabetizador, não um comportamento de app.
 
 ---
 
@@ -64,7 +73,10 @@ Divisão macro da jornada: Etapa 1 (tutoriais, base), Etapa 2 (reconhecimento de
 Decisões tomadas em reuniões ou no planejamento do MVP que condicionam o código:
 
 - **POC em modo individual**: sem suporte a grupos na POC atual. Não sugira features de grupo antes de confirmar.
-- **App mobile separado do app do alfabetizador**: estratégia atual mantém **dois apps Expo distintos** (alfabetizador, alfabetizando). Avaliação técnica ainda em curso, mas a tendência de curto prazo é manter separado.
+- **App mobile único** (reunião 11/06/2026): uma só versão do app para os dois perfis. O alfabetizador sempre inicia e configura o app no celular do alfabetizando; o alfabetizando abre direto na visão dele, sem tela de seleção de perfil. Supera a avaliação anterior de manter dois apps Expo distintos. Ver [docs/meetings/ata-reuniao-validacao-etapa1-gamificacao-2026-06-11.md](docs/meetings/ata-reuniao-validacao-etapa1-gamificacao-2026-06-11.md).
+- **Nomenclatura oficial** (reunião 11/06/2026): "alfabetizador" e "alfabetizando" em toda copy visível; nunca "educador"/"aprendiz" (aceitos só em código interno).
+- **Hierarquia de conteúdo** (reunião 11/06/2026): **Tema → Etapa → Módulo → Tela**. A etapa vem acima do módulo (cada etapa tem seus módulos próprios); o wizard do painel ainda precisa ser invertido para refletir isso. A unidade exibida no app chama-se "tela" ("tela X de Y da etapa"), não "aula" — aula é o conjunto.
+- **Tema é travado durante a jornada**: uma vez iniciada a alfabetização não se troca de tema; a troca só é permitida entre etapas concluídas.
 - **Cabeçalho das telas de aula**: sempre exibir o nome do alfabetizando.
 - **Progresso visível**: percentual ou "tela X de Y" dentro da etapa.
 - **Cidade/UF**: campo operacional para futura realocação de alfabetizador.
@@ -113,13 +125,17 @@ WebSocket: `ws://localhost:8080/ws` (dev), `wss://api.letras.cloud/ws` (prod). E
 
 ## 4. Estrutura do monorepo
 
+Desde a consolidação em 2026-08-18 (PR #65, `arch/monorepo-contratos` → `main`), o app mobile vive **neste mesmo repositório** — não é mais um repo separado. O histórico do antigo repo (`github.com/IsraelNunes/letras`) foi preservado via `git subtree`; as Actions de lá foram desativadas manualmente para não haver deploy duplicado.
+
 - `apps/web/` — painel React + Vite (deploy: `painel.letras.cloud`)
 - `apps/api/` — API Express (mesmo host, rota `/api/v1`)
-- `packages/*` — contratos e libs compartilhadas
+- `apps/mobile/` — app Expo/React Native (deploy: `mobile.letras.cloud`, export web via `expo export --platform web`)
+- `packages/contracts`, `packages/shared-types`, `packages/shared-utils` — contratos e libs compartilhadas entre os 3 apps
 - `infra/supabase/migrations/` — migrations SQL
 - `docs/` — documentação de produto, arquitetura, operações
-- `artifacts/` — scripts de deploy gerados
-- `C:\Projetos\letras-mobile-ref\` — app Expo/React Native (repo separado, deploy: `mobile.letras.cloud`)
+- `tools/deploy/` — scripts de deploy (Paramiko) usados pelo CI
+
+Pacotes do workspace usam o namespace `@letras/*` (`@letras/web`, `@letras/api`, `@letras/mobile`, `@letras/shared-types`, `@letras/shared-utils`).
 
 ### Stack web
 
@@ -164,20 +180,14 @@ Toda issue vira PR dedicado (1 issue = 1 PR). PR deve fechar a issue via `Closes
 
 ## 7. Deploy
 
-### Painel web (painel.letras.cloud)
+Deploy é automático via GitHub Actions (`.github/workflows/`), não manual. Cada push/merge na `main` dispara o **Quality Gate** (`quality.yml`, job `Web/API quality` — nome preservado de propósito, a branch protection exige esse check; hoje ele cobre os 3 apps: build:shared, typecheck, test, build do painel, export web do Expo). Só depois do Quality Gate terminar com sucesso na `main`, os deploys disparam via `workflow_run`:
 
-Build local com `VITE_API_BASE_URL` correto (garantido pelo `apps/web/.env.production`), depois upload via Paramiko SFTP usando um script em `artifacts/deploy_painel_<data>.py`. Padrão:
+- **`deploy-painel.yml`** — só roda se o diff do commit tocar `apps/web/`, `apps/api/` ou `packages/contracts/`. Build do painel (`pnpm --filter @letras/web build`) + upload via Paramiko SFTP (`tools/deploy/deploy_painel_ci.py`) para `/srv/letras-painel/_releases/<timestamp>/`, promove pra `dist/`, smoke test via `curl`.
+- **`deploy-mobile.yml`** — só roda se o diff tocar `apps/mobile/` ou os pacotes compartilhados. `expo export --platform web` + upload via Paramiko (`tools/deploy/deploy_mobile_web_ci.py`) para `/srv/letras-mobile-web/_releases/<timestamp>-mobile-web/`, com pós-processamento de paths (`/_expo/` → `/mobile-expo/`, `/assets/` → `/mobile-assets/`) para não colidir com o painel no mesmo host.
 
-1. Upload `apps/web/dist/` para `/srv/letras-painel/_releases/painel-<timestamp>/`
-2. Backup de `/srv/letras-painel/dist` para `_releases/painel-<timestamp>-prelive/`
-3. Promove release nova para `dist/`
-4. Smoke test via `curl` em `https://painel.letras.cloud/` e `/api/v1/painel/conteudo`
+Os dois workflows também aceitam `workflow_dispatch` (deploy manual sob demanda) e usam `concurrency` group próprio para não sobrepor deploys.
 
-Infra: host Linux (root@76.13.160.193). Não usar sshpass/plink (não disponíveis no ambiente Windows). Paramiko é o caminho.
-
-### Mobile (mobile.letras.cloud)
-
-App Expo separado, repo `C:\Projetos\letras-mobile-ref`. Deploy web mobile usa Nginx vhost isolado em `mobile.letras.cloud` com TLS via certbot.
+Infra: host Linux único (`root@76.13.160.193`, hostname `srv1291010`, Ubuntu 24.04), serve `painel.letras.cloud` e `mobile.letras.cloud` via vhosts Nginx separados (TLS via certbot). Secrets do GitHub Actions: `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PASSWORD`, `WEB_ENV_PRODUCTION`. Não usar sshpass/plink (não disponíveis no ambiente Windows) — Paramiko é o caminho, tanto no CI quanto em scripts locais.
 
 ---
 
