@@ -74,10 +74,13 @@ interface LearnerHomeViewModelOptions {
   // Tema do alfabetizando no modo override: escopa o stage-status/firstStage do
   // runner ao tema atribuído (sem isto, cairia no primeiro tema publicado).
   overrideThemeId?: string;
+  // Id do alfabetizador conduzindo o runner — usado pra registrar quem aprovou
+  // a transição de etapa (POST /painel/learners/:id/approve-stage).
+  overrideEducatorId?: string;
 }
 
 export function useLearnerHomeViewModel(options: LearnerHomeViewModelOptions = {}) {
-  const { overrideLearnerProfileId, overrideLearnerName, overrideThemeId } = options;
+  const { overrideLearnerProfileId, overrideLearnerName, overrideThemeId, overrideEducatorId } = options;
   // Runner da Etapa 1: o alfabetizador conduz sob o perfil do alfabetizando.
   const isEducatorConducted = Boolean(overrideLearnerProfileId);
   const repository = useMemo(() => new LearnerSessionRepositoryImpl(), []);
@@ -478,6 +481,7 @@ export function useLearnerHomeViewModel(options: LearnerHomeViewModelOptions = {
       errorMessage,
       learnerProfileId,
       themeId: overrideThemeId ?? null,
+      educatorId: overrideEducatorId ?? null,
       learnerName,
       deviceId,
       themeNames,
@@ -508,6 +512,7 @@ export function useLearnerHomeViewModel(options: LearnerHomeViewModelOptions = {
       errorMessage,
       learnerProfileId,
       overrideThemeId,
+      overrideEducatorId,
       learnerName,
       deviceId,
       themeNames,

@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { supabaseAdmin } from "../lib/supabase.js";
 import {
+  approveLearnerStage,
   createContentAsset,
   createSupportRequest,
   deleteContentAsset,
@@ -1214,6 +1215,25 @@ painelRouter.get("/learners/:learnerProfileId/stage-status", async (req, res) =>
     const status = await computeLearnerStageStatus({
       learnerProfileId: req.params.learnerProfileId,
       themeId: req.query?.themeId,
+    });
+    res.json(status);
+  } catch (error) {
+    const httpError = toHttpError(error);
+    res.status(httpError.status).json({ message: httpError.message });
+  }
+});
+
+// Aprovação explícita do alfabetizador pra liberar a etapa seguinte (decisão
+// do usuário, 2026-08-19): a conclusão da Etapa 1 sozinha não libera a Etapa
+// 2 nem o espelhamento — chamado pelo botão "Aprovar" na tela de conclusão
+// que o educador vê ao terminar de conduzir a Etapa 1.
+painelRouter.post("/learners/:learnerProfileId/approve-stage", async (req, res) => {
+  try {
+    const status = await approveLearnerStage({
+      studentId: req.params.learnerProfileId,
+      themeId: req.body?.themeId,
+      stageNumber: req.body?.stageNumber,
+      educatorId: req.body?.educatorId,
     });
     res.json(status);
   } catch (error) {

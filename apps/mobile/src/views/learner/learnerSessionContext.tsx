@@ -37,6 +37,7 @@ interface LearnerSessionProviderProps {
   overrideLearnerProfileId?: string;
   overrideLearnerName?: string;
   overrideThemeId?: string;
+  overrideEducatorId?: string;
 }
 
 export function LearnerSessionProvider({
@@ -44,11 +45,13 @@ export function LearnerSessionProvider({
   overrideLearnerProfileId,
   overrideLearnerName,
   overrideThemeId,
+  overrideEducatorId,
 }: PropsWithChildren<LearnerSessionProviderProps>) {
   const viewModel = useLearnerHomeViewModel({
     overrideLearnerProfileId,
     overrideLearnerName,
     overrideThemeId,
+    overrideEducatorId,
   });
   const { initialize, cleanup } = viewModel;
 

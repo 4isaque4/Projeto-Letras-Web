@@ -1207,7 +1207,15 @@ function resolveThemeIdFromProgress(progressRows, activityThemeById) {
 // Puro/síncrono: monta o rollup por etapa a partir de dados já carregados
 // (etapas ativas, módulos ativos, atividades publicadas e progresso do aluno).
 // Reutilizado pelo endpoint individual e pelo enriquecimento em lote da lista.
-function buildStageStatus({ stages, modules, activities, progressRows }) {
+//
+// `approvedStageNumbers` (Set<number>): decisão do usuário em 2026-08-19 — a
+// conclusão da Etapa 1 NÃO libera a Etapa 2 sozinha, o alfabetizador precisa
+// aprovar explicitamente (ver learner_stage_approvals). Só a transição pra
+// fora da PRIMEIRA etapa exige essa aprovação; as demais (2→3) continuam
+// automáticas por conclusão, como já era.
+function buildStageStatus({ stages, modules, activities, progressRows, approvedStageNumbers }) {
+  const approvedStages =
+    approvedStageNumbers instanceof Set ? approvedStageNumbers : new Set(approvedStageNumbers ?? []);
   const stageNumberByStageId = new Map(
     (stages ?? []).map((stage) => [stage.id, Number(stage.stage_number)]),
   );
@@ -1234,15 +1242,19 @@ function buildStageStatus({ stages, modules, activities, progressRows }) {
     (a, b) => Number(a.stage_number) - Number(b.stage_number),
   );
 
-  // Uma etapa desbloqueia se é a menor OU todas as anteriores estão concluídas.
+  // Uma etapa desbloqueia se é a menor OU todas as anteriores estão concluídas
+  // (e, especificamente pra sair da 1ª etapa, se ela já foi aprovada).
   let allPreviousCompleted = true;
-  const stageStatuses = orderedStages.map((stage) => {
+  const firstStageNumber = orderedStages.length > 0 ? Number(orderedStages[0].stage_number) : null;
+  const stageStatuses = orderedStages.map((stage, index) => {
     const stageNumber = Number(stage.stage_number);
     const stageActivityIds = activityIdsByStageNumber.get(stageNumber) ?? [];
     const stageCompletedIds = stageActivityIds.filter((id) => completedActivityIds.has(id));
     const totalActivities = stageActivityIds.length;
     const completed = totalActivities > 0 && stageCompletedIds.length === totalActivities;
-    const unlocked = allPreviousCompleted;
+    const firstStageApproved = firstStageNumber != null && approvedStages.has(firstStageNumber);
+    const requiresFirstStageApproval = index === 1;
+    const unlocked = allPreviousCompleted && (!requiresFirstStageApproval || firstStageApproved);
     allPreviousCompleted = allPreviousCompleted && completed;
     return {
       stageId: stage.id,
@@ -1253,6 +1265,8 @@ function buildStageStatus({ stages, modules, activities, progressRows }) {
       completed,
       unlocked,
       completedActivityIds: stageCompletedIds,
+      approved: index === 0 ? firstStageApproved : null,
+      pendingApproval: index === 0 ? completed && !firstStageApproved : false,
     };
   });
 
@@ -1260,6 +1274,7 @@ function buildStageStatus({ stages, modules, activities, progressRows }) {
   // Etapa 1 = menor etapa ativa. Tema sem atividades na Etapa 1 ⇒ false (mirror
   // travado por padrão seguro).
   const etapa1Completed = Boolean(firstStage?.completed);
+  const etapa1Approved = Boolean(firstStage?.approved);
   const unlockedStageNumbers = stageStatuses.filter((s) => s.unlocked).map((s) => s.stageNumber);
   const currentStageNumber =
     unlockedStageNumbers.length > 0 ? Math.max(...unlockedStageNumbers) : firstStage?.stageNumber ?? 1;
@@ -1267,9 +1282,90 @@ function buildStageStatus({ stages, modules, activities, progressRows }) {
   return {
     stages: stageStatuses,
     etapa1Completed,
-    mirrorUnlocked: etapa1Completed,
+    etapa1Approved,
+    // Espelhamento também exige a aprovação — não faz sentido o alfabetizador
+    // acompanhar a Etapa 2 remotamente antes de ter liberado essa transição.
+    mirrorUnlocked: etapa1Approved,
     currentStageNumber,
   };
+}
+
+// Aprovações de transição de etapa já registradas para 1 aluno em 1 tema.
+async function getLearnerStageApprovals({ studentId, themeId }) {
+  const client = requireSupabase();
+  const rows = await runOptionalQuery(
+    client
+      .from("learner_stage_approvals")
+      .select("stage_number")
+      .eq("student_id", studentId)
+      .eq("theme_id", themeId),
+    "Falha ao listar aprovacoes de etapa",
+  );
+  return new Set((rows ?? []).map((row) => Number(row.stage_number)));
+}
+
+// Aprovações de VÁRIOS alunos de uma vez (para o enriquecimento em lote).
+async function getLearnerStageApprovalsMap({ studentIds }) {
+  const client = requireSupabase();
+  if (!studentIds || studentIds.length === 0) return new Map();
+  const rows = await runOptionalQuery(
+    client
+      .from("learner_stage_approvals")
+      .select("student_id, theme_id, stage_number")
+      .in("student_id", studentIds),
+    "Falha ao listar aprovacoes de etapa",
+  );
+  const map = new Map();
+  for (const row of rows ?? []) {
+    const key = `${row.student_id}:${row.theme_id}`;
+    if (!map.has(key)) map.set(key, new Set());
+    map.get(key).add(Number(row.stage_number));
+  }
+  return map;
+}
+
+// Aprova explicitamente a transição de UMA etapa para a seguinte (decisão do
+// usuário, 2026-08-19: conclusão da Etapa 1 sozinha não libera a Etapa 2).
+// Idempotente via unique constraint (student_id, theme_id, stage_number).
+export async function approveLearnerStage({ studentId, themeId, stageNumber, educatorId }) {
+  const client = requireSupabase();
+  const normalizedStudentId = normalizeText(studentId);
+  const normalizedThemeId = normalizeText(themeId);
+  const normalizedStageNumber = Number(stageNumber);
+  if (!normalizedStudentId) throw new HttpError(400, "studentId e obrigatorio.");
+  if (!normalizedThemeId) throw new HttpError(400, "themeId e obrigatorio.");
+  if (!Number.isFinite(normalizedStageNumber)) throw new HttpError(400, "stageNumber e obrigatorio.");
+
+  const { data, error } = await client
+    .from("learner_stage_approvals")
+    .upsert(
+      {
+        student_id: normalizedStudentId,
+        theme_id: normalizedThemeId,
+        stage_number: normalizedStageNumber,
+        approved_by: normalizeNullableText(educatorId),
+        approved_at: new Date().toISOString(),
+      },
+      { onConflict: "student_id,theme_id,stage_number", ignoreDuplicates: true },
+    )
+    .select("id, student_id, theme_id, stage_number, approved_by, approved_at")
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(400, `Falha ao aprovar etapa: ${error.message}`);
+  }
+
+  await runBestEffortMobileSync("register stage approval sync event", () =>
+    registerSyncEvent({
+      sourcePlatform: "web",
+      eventType: "stage.approved",
+      entityType: "learner_stage_approval",
+      entityId: normalizedStudentId,
+      payload: { studentId: normalizedStudentId, themeId: normalizedThemeId, stageNumber: normalizedStageNumber, educatorId: normalizeNullableText(educatorId) },
+    }),
+  );
+
+  return computeLearnerStageStatus({ learnerProfileId: normalizedStudentId, themeId: normalizedThemeId });
 }
 
 // Status por etapa de UM alfabetizando dentro de UM tema. Wrapper de leitura
@@ -1314,12 +1410,15 @@ export async function computeLearnerStageStatus({ learnerProfileId, themeId } = 
       )
     : [];
 
-  const progressRows = await getActivityProgress({ studentIds: [normalizedLearnerId] });
+  const [progressRows, approvedStageNumbers] = await Promise.all([
+    getActivityProgress({ studentIds: [normalizedLearnerId] }),
+    getLearnerStageApprovals({ studentId: normalizedLearnerId, themeId: normalizedThemeId }),
+  ]);
 
   return {
     learnerProfileId: normalizedLearnerId,
     themeId: normalizedThemeId,
-    ...buildStageStatus({ stages, modules, activities, progressRows }),
+    ...buildStageStatus({ stages, modules, activities, progressRows, approvedStageNumbers }),
   };
 }
 
@@ -1338,7 +1437,10 @@ export async function computeLearnerStageStatusMap({
   const result = new Map();
   if (ids.length === 0) return result;
 
-  const rows = progressRows ?? (await getActivityProgress({ studentIds: ids }));
+  const [rows, approvalsByStudentTheme] = await Promise.all([
+    progressRows ?? getActivityProgress({ studentIds: ids }),
+    getLearnerStageApprovalsMap({ studentIds: ids }),
+  ]);
 
   const [stages, modules, themes] = await Promise.all([
     runQuery(
@@ -1412,6 +1514,7 @@ export async function computeLearnerStageStatusMap({
         modules: modulesByTheme.get(themeId) ?? [],
         activities: activitiesByTheme.get(themeId) ?? [],
         progressRows: learnerProgress,
+        approvedStageNumbers: approvalsByStudentTheme.get(`${learnerId}:${themeId}`),
       }),
     });
   }
