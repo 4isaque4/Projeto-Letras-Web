@@ -2,6 +2,8 @@
 
 Este é o texto completo das regras de negócio originais (RN001 a RN123), extraído de `docs/insumos/regras-negocio/regras-negocio-bruto-extraido.txt` (HTML bruto exportado do documento funcional original) e decodificado/formatado para leitura. **Não é um resumo** — é o conteúdo primário, palavra por palavra (com pequenos ajustes de formatação markdown).
 
+**Verificado contra o PDF original** (`docs/Regras de Negócio - Alfabetizador On-line.docx.pdf`, 16 páginas, lido na íntegra em 2026-08-18): o `.txt` bruto é uma transcrição fiel e completa do PDF — não perdeu nada na extração. A incompletude descrita na seção "Regras sem número definido" e em "Jornada Conteudista/Administrador" abaixo **é do documento de origem em si**, não uma falha de extração: o autor original escreveu "PAREI AQUI" depois da RN123 e nunca voltou a preencher o resto (inclusive a última página, "PONTOS A SEREM AVALIADOS", ficou com um "1." solto, sem conteúdo).
+
 O resumo em [regras-negocio-mvp-alfabetizacao.md](regras-negocio-mvp-alfabetizacao.md) continua útil para o recorte de MVP e as dependências externas, mas **não substitui este documento** — o resumo omite mais de 40 RNs (principalmente toda a Etapa 3, RN064–RN083) e boa parte do detalhe de comportamento (cores, estados, fluxos) que só existe aqui.
 
 Convenção: `N` = número variável, `X` = dado alfanumérico variável. `[Nome da Tela]` indica a tela do protótipo Figma a que a regra se refere.
