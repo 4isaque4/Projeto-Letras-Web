@@ -6004,9 +6004,19 @@ export async function updateTutorStudentLink(id, updates) {
     throw new HttpError(400, "ID do vinculo invalido.");
   }
 
+  // Decisao 2026-05-17 (docs/product/decisoes-etapa1-etapa2-2026-05-17.md):
+  // negar vinculo exige motivo. GET /fila/:id (painel) ja validava isso,
+  // mas /cadastros/vinculos/:id e /cadastros/sessoes-confirmacao/:id (via
+  // app mobile do alfabetizador) chamavam esta funcao sem nenhuma
+  // validacao server-side — só o app cliente impedia o envio vazio.
+  const normalizedReason = normalizeText(updates.reason);
+  if (updates.status === "negado" && (!normalizedReason || normalizedReason.length < 3)) {
+    throw new HttpError(400, "Informe um motivo (minimo 3 caracteres) para negar o vinculo.");
+  }
+
   const payload = {
     status: updates.status,
-    reason: normalizeText(updates.reason) || null,
+    reason: normalizedReason || null,
     decided_by: normalizeText(updates.decidedBy) || null,
     decided_at: updates.status === "confirmado" || updates.status === "negado" ? new Date().toISOString() : null,
   };
