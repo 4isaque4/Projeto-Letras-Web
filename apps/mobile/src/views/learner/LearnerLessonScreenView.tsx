@@ -572,6 +572,15 @@ function LoadedLearnerLessonScreenView({
           if (spoke && audioKey) {
             setPlayingAudioKey(audioKey);
           }
+          // Nao falou (sem voz disponivel, texto vazio, ou Platform.OS !== web
+          // — ou seja SEMPRE no app nativo): o `onEnd` acima nunca roda. Sem
+          // liberar o gate aqui, o primeiro audio de palavra fica travado para
+          // sempre e, como os seguintes dependem do anterior ter sido
+          // respondido, o exercicio inteiro fica mudo — exatamente o bug
+          // "todas as palavras mudas" que a trava progressiva reintroduziu.
+          if (!spoke && audioKey.startsWith("instruction-")) {
+            setInstructionAudioPlayed(true);
+          }
         }
         return;
       }
@@ -618,6 +627,14 @@ function LoadedLearnerLessonScreenView({
         activeAudioRef.current = null;
         setPlayingAudioKey(null);
         speakWithBrowserVoice(normalizedFallback);
+        // O audio de instrucao esta configurado mas nao carregou (404, codec,
+        // politica de autoplay). O fallback de fala acima nao recebe `onEnd`,
+        // entao o gate ficaria fechado para sempre e as palavras, mudas.
+        // Melhor liberar: quem nao conseguiu ouvir a instrucao nao pode ficar
+        // impedido de ouvir as palavras.
+        if (audioKey.startsWith("instruction-")) {
+          setInstructionAudioPlayed(true);
+        }
       }
     },
     [playingAudioKey, stopCurrentAudio],
