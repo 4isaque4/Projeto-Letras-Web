@@ -1061,6 +1061,7 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
     const stageStatus = stageStatusById.get(studentId) ?? null;
     const currentStageNumber = stageStatus?.currentStageNumber ?? maxStage;
     const etapa1Completed = stageStatus?.etapa1Completed ?? false;
+    const etapa1Approved = stageStatus?.etapa1Approved ?? false;
     const mirrorUnlocked = stageStatus?.mirrorUnlocked ?? etapa1Completed;
     const themeId = stageStatus?.themeId ?? null;
 
@@ -1097,6 +1098,7 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
       etapa: computeStageLabel(currentStageNumber),
       currentStageNumber,
       etapa1Completed,
+      etapa1Approved,
       mirrorUnlocked,
       themeId,
       status,

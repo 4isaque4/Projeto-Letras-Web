@@ -438,6 +438,7 @@ export function EducatorEtapa1LessonsView({ navigation, route }: Props) {
       overrideLearnerProfileId={learnerId}
       overrideLearnerName={effectiveName}
       overrideThemeId={themeId}
+      overrideEducatorId={educatorId}
     >
       <LearnerChromeContext.Provider value={chromeValue}>
         <RunnerContext.Provider value={runnerValue}>

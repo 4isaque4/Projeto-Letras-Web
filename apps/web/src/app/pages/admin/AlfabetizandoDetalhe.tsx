@@ -11,7 +11,7 @@ import {
   Activity as ActivityIcon,
 } from "lucide-react";
 import StateDisplay from "../../components/StateDisplay";
-import { apiGet, apiPatch } from "../../core/api/client";
+import { apiGet, apiPatch, apiPost } from "../../core/api/client";
 import ActivitySubmissionsGallery, {
   type ActivitySubmission,
 } from "./ActivitySubmissionsGallery";
@@ -101,11 +101,14 @@ interface StudentDetailResponse {
   telefone: string;
   cpf: string;
   tutor: string;
+  educator?: { id: string; name: string } | null;
   grupo: string;
   etapa: string;
   currentStageNumber?: number;
   etapa1Completed?: boolean;
+  etapa1Approved?: boolean;
   mirrorUnlocked?: boolean;
+  themeId?: string | null;
   status: string;
   progresso: ProgressByStage[];
   tentativas: AttemptItem[];
@@ -124,6 +127,9 @@ export default function AlfabetizandoDetalhe() {
   const [activitySubmissions, setActivitySubmissions] = useState<
     ActivitySubmission[]
   >([]);
+  const [isApprovingStage, setIsApprovingStage] = useState(false);
+  const [themes, setThemes] = useState<Array<{ id: string; title: string }>>([]);
+  const [isChangingTheme, setIsChangingTheme] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -180,12 +186,85 @@ export default function AlfabetizandoDetalhe() {
     };
   }, [id, reloadToken]);
 
+  // Lista de temas pra permitir a troca (CLAUDE.md §2: tema travado durante a
+  // jornada, só entre etapas concluídas — o backend valida isso no POST).
+  useEffect(() => {
+    let active = true;
+    apiGet("/painel/conteudo?scope=cms")
+      .then((response) => {
+        if (!active) return;
+        const raw = (response as { themes?: Array<{ id: string; title?: string; name?: string }> })?.themes ?? [];
+        setThemes(raw.map((theme) => ({ id: theme.id, title: theme.title || theme.name || "Tema" })));
+      })
+      .catch(() => {
+        if (active) setThemes([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const statusLabel = useMemo(() => {
     if (!detail?.status) {
       return "";
     }
     return detail.status;
   }, [detail?.status]);
+
+  // Decisão do usuário (2026-08-19): concluir a Etapa 1 não libera a Etapa 2
+  // sozinha — o alfabetizador precisa aprovar explicitamente. Antes só o app
+  // mobile (na tela de conclusão) tinha esse botão; quem acompanha pelo
+  // painel web não tinha como aprovar remotamente.
+  const approveStage = async () => {
+    if (!detail || !id || isApprovingStage) {
+      return;
+    }
+    if (!detail.themeId) {
+      setError("Não foi possível identificar o tema deste alfabetizando.");
+      return;
+    }
+    try {
+      setIsApprovingStage(true);
+      setError("");
+      await apiPost(`/painel/learners/${id}/approve-stage`, {
+        themeId: detail.themeId,
+        stageNumber: 1,
+        educatorId: detail.educator?.id,
+      });
+      setReloadToken((value) => value + 1);
+    } catch (approveError) {
+      setError(
+        approveError instanceof Error
+          ? approveError.message
+          : "Não foi possível aprovar a etapa agora.",
+      );
+    } finally {
+      setIsApprovingStage(false);
+    }
+  };
+
+  // Tema é travado durante a jornada (CLAUDE.md §2) — o backend rejeita a
+  // troca se o aluno tiver uma etapa em andamento no tema atual; aqui só
+  // repassamos a escolha e mostramos o erro caso o backend recuse.
+  const changeTheme = async (nextThemeId: string) => {
+    if (!id || !nextThemeId || nextThemeId === detail?.themeId || isChangingTheme) {
+      return;
+    }
+    try {
+      setIsChangingTheme(true);
+      setError("");
+      await apiPost(`/learners/${id}/themes`, { themeId: nextThemeId });
+      setReloadToken((value) => value + 1);
+    } catch (themeError) {
+      setError(
+        themeError instanceof Error
+          ? themeError.message
+          : "Não foi possível trocar o tema agora.",
+      );
+    } finally {
+      setIsChangingTheme(false);
+    }
+  };
 
   const runHistoryAction = async (history: HistoryItem) => {
     if (!history.actionable || actionLoadingId) {
@@ -279,19 +358,52 @@ export default function AlfabetizandoDetalhe() {
                 <p className="text-sm text-gray-700">{detail.grupo}</p>
               </div>
               <div>
+                <p className="text-xs text-gray-500 mb-1">Tema</p>
+                <select
+                  value={detail.themeId ?? ""}
+                  onChange={(event) => void changeTheme(event.target.value)}
+                  disabled={isChangingTheme || themes.length === 0}
+                  className="text-sm text-gray-900 border border-gray-300 px-2 py-1 w-full disabled:opacity-60"
+                >
+                  {!detail.themeId ? <option value="">Sem tema atribuído</option> : null}
+                  {themes.map((theme) => (
+                    <option key={theme.id} value={theme.id}>
+                      {theme.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <p className="text-xs text-gray-500 mb-1">Etapa Atual</p>
                 <p className="text-sm text-gray-700">{detail.etapa}</p>
                 <span
                   className={`mt-1 inline-block px-2 py-0.5 text-xs border ${
-                    detail.etapa1Completed
+                    detail.etapa1Approved
                       ? "border-emerald-500 text-emerald-700 bg-emerald-50"
-                      : "border-amber-500 text-amber-700 bg-amber-50"
+                      : detail.etapa1Completed
+                        ? "border-amber-500 text-amber-700 bg-amber-50"
+                        : "border-gray-400 text-gray-600 bg-gray-50"
                   }`}
                 >
-                  {detail.etapa1Completed
-                    ? "Etapa 1 concluída"
-                    : "Etapa 1 em andamento"}
+                  {detail.etapa1Approved
+                    ? "Etapa 2 liberada"
+                    : detail.etapa1Completed
+                      ? "Aguardando sua aprovação"
+                      : "Etapa 1 em andamento"}
                 </span>
+                {/* Decisão do usuário (2026-08-19): concluir a Etapa 1 não
+                    libera a Etapa 2 sozinha — precisa dessa aprovação
+                    explícita, disponível aqui e na tela de conclusão do app. */}
+                {detail.etapa1Completed && !detail.etapa1Approved ? (
+                  <button
+                    type="button"
+                    onClick={() => void approveStage()}
+                    disabled={isApprovingStage}
+                    className="mt-2 block px-3 py-1.5 border border-emerald-600 bg-emerald-600 text-white text-xs font-semibold disabled:opacity-60"
+                  >
+                    {isApprovingStage ? "Aprovando..." : "Aprovar Etapa 2"}
+                  </button>
+                ) : null}
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Status</p>
