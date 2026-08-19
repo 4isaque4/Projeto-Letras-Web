@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { supabaseAdmin, isSupabaseConfigured } from "../lib/supabase.js";
-import { getPanelLearningThemes, toHttpError } from "../services/letrasDataService.js";
+import { computeLearnerStageStatus, getPanelLearningThemes, toHttpError } from "../services/letrasDataService.js";
 
 export const learnersRouter = Router();
 
@@ -168,6 +168,29 @@ learnersRouter.post("/:learnerProfileId/themes", async (req, res) => {
 
     if (!profile) {
       return res.status(404).json({ message: "Aluno nao encontrado." });
+    }
+
+    const currentThemeId = profile.metadata?.assignedThemeId ?? null;
+
+    // Tema e travado durante a jornada (CLAUDE.md §2): uma vez iniciada a
+    // alfabetizacao, so troca entre etapas concluidas. So bloqueia quando ha
+    // uma etapa realmente EM ANDAMENTO (alguma atividade concluida, mas nem
+    // todas) no tema atual - aluno sem tema, no mesmo tema, ou "entre etapas"
+    // (tudo concluido ou nada comecado ainda) pode trocar normalmente.
+    if (currentThemeId && currentThemeId !== themeId) {
+      const currentStatus = await computeLearnerStageStatus({
+        learnerProfileId,
+        themeId: currentThemeId,
+      });
+      const hasStageInProgress = (currentStatus.stages ?? []).some(
+        (stage) => stage.completedCount > 0 && !stage.completed,
+      );
+      if (hasStageInProgress) {
+        return res.status(409).json({
+          message:
+            "O tema so pode ser trocado entre etapas concluidas - este alfabetizando tem uma etapa em andamento no tema atual.",
+        });
+      }
     }
 
     const updatedMeta = {
