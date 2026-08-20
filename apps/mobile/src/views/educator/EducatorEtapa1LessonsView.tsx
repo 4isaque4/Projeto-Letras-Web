@@ -180,10 +180,20 @@ function Etapa1LessonListScreen({
             })}
           </View>
         ))}
+
+        {/* Saída rotulada da etapa. É redundante com a aba "início" da barra de
+            5 abas (mesmo destino, EducatorHome) e foi removida por isso em
+            746246f — mas o cliente não lê a aba como saída da etapa e pediu o
+            botão de volta (validação de 20/08). A decisão dele prevalece. */}
+        <Pressable
+          style={styles.exitBtn}
+          onPress={runner.exitToHome}
+          accessibilityRole="button"
+          accessibilityLabel="Sair da Etapa 1 e voltar ao início"
+        >
+          <Text style={styles.exitText}>SAIR DA ETAPA 1</Text>
+        </Pressable>
       </ScrollView>
-      {/* Única saída da lista: a aba "início" da barra de 5 abas já leva de
-          volta ao EducatorHome — um botão "SAIR DA ETAPA 1" à parte era
-          redundante com ela. */}
       <RunnerBottomMenu />
     </SafeAreaView>
   );
@@ -388,6 +398,14 @@ export function EducatorEtapa1LessonsView({ navigation, route }: Props) {
               </Text>
             </Pressable>
           </View>
+          <Pressable
+            style={styles.exitBtn}
+            onPress={exitToHome}
+            accessibilityRole="button"
+            accessibilityLabel="Sair da Etapa 1 e voltar ao início"
+          >
+            <Text style={styles.exitText}>SAIR DA ETAPA 1</Text>
+          </Pressable>
         </ScrollView>
         <EducatorBottomMenu
           active="inicio"
@@ -541,6 +559,16 @@ const styles = StyleSheet.create({
   dotOpen: { backgroundColor: '#1e3a5f' },
   dotMuted: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#c8c8c8' },
   chevron: { fontSize: 18, color: '#1e3a5f', fontWeight: '700' },
+  exitBtn: {
+    marginTop: 10,
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderColor: '#1e3a5f',
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+  },
+  exitText: { color: '#1e3a5f', fontWeight: '700', letterSpacing: 0.4 },
   doneWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 16 },
   doneTitle: { fontSize: 22, fontWeight: '700', color: '#1e3a5f', textAlign: 'center' },
   doneText: { fontSize: 16, color: '#333', textAlign: 'center', lineHeight: 24 },
