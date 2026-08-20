@@ -989,9 +989,16 @@ function mergeEducatorTextIntoFollowingBlock(
 
     if (pendingNotes.length > 0) {
       const existingNotes = toOptionalText(block.notes);
+      // Concatena em vez de deixar as notes ja existentes vencerem: quando o
+      // bloco seguinte JA tem `notes` (campo autoravel no LessonBlockEditor do
+      // painel), o texto audience=educator acumulado era descartado em
+      // silencio — o mesmo bug ja corrigido no final da lista (ver abaixo),
+      // que aqui no meio tinha passado batido.
       result.push({
         ...block,
-        notes: existingNotes || pendingNotes.join("\n\n"),
+        notes: existingNotes
+          ? `${existingNotes}\n\n${pendingNotes.join("\n\n")}`
+          : pendingNotes.join("\n\n"),
       });
       pendingNotes = [];
     } else {

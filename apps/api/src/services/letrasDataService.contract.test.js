@@ -6,6 +6,9 @@ import {
   computeLearnerStageStatus,
   createSupportRequest,
   deleteProfileRecord,
+  findProfileByCpfDigits,
+  getEducatorScoreEvents,
+  getLearnerScoreEvents,
   updateActivityProgressStatus,
   upsertActivityProgressFromMobile,
 } from "./letrasDataService.js";
@@ -491,6 +494,8 @@ class FakeQuery {
     this.conflictKeys = [];
     this.orderBy = null;
     this.limitCount = null;
+    this.rangeFrom = null;
+    this.rangeTo = null;
   }
 
   select() {
@@ -544,6 +549,18 @@ class FakeQuery {
     return this;
   }
 
+  // Nega um filtro (`.not("cpf", "is", null)` = so linhas com CPF).
+  not(column, operator, value) {
+    if (operator === "is") {
+      this.filters.push((row) => (row[column] ?? null) !== value);
+    } else if (operator === "eq") {
+      this.filters.push((row) => row[column] !== value);
+    } else {
+      throw new Error(`FakeSupabase.not: operador nao suportado (${operator})`);
+    }
+    return this;
+  }
+
   is(column, value) {
     this.filters.push((row) => row[column] === value);
     return this;
@@ -556,6 +573,14 @@ class FakeQuery {
 
   limit(count) {
     this.limitCount = count;
+    return this;
+  }
+
+  // PostgREST pagina por `range` (inclusivo nas duas pontas). Sem isto no fake,
+  // toda leitura paginada do servico quebraria no teste em vez de ser coberta.
+  range(from, to) {
+    this.rangeFrom = from;
+    this.rangeTo = to;
     return this;
   }
 
@@ -663,9 +688,89 @@ class FakeQuery {
       result = result.slice(0, this.limitCount);
     }
 
+    if (Number.isFinite(this.rangeFrom) && Number.isFinite(this.rangeTo)) {
+      result = result.slice(this.rangeFrom, this.rangeTo + 1);
+    }
+
     return result;
   }
 }
+
+// O ranking e o extrato de pontos SOMAM estas leituras. Enquanto elas tinham
+// `.limit(2000)`, todo aluno com historico maior que a janela aparecia com
+// menos pontos do que tem e o saldo do extrato comecava do zero na borda —
+// numero errado na tela, sem erro nenhum, piorando conforme a base cresce.
+// A mesma armadilha vale para a checagem de CPF duplicado, que so acusa a
+// colisao se enxergar todas as linhas.
+describe("leituras que precisam do conjunto completo", () => {
+  afterEach(() => {
+    __setSupabaseAdminForTests(null);
+  });
+
+  it("nao trunca o ledger de pontos do alfabetizando acima de uma pagina", async () => {
+    const TOTAL = 2300;
+    const supabase = new FakeSupabase({
+      learner_score_events: Array.from({ length: TOTAL }, (_, index) => ({
+        id: `evt-${String(index).padStart(5, "0")}`,
+        student_id: STUDENT_ID,
+        activity_id: ACTIVITY_ID,
+        event_type: "first_completion",
+        points: 10,
+        payload: {},
+        created_at: `2026-01-01T00:00:${String(index % 60).padStart(2, "0")}.000Z`,
+      })),
+    });
+    __setSupabaseAdminForTests(supabase);
+
+    const events = await getLearnerScoreEvents();
+
+    assert.equal(events.length, TOTAL, "o ledger voltou truncado");
+    const total = events.reduce((acc, event) => acc + Number(event.points), 0);
+    assert.equal(total, TOTAL * 10, "a soma de pontos ficou menor que a real");
+  });
+
+  it("nao trunca o ledger de pontos do alfabetizador acima de uma pagina", async () => {
+    const TOTAL = 1500;
+    const supabase = new FakeSupabase({
+      educator_score_events: Array.from({ length: TOTAL }, (_, index) => ({
+        id: `edu-evt-${String(index).padStart(5, "0")}`,
+        educator_id: TUTOR_ID,
+        student_id: STUDENT_ID,
+        event_type: "stage_completed",
+        stage_number: 1,
+        points: 10,
+        payload: {},
+        created_at: `2026-02-01T00:00:${String(index % 60).padStart(2, "0")}.000Z`,
+      })),
+    });
+    __setSupabaseAdminForTests(supabase);
+
+    const events = await getEducatorScoreEvents();
+
+    assert.equal(events.length, TOTAL, "o ledger do alfabetizador voltou truncado");
+  });
+
+  it("acha CPF duplicado mesmo alem da primeira pagina e com formatacao diferente", async () => {
+    const profiles = Array.from({ length: 1200 }, (_, index) => ({
+      id: `profile-${String(index).padStart(5, "0")}`,
+      role: "alfabetizando",
+      cpf: String(10000000000 + index),
+    }));
+    // O caso real: mesmo CPF, um pontuado e outro em digitos, alem da 1a pagina.
+    profiles.push({
+      id: "profile-tutor-colisao",
+      role: "tutor",
+      cpf: "066.049.971-11",
+    });
+    const supabase = new FakeSupabase({ profiles });
+    __setSupabaseAdminForTests(supabase);
+
+    const encontrado = await findProfileByCpfDigits("06604997111");
+
+    assert.ok(encontrado, "a colisao passou batida — a leitura voltou truncada");
+    assert.equal(encontrado.role, "tutor");
+  });
+});
 
 function nowIso() {
   return new Date().toISOString();

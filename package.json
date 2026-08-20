@@ -21,7 +21,7 @@
     "build:shared": "pnpm --filter @letras/shared-types build && pnpm --filter @letras/shared-utils build",
     "build:mobile:web": "pnpm --filter @letras/mobile build:web",
     "typecheck": "pnpm -r --if-present typecheck",
-    "test": "pnpm --filter @letras/api test",
+    "test": "pnpm --filter @letras/api test && pnpm --filter @letras/mobile test",
     "quality": "node tools/quality/check-production-env.mjs && node tools/quality/check-mobile-env.mjs && node tools/quality/check-product-copy.mjs",
     "check:fast": "pnpm quality && pnpm test",
     "check": "pnpm quality && pnpm build:shared && pnpm typecheck && pnpm test && pnpm build && pnpm build:mobile:web",

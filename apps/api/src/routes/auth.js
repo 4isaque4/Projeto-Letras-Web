@@ -200,18 +200,14 @@ authRouter.post("/educators/register", async (req, res) => {
     // .eq() ingenuo (e a propria constraint) deixam passar uma colisao real
     // quando os dois cadastros usam formatacao diferente (caso real
     // encontrado em producao). Por isso a comparacao busca todos os cpf
-    // cadastrados e compara em digitos, mesmo padrao ja usado em GET
-    // /cadastros/alfabetizandos/buscar. Checar antes evita tambem criar um
-    // usuario em auth.users so pra descartar em seguida, e evita expor o
-    // erro cru do Postgres.
+    // cadastrados e compara em digitos. A busca vive em
+    // findProfileByCpfDigits (paginada, ponto unico compartilhado com o
+    // cadastro de alfabetizando). Checar antes evita tambem criar um usuario
+    // em auth.users so pra descartar em seguida, e evita expor o erro cru do
+    // Postgres.
     if (cpfDigits) {
-      const { data: cpfCandidates } = await client
-        .from("profiles")
-        .select("id, role, cpf")
-        .not("cpf", "is", null);
-      const existingCpfProfile = (cpfCandidates ?? []).find(
-        (candidate) => String(candidate.cpf ?? "").replace(/\D/g, "") === cpfDigits,
-      );
+      const { findProfileByCpfDigits } = await import("../services/letrasDataService.js");
+      const existingCpfProfile = await findProfileByCpfDigits(cpfDigits);
       if (existingCpfProfile) {
         return res.status(409).json({
           message:

@@ -8,28 +8,25 @@
 
 ---
 
-## ⚠️ Fato arquitetural que muda a estratégia
+## ⚠️ Atualizado em 2026-08-19 — não existem mais dois repos nem duas APIs
 
-Existem **DUAS APIs distintas**, uma em cada repo:
+Este roteiro foi escrito quando o projeto tinha dois repositórios e duas APIs. **Isso acabou
+em 2026-07-27**: o repo `letras` foi absorvido por subtree neste monorepo e a API NestJS
+deixou de existir.
 
-| | API Web (`@letras/api`) | API Mobile (`apps/api`) |
-|---|---|---|
-| Repo | Projeto-Letras-Web | Projeto-Letras-Mobile |
-| Stack | Express 4 + Socket.IO (JS) | NestJS + Socket.IO (TS) |
-| Porta | **8080** | **3000** |
-| Prefixo | `/api/v1` | nenhum (raiz) |
-| Auth | Bearer = JWT Supabase | token de sessão opaco `educator_<hex>` |
+Hoje:
 
-**Em produção o app mobile aponta para a API Express da Web** (`EXPO_PUBLIC_API_URL=https://painel.letras.cloud/api/v1`).
-Mas o script `pnpm dev:mobile:*` sobe a API **NestJS** local (:3000). Ou seja: **localmente o mobile testa contra uma API diferente da de produção.**
+| | |
+|---|---|
+| Painel web | `apps/web` (React + Vite) |
+| API | `apps/api` — **Express**, porta 8080 local, prefixo `/api/v1`. É a única |
+| App mobile | `apps/mobile` (Expo) |
 
-**Recomendação:** validar o mobile em DOIS modos —
-1. **Modo "fiel à produção"**: subir a API Express da Web (:8080) e apontar o mobile para ela (`EXPO_PUBLIC_API_URL=http://SEU_IP:8080/api/v1`). É o que roda em prod.
-2. **Modo "dev padrão"**: script `pnpm dev:mobile:*` contra a NestJS (:3000) — para validar a stack local do repo mobile.
-
-Se der pouco tempo, priorize o **modo 1** (é o comportamento real dos usuários).
-
----
+Não há mais "modo fiel à produção" versus "modo dev": local e produção falam com a mesma
+API Express. Para apontar o mobile à API local, use
+`EXPO_PUBLIC_API_URL=http://localhost:8080/api/v1` — **atenção**, o `.env.example` do mobile
+é travado pelo quality gate na URL de **produção**, então quem copia o exemplo roda contra
+dados reais.
 
 ## FASE 0 — Preparação de ambiente
 
@@ -57,7 +54,6 @@ Se der pouco tempo, priorize o **modo 1** (é o comportamento real dos usuários
 - [ ] **Esperado**: tela de login carrega sem warning de config
 
 ### 0.5 Subir a API Mobile (NestJS :3000) — modo dev padrão
-- [ ] `cd Projeto-Letras-Mobile && pnpm --filter api dev`
 - [ ] **Esperado**: `GET http://localhost:3000/health` → 200 e `GET /health/db` → ok
 
 ### 0.6 Subir o app Mobile

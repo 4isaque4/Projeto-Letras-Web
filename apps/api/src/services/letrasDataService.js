@@ -149,6 +149,40 @@ async function runOptionalQuery(queryPromise, contextMessage) {
   return data ?? [];
 }
 
+// Leitura paginada para as consultas que precisam do conjunto COMPLETO para
+// estarem certas (somatorios, checagens de unicidade). Um `.limit(N)` nesses
+// casos nao "corta a lista": produz numero errado exibido com cara de certo, e
+// a falha e silenciosa — piora conforme a base cresce, sem nenhum erro.
+// `buildQuery` precisa devolver uma query NOVA a cada chamada, ja ordenada de
+// forma deterministica (com desempate por id), senao as paginas se sobrepoem.
+const QUERY_PAGE_SIZE = 1000;
+const QUERY_MAX_PAGES = 200;
+
+async function runPaginatedQuery(buildQuery, contextMessage, { optional = false } = {}) {
+  const rows = [];
+
+  for (let page = 0; page < QUERY_MAX_PAGES; page += 1) {
+    const from = page * QUERY_PAGE_SIZE;
+    const query = buildQuery().range(from, from + QUERY_PAGE_SIZE - 1);
+    const pageRows = optional
+      ? await runOptionalQuery(query, contextMessage)
+      : await runQuery(query, contextMessage);
+
+    rows.push(...pageRows);
+
+    if (pageRows.length < QUERY_PAGE_SIZE) {
+      return rows;
+    }
+  }
+
+  // Teto de seguranca: nao e para acontecer com o volume do produto. Se
+  // acontecer, o dado esta incompleto e isso precisa aparecer.
+  throw new HttpError(
+    500,
+    `${contextMessage}: volume acima de ${QUERY_MAX_PAGES * QUERY_PAGE_SIZE} linhas; agregue no banco em vez de paginar.`,
+  );
+}
+
 function dedupeById(primaryItems, secondaryItems) {
   const itemsById = new Map();
 
@@ -2173,42 +2207,92 @@ async function resolveEducatorDisplayName(educatorId) {
   return normalizeText(mobileEducator?.name) || "Alfabetizador";
 }
 
+// Procura um perfil com o MESMO CPF em digitos, em qualquer papel. A coluna
+// guarda o CPF como foi digitado ("066.049.971-11" e "06604997111" convivem),
+// entao nem o unique constraint do banco nem um `.eq()` pegam a colisao — a
+// comparacao precisa ser em digitos, e por isso em JS. Como a checagem so vale
+// se enxergar TODAS as linhas, a leitura e paginada: truncada, a duplicata
+// passaria em silencio, justamente o caso que esta funcao existe para pegar.
+// Ponto unico usado pelo cadastro de alfabetizando e pelo de alfabetizador.
+export async function findProfileByCpfDigits(cpfDigits) {
+  const normalized = String(cpfDigits ?? "").replace(/\D/g, "");
+  if (!normalized) {
+    return null;
+  }
+
+  const client = requireSupabase();
+  const candidates = await runPaginatedQuery(
+    () =>
+      client
+        .from("profiles")
+        .select("id, role, cpf")
+        .not("cpf", "is", null)
+        .order("id", { ascending: true }),
+    "Falha ao verificar CPF duplicado",
+  );
+
+  return (
+    candidates.find(
+      (candidate) => String(candidate.cpf ?? "").replace(/\D/g, "") === normalized,
+    ) ?? null
+  );
+}
+
 // Fonte canônica de pontos do alfabetizando (RN085/RN096). Usada pelo ranking
 // e pelo extrato de pontos do painel — nunca somar `activity_progress.score`
 // para exibir pontuação: aquele campo guarda score bruto da atividade (ex.:
 // acerto de quiz), não os pontos de gamificação.
 export async function getLearnerScoreEvents({ studentIds } = {}) {
   const client = requireSupabase();
-  let query = client
-    .from("learner_score_events")
-    .select("id, student_id, activity_id, event_type, points, payload, created_at")
-    .order("created_at", { ascending: false })
-    .limit(2000);
+  if (studentIds && studentIds.length === 0) return [];
 
-  if (studentIds) {
-    if (studentIds.length === 0) return [];
-    query = query.in("student_id", studentIds);
-  }
+  // Paginado, nao `.limit(2000)`: o ranking e o extrato SOMAM este retorno.
+  // Com um teto, todo aluno com historico anterior a janela aparecia com menos
+  // pontos do que tem, e o saldo do extrato comecava do zero na borda — numero
+  // errado na tela, sem nenhum erro. Ver runPaginatedQuery.
+  return runPaginatedQuery(
+    () => {
+      let query = client
+        .from("learner_score_events")
+        .select("id, student_id, activity_id, event_type, points, payload, created_at")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
 
-  return runOptionalQuery(query, "Falha ao listar eventos de pontuacao dos alfabetizandos");
+      if (studentIds) {
+        query = query.in("student_id", studentIds);
+      }
+
+      return query;
+    },
+    "Falha ao listar eventos de pontuacao dos alfabetizandos",
+    { optional: true },
+  );
 }
 
 // Fonte canônica de pontos do alfabetizador (RN085/RN093/RN096), espelhando
 // getEducatorScoreSummary mas para múltiplos educadores de uma vez.
 export async function getEducatorScoreEvents({ educatorIds } = {}) {
   const client = requireSupabase();
-  let query = client
-    .from("educator_score_events")
-    .select("id, educator_id, student_id, event_type, stage_number, points, payload, created_at")
-    .order("created_at", { ascending: false })
-    .limit(2000);
+  if (educatorIds && educatorIds.length === 0) return [];
 
-  if (educatorIds) {
-    if (educatorIds.length === 0) return [];
-    query = query.in("educator_id", educatorIds);
-  }
+  // Mesmo motivo de getLearnerScoreEvents: este retorno e somado.
+  return runPaginatedQuery(
+    () => {
+      let query = client
+        .from("educator_score_events")
+        .select("id, educator_id, student_id, event_type, stage_number, points, payload, created_at")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
 
-  return runOptionalQuery(query, "Falha ao listar eventos de pontuacao dos alfabetizadores");
+      if (educatorIds) {
+        query = query.in("educator_id", educatorIds);
+      }
+
+      return query;
+    },
+    "Falha ao listar eventos de pontuacao dos alfabetizadores",
+    { optional: true },
+  );
 }
 
 export async function getEducatorScoreSummary(educatorId) {
@@ -5124,13 +5208,7 @@ export async function createAuthUserWithProfile({
   // generico no lugar de uma rejeicao clara.
   const normalizedCpfDigits = normalizeDigits(cpf, 11);
   if (normalizedCpfDigits) {
-    const { data: cpfCandidates } = await client
-      .from("profiles")
-      .select("id, role, cpf")
-      .not("cpf", "is", null);
-    const existingCpfProfile = (cpfCandidates ?? []).find(
-      (candidate) => normalizeDigits(candidate.cpf, 11) === normalizedCpfDigits,
-    );
+    const existingCpfProfile = await findProfileByCpfDigits(normalizedCpfDigits);
     if (existingCpfProfile) {
       throw new HttpError(
         409,
