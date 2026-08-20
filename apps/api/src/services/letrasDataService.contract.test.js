@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
   __setSupabaseAdminForTests,
+  approveLearnerStage,
   computeLearnerStageStatus,
   createSupportRequest,
   deleteProfileRecord,
@@ -263,7 +264,7 @@ describe("mobile-web support and lock contracts", () => {
 });
 
 describe("stage status gate (Etapa 1 → Etapa 2 + espelhamento)", () => {
-  it("reports Etapa 1 completed, Etapa 2 unlocked and mirror unlocked once all Etapa 1 activities are done", async () => {
+  it("reports Etapa 1 completed but keeps Etapa 2 and mirror locked pending educator approval", async () => {
     const supabase = new FakeSupabase(
       createCurriculumSeed({
         activity_progress: [
@@ -276,17 +277,50 @@ describe("stage status gate (Etapa 1 → Etapa 2 + espelhamento)", () => {
 
     const status = await computeLearnerStageStatus({ learnerProfileId: STUDENT_ID, themeId: THEME_A });
 
+    // Decisão do usuário (2026-08-19): concluir a Etapa 1 não libera a Etapa 2
+    // nem o espelhamento sozinha — precisa da aprovação explícita do educador.
     assert.equal(status.etapa1Completed, true);
-    assert.equal(status.mirrorUnlocked, true);
-    assert.equal(status.currentStageNumber, 2);
+    assert.equal(status.etapa1Approved, false);
+    assert.equal(status.mirrorUnlocked, false);
+    assert.equal(status.currentStageNumber, 1);
 
     const stage1 = status.stages.find((s) => s.stageNumber === 1);
     const stage2 = status.stages.find((s) => s.stageNumber === 2);
     assert.equal(stage1.completed, true);
     assert.equal(stage1.unlocked, true);
     assert.equal(stage1.totalActivities, 2);
+    assert.equal(stage1.pendingApproval, true);
     assert.equal(stage2.completed, false);
-    assert.equal(stage2.unlocked, true);
+    assert.equal(stage2.unlocked, false);
+  });
+
+  it("unlocks Etapa 2 and mirror once the educator explicitly approves the completed Etapa 1", async () => {
+    const supabase = new FakeSupabase(
+      createCurriculumSeed({
+        activity_progress: [
+          { id: "p1", student_id: STUDENT_ID, activity_id: ACT_A1a, status: "concluido", completed_at: "2026-05-14T10:00:00.000Z", metadata: {} },
+          { id: "p2", student_id: STUDENT_ID, activity_id: ACT_A1b, status: "concluido", completed_at: "2026-05-14T10:05:00.000Z", metadata: {} },
+        ],
+      }),
+    );
+    __setSupabaseAdminForTests(supabase);
+
+    const status = await approveLearnerStage({
+      studentId: STUDENT_ID,
+      themeId: THEME_A,
+      stageNumber: 1,
+      educatorId: TUTOR_ID,
+    });
+
+    assert.equal(status.etapa1Approved, true);
+    assert.equal(status.mirrorUnlocked, true);
+    assert.equal(status.currentStageNumber, 2);
+    assert.equal(status.stages.find((s) => s.stageNumber === 2).unlocked, true);
+    assert.equal(supabase.rows("learner_stage_approvals").length, 1);
+
+    // Aprovar de novo (idempotente) não deve criar um segundo registro.
+    await approveLearnerStage({ studentId: STUDENT_ID, themeId: THEME_A, stageNumber: 1, educatorId: TUTOR_ID });
+    assert.equal(supabase.rows("learner_stage_approvals").length, 1);
   });
 
   it("keeps Etapa 2 and mirror locked while Etapa 1 is partial", async () => {

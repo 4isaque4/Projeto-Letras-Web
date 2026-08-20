@@ -12,9 +12,11 @@ import {
   View,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { CommonActions } from '@react-navigation/native';
 import { SvgUri } from 'react-native-svg';
 import { EducatorBell } from '../shared/EducatorBell';
 import { EducatorStorage } from '../../infra/storage/educator-storage';
+import { httpClient } from '../../infra/api/http-client';
 import { useEducatorScoreViewModel } from '../../viewmodels/educator/useEducatorScoreViewModel';
 import { EducatorRootStackParamList } from '../../types';
 import { EducatorBottomMenu } from './components/EducatorBottomMenu';
@@ -52,7 +54,15 @@ function buildSocialShareUrl(platform: 'linkedin' | 'facebook' | 'instagram' | '
 
 export function EducatorScoreView({ route, navigation }: Props) {
   const { educatorId, fullName } = route.params;
-  const { scoreData, socials, loading, error, refresh } = useEducatorScoreViewModel(educatorId);
+  const { scoreData, socials, loading, error, sessionExpired, refresh } = useEducatorScoreViewModel(educatorId);
+
+  const goToLoginAfterExpiry = async () => {
+    await EducatorStorage.clearAuthSession();
+    httpClient.setAuthToken(null);
+    navigation.getParent()?.dispatch(
+      CommonActions.reset({ index: 0, routes: [{ name: 'UnifiedLogin' }] }),
+    );
+  };
 
   const [logoAsset] = useAssets([require('../../../assets/Logo-LETRAS.svg')]);
   const logoUri = logoAsset?.[0]?.localUri ?? logoAsset?.[0]?.uri;
@@ -92,6 +102,15 @@ export function EducatorScoreView({ route, navigation }: Props) {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {loading ? (
           <ActivityIndicator style={{ marginTop: 40 }} color="#000" />
+        ) : sessionExpired ? (
+          <View style={styles.expiredWrap}>
+            <Text style={styles.errorText}>
+              Sua sessão expirou. Faça login novamente para continuar.
+            </Text>
+            <Pressable style={styles.expiredButton} onPress={() => void goToLoginAfterExpiry()}>
+              <Text style={styles.expiredButtonText}>FAZER LOGIN</Text>
+            </Pressable>
+          </View>
         ) : error ? (
           <Text style={styles.errorText}>{error}</Text>
         ) : (
@@ -269,5 +288,22 @@ const styles = StyleSheet.create({
     color: '#c00',
     textAlign: 'center',
     marginTop: 40,
+  },
+  expiredWrap: {
+    marginTop: 40,
+    alignItems: 'center',
+    gap: 16,
+  },
+  expiredButton: {
+    backgroundColor: '#101010',
+    borderRadius: 3,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  expiredButtonText: {
+    color: '#f5f5f5',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
 });

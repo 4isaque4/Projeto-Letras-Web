@@ -95,7 +95,39 @@ export function LearnerStageConclusionView({ navigation, route }: Props) {
   // conquistas (no web, imprimível — vira PDF pelo diálogo do navegador).
   const [isCertOpen, setIsCertOpen] = useState(false);
 
+  // Decisão do usuário (2026-08-19): concluir a Etapa 1 não libera a Etapa 2
+  // sozinha — o alfabetizador precisa aprovar explicitamente aqui, na mesma
+  // tela de conclusão que já vê ao terminar de conduzir a Etapa 1. Etapas
+  // seguintes (2→3) continuam automáticas, sem esse botão.
+  const requiresApproval = stageNumber === 1 && learnerSession.isEducatorConducted;
+  const [isApproving, setIsApproving] = useState(false);
+  const [approveError, setApproveError] = useState<string | null>(null);
+
   const goNext = () => navigation.navigate('LearnerHome');
+
+  const approveAndContinue = async () => {
+    if (isApproving) return;
+    const learnerId = learnerSession.learnerProfileId;
+    const themeId = learnerSession.themeId;
+    if (!learnerId || !themeId) {
+      setApproveError('Não foi possível identificar o tema do alfabetizando.');
+      return;
+    }
+    setIsApproving(true);
+    setApproveError(null);
+    try {
+      await httpClient.post(`/painel/learners/${learnerId}/approve-stage`, {
+        themeId,
+        stageNumber,
+        educatorId: learnerSession.educatorId,
+      });
+      goNext();
+    } catch (error) {
+      setApproveError(error instanceof Error ? error.message : 'Não foi possível aprovar agora.');
+    } finally {
+      setIsApproving(false);
+    }
+  };
 
   return (
     <LearnerScreenLayout
@@ -179,12 +211,24 @@ export function LearnerStageConclusionView({ navigation, route }: Props) {
           ))}
         </View>
 
+        {requiresApproval ? (
+          <Text style={styles.approvalNotice}>
+            A Etapa {proximaEtapa} só libera depois que você aprovar abaixo.
+          </Text>
+        ) : null}
+        {approveError ? <Text style={styles.approvalError}>{approveError}</Text> : null}
+
         <View style={styles.cta}>
           <LearnerActionButtons
             variant="dark"
             hideBack
-            nextLabel={`IR PARA ETAPA ${proximaEtapa}\nDE ALFABETIZAÇÃO`}
-            onNext={goNext}
+            nextLabel={
+              requiresApproval
+                ? `APROVAR E LIBERAR ETAPA ${proximaEtapa}`
+                : `IR PARA ETAPA ${proximaEtapa}\nDE ALFABETIZAÇÃO`
+            }
+            onNext={requiresApproval ? () => void approveAndContinue() : goNext}
+            nextVisualDisabled={isApproving}
           />
         </View>
       </View>
@@ -196,6 +240,18 @@ const styles = StyleSheet.create({
   wrapper: {
     gap: 16,
     marginTop: 6,
+  },
+  approvalNotice: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: learnerTheme.textMuted,
+    textAlign: 'center',
+  },
+  approvalError: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#9e1b1b',
+    textAlign: 'center',
   },
   congrats: {
     fontSize: 20,
