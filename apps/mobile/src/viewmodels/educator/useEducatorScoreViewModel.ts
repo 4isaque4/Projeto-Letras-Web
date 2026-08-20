@@ -33,11 +33,17 @@ export function useEducatorScoreViewModel(educatorId: string) {
   const [socials, setSocials] = useState<EducatorSocials>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Token de sessao do alfabetizador expira em 24h (ver POST
+  // /auth/educators/register) e nao havia nenhum tratamento pra isso — a
+  // tela so mostrava "Nao foi possivel carregar a pontuacao" sem indicar
+  // que era preciso logar de novo (relatado como bug ao vivo).
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!educatorId) return;
     setLoading(true);
     setError(null);
+    setSessionExpired(false);
     try {
       const [score, profile] = await Promise.all([
         httpClient.get<EducatorScoreData>(`/scoring/me?educatorId=${educatorId}`),
@@ -46,7 +52,12 @@ export function useEducatorScoreViewModel(educatorId: string) {
       setScoreData(score);
       if (profile?.socials) setSocials(profile.socials);
     } catch (e) {
-      setError('Não foi possível carregar a pontuação.');
+      const message = e instanceof Error ? e.message : '';
+      if (/^Request failed \(401\)/.test(message)) {
+        setSessionExpired(true);
+      } else {
+        setError('Não foi possível carregar a pontuação.');
+      }
     } finally {
       setLoading(false);
     }
@@ -56,5 +67,5 @@ export function useEducatorScoreViewModel(educatorId: string) {
     void refresh();
   }, [refresh]);
 
-  return { scoreData, socials, loading, error, refresh };
+  return { scoreData, socials, loading, error, sessionExpired, refresh };
 }
