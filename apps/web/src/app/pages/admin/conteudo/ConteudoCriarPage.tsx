@@ -1729,7 +1729,6 @@ interface ConteudoCriarDraft {
   existingVideoInstrAudioUrl: string | null;
   videoNotes: string;
   compositeBlocks: DraftCompositeBlock[];
-  tutorNotes: string;
 }
 
 function parseInstructions(raw: string | null | undefined): ParsedInstructions {
@@ -1927,9 +1926,6 @@ export default function ConteudoCriarPage() {
   // composite
   const [compositeBlocks, setCompositeBlocks] = useState<CompositeBlock[]>([]);
 
-  // shared tutor notes (all lesson types)
-  const [tutorNotes, setTutorNotes] = useState("");
-
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
@@ -1968,7 +1964,6 @@ export default function ConteudoCriarPage() {
       existingVideoInstrAudioUrl,
       videoNotes,
       compositeBlocks: compositeBlocks.map(serializeCompositeBlock),
-      tutorNotes,
     };
   }
 
@@ -1998,7 +1993,6 @@ export default function ConteudoCriarPage() {
     setExistingVideoInstrAudioUrl(draft.existingVideoInstrAudioUrl ?? null);
     setVideoNotes(draft.videoNotes || "");
     setCompositeBlocks(Array.isArray(draft.compositeBlocks) ? draft.compositeBlocks.map(hydrateCompositeBlock) : []);
-    setTutorNotes(draft.tutorNotes || "");
   }
 
   function draftHasContent(draft: ConteudoCriarDraft) {
@@ -2006,7 +2000,6 @@ export default function ConteudoCriarPage() {
       draft.titulo.trim() ||
         draft.newThemeTitle.trim() ||
         draft.newModuleTitle.trim() ||
-        draft.tutorNotes.trim() ||
         draft.videoInstrText.trim() ||
         draft.videoNotes.trim() ||
         draft.markInstrText.trim() ||
@@ -2063,9 +2056,6 @@ export default function ConteudoCriarPage() {
     }
 
     const parsed = parseInstructions(activity.instructions);
-    if (parsed && "tutorNotes" in parsed && typeof parsed.tutorNotes === "string") {
-      setTutorNotes(parsed.tutorNotes);
-    }
     const detectedKind = parsed
       ? screenTemplateToKind((parsed as { screenTemplate?: string }).screenTemplate)
       : "match-letter";
@@ -2246,7 +2236,6 @@ export default function ConteudoCriarPage() {
     existingVideoInstrAudioUrl,
     videoNotes,
     compositeBlocks,
-    tutorNotes,
   ]);
 
   useEffect(() => {
@@ -2260,7 +2249,7 @@ export default function ConteudoCriarPage() {
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [draftReady, submitted, titulo, compositeBlocks, matchItems, markItems, tutorNotes]);
+  }, [draftReady, submitted, titulo, compositeBlocks, matchItems, markItems]);
 
   function patchMatch(id: string, patch: Partial<MatchItem>) {
     setMatchItems((p) => p.map((it) => (it.id === id ? { ...it, ...patch } : it)));
@@ -2489,7 +2478,6 @@ export default function ConteudoCriarPage() {
           instructionAudioUrl: audioUrl,
           progressiveUnlock: false,
           exercise: { items },
-          tutorNotes: tutorNotes.trim() || null,
         };
       } else if (kind === "mark-images") {
         const audioUrl = markInstrAudioFile
@@ -2502,7 +2490,6 @@ export default function ConteudoCriarPage() {
           instructionText: markInstrText,
           instructionAudioUrl: audioUrl,
           exercise: { items },
-          tutorNotes: tutorNotes.trim() || null,
         };
       } else if (kind === "video") {
         const resolvedVideoUrl = videoFile
@@ -2519,7 +2506,6 @@ export default function ConteudoCriarPage() {
           instructionText: videoInstrText || null,
           instructionAudioUrl: audioUrl,
           notes: videoNotes || null,
-          tutorNotes: tutorNotes.trim() || null,
         };
       } else {
         // composite
@@ -2568,7 +2554,7 @@ export default function ConteudoCriarPage() {
             }
           }),
         );
-        exerciseJson = { schema: "letras-stage2-v1", screenTemplate: "composite", blocks, tutorNotes: tutorNotes.trim() || null };
+        exerciseJson = { schema: "letras-stage2-v1", screenTemplate: "composite", blocks };
       }
 
       const instructionsStr = JSON.stringify(exerciseJson);
@@ -3164,20 +3150,6 @@ export default function ConteudoCriarPage() {
               </div>
             </section>
           )}
-
-          <section className="space-y-2 border border-slate-300 bg-white p-5">
-            <label className="block font-semibold text-slate-900">Orientações para o alfabetizador — aula inteira</label>
-            <p className="text-xs text-slate-500">
-              Visível apenas no painel. Resumo da aula inteira: o objetivo pedagógico, como conduzir o alfabetizando e o que observar durante a atividade. Para orientar uma tela específica, use um bloco de texto marcado como "Alfabetizador".
-            </p>
-            <textarea
-              rows={3}
-              placeholder="Ex: Nesta aula o alfabetizando deve reconhecer a letra A em posição inicial. Pronuncie cada palavra e peça que ele repita antes de responder."
-              value={tutorNotes}
-              onChange={(e) => setTutorNotes(e.target.value)}
-              className="w-full border border-slate-300 px-3 py-2 text-sm leading-relaxed text-slate-900 placeholder:text-slate-400"
-            />
-          </section>
 
           {submitError && (
             <div className="flex items-start gap-2 border border-red-200 bg-red-50 p-3">

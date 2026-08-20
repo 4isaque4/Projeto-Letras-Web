@@ -11,6 +11,11 @@ const TYPE_LABELS: Record<string, string> = {
   image: "Imagem",
 };
 
+// `tutorNotes` / `educatorGuidance` no nível da aula são LEITURA LEGADA: o campo
+// "Orientações para o alfabetizador — aula inteira" saiu do editor a pedido do
+// cliente (issue #92) porque nunca chegava ao app. Aulas gravadas antes disso
+// seguem exibindo o texto como descrição no card da trilha; aulas novas caem no
+// texto genérico. Não reintroduzir o campo sem pedido do cliente.
 export function presentActivityContent(activity: ActivityPresentationInput) {
   const raw = String(activity.instructions ?? "").trim();
   let description = raw;
