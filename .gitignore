@@ -20,6 +20,8 @@ tmp/
 infra/supabase/.temp/
 .playwright-cli/
 .playwright-mcp/
+e2e-results/
+test-results/
 .worktrees/
 artifacts/
 

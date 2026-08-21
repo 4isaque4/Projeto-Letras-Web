@@ -939,7 +939,7 @@ function ExerciseMarkImagesEditor({
         </div>
         <div>
           <label className="block text-[10px] font-semibold uppercase text-slate-500">
-            Max tentativas
+            Limite de erros
           </label>
           <input
             type="number"
@@ -1184,7 +1184,7 @@ function ExerciseMatchLetterEditor({
         </div>
         <div>
           <label className="block text-[10px] font-semibold uppercase text-slate-500">
-            Max tentativas
+            Limite de erros
           </label>
           <input
             type="number"

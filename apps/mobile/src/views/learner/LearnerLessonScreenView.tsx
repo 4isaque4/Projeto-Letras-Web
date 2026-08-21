@@ -51,25 +51,13 @@ function resolveLockMessage(
   lockMessage?: string | null,
 ) {
   const explicitMessage = String(lockMessage || "").trim();
-  if (explicitMessage) {
-    return explicitMessage;
-  }
-  const normalizedReason = String(reason || "")
-    .trim()
-    .toLowerCase();
-  if (!normalizedReason) {
-    return "A tela foi bloqueada. Aguarde apoio do alfabetizador para continuar.";
-  }
+  if (explicitMessage) return explicitMessage;
+
+  const normalizedReason = String(reason || "").trim().toLowerCase();
   if (normalizedReason.includes("ajuda")) {
-    return "A tela foi bloqueada porque houve pedido de ajuda. O alfabetizador entrará em contato.";
+    return "A tela foi bloqueada porque houve pedido de ajuda. Aguarde o alfabetizador.";
   }
-  if (
-    normalizedReason.includes("tentativa") ||
-    normalizedReason.includes("erro")
-  ) {
-    return "A tela foi bloqueada após tentativas sem acerto. Aguarde orientação do alfabetizador.";
-  }
-  return reason ?? "A tela foi bloqueada temporariamente.";
+  return "Limite de erros atingido. Aguarde o alfabetizador liberar a tela.";
 }
 
 function isInstructionAudioButtonVisible(
@@ -471,7 +459,7 @@ function LoadedLearnerLessonScreenView({
   );
   const isLockedByTemplate = screen.screenTemplate === "locked";
   const isLocked =
-    isLockedByTemplate || exerciseLocked || learnerSession.isLocked;
+    isLockedByTemplate || exerciseLocked || learnerSession.isLocked || learnerSession.isHelpPending;
   const isInteractionLocked = isLocked || showReinforcement;
   // Quando expectedSelections não está definido no payload do exercício (schema
   // letras-stage2-v1 sem o campo), infere pela contagem de itens corretos antes
@@ -838,15 +826,15 @@ function LoadedLearnerLessonScreenView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen.id, screen.narrationAudioUrl, screen.learnerSpeech]);
 
+  // A liberação feita pelo alfabetizador chega pelo realtime e também pelo
+  // polling da sessão. Só removemos a trava local depois de observar a sessão
+  // bloqueada no servidor e, em seguida, a transição para liberada.
   useEffect(() => {
     if (learnerSession.isLocked) {
       setRemoteLockWasObserved(true);
       return;
     }
-
-    if (!remoteLockWasObserved || !exerciseLocked) {
-      return;
-    }
+    if (!remoteLockWasObserved || !exerciseLocked) return;
 
     setExerciseLocked(false);
     setExerciseAttempts(0);
@@ -1031,32 +1019,21 @@ function LoadedLearnerLessonScreenView({
     });
   };
 
-  const lockCurrentExercise = (message: string) => {
-    // RN111: bip de erro também no bloqueio por tentativas.
-    playErrorBeep();
-    const nextAttempts = Math.max(
-      exerciseAttempts,
-      screen.exercise?.maxAttemptsBeforeLock ?? 1,
-    );
+  const lockCurrentExercise = (attempts: number) => {
+    if (!screen.exercise || exerciseLocked) return;
+
+    const lockReason = resolveLockMessage(screen.lockReason, screen.lockMessage);
     setExerciseLocked(true);
-    // Sem feedback de texto ao travar — o alfabetizando não lê. `setSessionLocked`
-    // aciona o banner visual "AGUARDANDO AJUDA"; `message` segue só como
-    // lockReason para o educador/registro de progresso.
     setExerciseFeedback(null);
     void learnerSession.recordProgress({
       activityId: screen.id,
       status: "LOCKED",
-      attempts: nextAttempts,
-      errorsCount: nextAttempts,
-      maxAttempts: screen.exercise?.maxAttemptsBeforeLock,
-      lockReason: message,
+      attempts,
+      errorsCount: attempts,
+      maxAttempts: screen.exercise.maxAttemptsBeforeLock,
+      lockReason,
     });
     void learnerSession.setSessionLocked(true);
-    // O pedido de ajuda nao e disparado automaticamente no lock — o aluno
-    // ve o icone de mao levantada (RaisedHandIcon) que aparece quando
-    // canRequestHelp passa a ser true e decide bater quando quiser apoio.
-    // Sem isso, o banner AGUARDANDO AJUDA virava o estado padrao ao errar
-    // tres vezes, sem dar voz ao aluno.
   };
 
   const canAdvanceMatchExercise =
@@ -1172,18 +1149,13 @@ function LoadedLearnerLessonScreenView({
 
     const nextAttempts = exerciseAttempts + 1;
     setExerciseAttempts(nextAttempts);
-    // Etapa 1 conduzida pelo educador: sem trava por tentativas — o
-    // alfabetizador está ao lado para orientar e o aluno tenta de novo.
     if (
       !learnerSession.isEducatorConducted &&
       nextAttempts >= screen.exercise.maxAttemptsBeforeLock
     ) {
-      lockCurrentExercise(
-        resolveLockMessage(screen.lockReason, screen.lockMessage),
-      );
+      lockCurrentExercise(nextAttempts);
       return;
     }
-
     const fallbackMessage =
       screen.exercise.errorFeedback || "Tente outra posição.";
     const hasReinforcement = triggerErrorReinforcement(fallbackMessage);
@@ -1316,18 +1288,13 @@ function LoadedLearnerLessonScreenView({
 
       const nextAttempts = exerciseAttempts + 1;
       setExerciseAttempts(nextAttempts);
-      // Etapa 1 conduzida pelo educador: sem trava por tentativas — o
-      // alfabetizador está ao lado para orientar e o aluno tenta de novo.
       if (
         !learnerSession.isEducatorConducted &&
         nextAttempts >= screen.exercise.maxAttemptsBeforeLock
       ) {
-        lockCurrentExercise(
-          resolveLockMessage(screen.lockReason, screen.lockMessage),
-        );
+        lockCurrentExercise(nextAttempts);
         return;
       }
-
       // Mantém o veredito visível por um instante, depois limpa os cards
       // errados (os corretos permanecem selecionados) para nova tentativa.
       if (markVerdictTimeoutRef.current) {
@@ -1609,7 +1576,7 @@ function LoadedLearnerLessonScreenView({
       }
       helpAcknowledgedAt={learnerSession.helpAcknowledgedAt}
       isHelpPending={learnerSession.isHelpPending}
-      canRequestHelp={exerciseLocked}
+      canRequestHelp={isLearnerDriven && !learnerSession.isLocked}
       sessionErrorMessage={learnerSession.errorMessage}
       hintVideoUrl={screen.hintVideoUrl ?? null}
       minimalChrome={usesMinimalChrome}

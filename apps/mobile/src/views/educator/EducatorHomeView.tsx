@@ -10,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -18,7 +19,7 @@ import { httpClient } from '../../infra/api/http-client';
 import { HelpAlert, useEducatorHomeRealtime } from '../../hooks/useEducatorHomeRealtime';
 import { EducatorRootStackParamList } from '../../types';
 import { EducatorBottomMenu } from './components/EducatorBottomMenu';
-import { getCompletedTutorialCount, isTutorialUnlocked, sortTutorials, Tutorial } from './components/tutorialPresentation';
+import { getCompletedTutorialCount, getSelectedTutorial, sortTutorials, Tutorial } from './components/tutorialPresentation';
 import { colors } from '../../theme/appColors';
 
 type Props = NativeStackScreenProps<EducatorRootStackParamList, 'EducatorHome'>;
@@ -28,7 +29,6 @@ interface LearnerItem {
   displayName: string;
   phoneDigits: string | null;
   learnerThemes: Array<{ theme: { name: string } }>;
-  grupo?: string | null;
   etapa?: string | null;
   // Gate Etapa 1 → Etapa 2 / espelhamento (vem de GET /cadastros/alfabetizandos).
   etapa1Completed?: boolean;
@@ -68,6 +68,7 @@ function displayNameOrFallback(name?: string | null) {
 const ICON_BELL = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" fill="#111111"/></svg>`;
 
 const LOGO_THUMBNAIL = require('../../../assets/logo-letras-2.png');
+const LEARNERS_PAGE_SIZE = 10;
 
 const ICON_PLUS = `<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M10 1H6V6L1 6V10H6V15H10V10H15V6L10 6V1Z" fill="#111111"/></svg>`;
 
@@ -87,14 +88,6 @@ const ICON_CHECK = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
 function formatDate(iso: string) {
   const d = new Date(iso);
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
-function normalizeGroupName(value: string | null | undefined) {
-  const normalized = String(value ?? '').trim();
-  if (!normalized || normalized.toLowerCase() === 'sem grupo') {
-    return null;
-  }
-  return normalized;
 }
 
 function normalizeStageLabel(value: string | null | undefined) {
@@ -182,11 +175,18 @@ export function EducatorHomeView({ navigation, route }: Props) {
   const [lockedSessions, setLockedSessions] = useState<LockedSession[]>([]);
   const [dismissedLockedIds, setDismissedLockedIds] = useState(new Set<string>());
   const [isLoading, setIsLoading] = useState(true);
+  const [learnersLoaded, setLearnersLoaded] = useState(false);
   // Falha ao buscar a lista não pode virar "nenhum alfabetizando cadastrado":
   // o alfabetizador lia isso como perda de dados.
   const [learnersFailed, setLearnersFailed] = useState(false);
   const [isTrackListOpen, setIsTrackListOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [visibleLearnerCount, setVisibleLearnerCount] = useState(LEARNERS_PAGE_SIZE);
   const [seededAlerts, setSeededAlerts] = useState<HelpAlert[]>([]);
+  const [lockedSessionsLoaded, setLockedSessionsLoaded] = useState(false);
+  const [openHelpAlertsLoaded, setOpenHelpAlertsLoaded] = useState(false);
+  const [pendingSessionRequestsLoaded, setPendingSessionRequestsLoaded] = useState(false);
   const [tutorials, setTutorials] = useState<Tutorial[]>([]);
   const [tutorialsLoading, setTutorialsLoading] = useState(true);
   const [pendingSessionRequests, setPendingSessionRequests] = useState<Array<{ id: string; requestedAt: string; learnerProfile: { id: string; displayName: string } }>>([]);
@@ -254,6 +254,9 @@ export function EducatorHomeView({ navigation, route }: Props) {
       if (requestSequence === learnerRequestSequenceRef.current) setLearnersFailed(true);
     } finally {
       learnerFetchInFlightRef.current = false;
+      if (requestSequence === learnerRequestSequenceRef.current) {
+        setLearnersLoaded(true);
+      }
     }
     if (requestSequence === learnerRequestSequenceRef.current) setIsLoading(false);
     if (learnerFetchQueuedRef.current) {
@@ -278,6 +281,10 @@ export function EducatorHomeView({ navigation, route }: Props) {
       }
     } catch {
       // Mantem bloqueios vazios.
+    } finally {
+      if (requestSequence === lockedSessionsRequestSequenceRef.current) {
+        setLockedSessionsLoaded(true);
+      }
     }
   }, [educatorId]);
 
@@ -304,6 +311,10 @@ export function EducatorHomeView({ navigation, route }: Props) {
       }
     } catch {
       // O socket continua sendo a via principal; esta leitura garante retomada.
+    } finally {
+      if (requestSequence === openHelpAlertsRequestSequenceRef.current) {
+        setOpenHelpAlertsLoaded(true);
+      }
     }
   }, [educatorId]);
 
@@ -320,6 +331,10 @@ export function EducatorHomeView({ navigation, route }: Props) {
       }
     } catch {
       // Silencioso — não bloqueia o fluxo principal.
+    } finally {
+      if (requestSequence === pendingSessionRequestsSequenceRef.current) {
+        setPendingSessionRequestsLoaded(true);
+      }
     }
   }, [educatorId]);
 
@@ -363,6 +378,19 @@ export function EducatorHomeView({ navigation, route }: Props) {
     () => new Map(learners.map((learner) => [learner.id, { displayName: learner.displayName, phoneDigits: learner.phoneDigits }])),
     [learners],
   );
+
+  const filteredLearners = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase('pt-BR');
+    if (!query) return learners;
+    return learners.filter((learner) =>
+      learner.displayName.toLocaleLowerCase('pt-BR').includes(query),
+    );
+  }, [learners, searchQuery]);
+  const visibleLearners = filteredLearners.slice(0, visibleLearnerCount);
+
+  useEffect(() => {
+    setVisibleLearnerCount(LEARNERS_PAGE_SIZE);
+  }, [searchQuery, learners.length]);
 
   const { helpAlerts, clearHelpAlert, onlineLearnerIds } = useEducatorHomeRealtime({
     educatorId,
@@ -442,6 +470,14 @@ export function EducatorHomeView({ navigation, route }: Props) {
 
   const visibleLockedSessions = lockedSessions.filter((session) => !dismissedLockedIds.has(session.id));
   const notificationCount = mergedHelpAlerts.length + visibleLockedSessions.length + pendingSessionRequests.length;
+  // Um pedido pode chegar antes da lista de alfabetizandos e parecer válido por
+  // alguns instantes. Só exibimos cartões/badge depois que todas as fontes e a
+  // lista usada para resolver alertas órfãos concluíram a carga inicial.
+  const notificationsReady =
+    learnersLoaded &&
+    lockedSessionsLoaded &&
+    openHelpAlertsLoaded &&
+    pendingSessionRequestsLoaded;
   // RN095 — badge numérico com máximo de 99.
   const notificationBadgeLabel = notificationCount > 99 ? '99+' : String(notificationCount);
   const completedTutorialCount = getCompletedTutorialCount(tutorials);
@@ -513,28 +549,25 @@ export function EducatorHomeView({ navigation, route }: Props) {
   };
 
   const learnersInProgress = useMemo(() => {
-    const groups = new Map<string, { title: string; stageLabel: string; groupName: string | null; items: Array<{ id: string; name: string; learner: LearnerItem }> }>();
+    const stages = new Map<string, { stageLabel: string; items: Array<{ id: string; name: string; learner: LearnerItem }> }>();
 
     for (const learner of learners) {
-      const groupName = normalizeGroupName(learner.grupo);
       const stageLabel = normalizeStageLabel(learner.etapa);
-      const key = `${groupName ?? 'individual'}-${stageLabel}`;
-      const title = groupName ? `${groupName} (${stageLabel})` : `Alfabetização individual (${stageLabel})`;
-      const current = groups.get(key) ?? { title, stageLabel, groupName, items: [] };
+      const current = stages.get(stageLabel) ?? { stageLabel, items: [] };
       current.items.push({ id: learner.id, name: learner.displayName, learner });
-      groups.set(key, current);
+      stages.set(stageLabel, current);
     }
 
-    return [...groups.values()].map((group) => ({
-      ...group,
-      items: [...group.items].sort((first, second) => first.name.localeCompare(second.name)),
+    return [...stages.values()].map((stage) => ({
+      ...stage,
+      items: [...stage.items].sort((first, second) => first.name.localeCompare(second.name)),
     }));
   }, [learners]);
 
   const tutorialPreviewLabel = tutorials.length > 0
     ? `VIDEO ${String(Math.min(completedTutorialCount + 1, tutorials.length)).padStart(2, '0')}`
     : 'VIDEO 1';
-  const highlightedTutorial = tutorials.find((tutorial, index) => isTutorialUnlocked(tutorials, index)) ?? tutorials[0] ?? null;
+  const highlightedTutorial = getSelectedTutorial(tutorials, null);
   const tutorialPreviewTitle = highlightedTutorial?.title ?? 'Tutoriais obrigatorios';
 
   // Painel "Pedidos de apoio e bloqueios preventivos de tela" — reutilizado na
@@ -545,7 +578,11 @@ export function EducatorHomeView({ navigation, route }: Props) {
         Pedidos de apoio e bloqueios preventivos de tela:
       </Text>
 
-      {notificationCount === 0 ? (
+      {!notificationsReady ? (
+        <View style={styles.notificationEmpty} accessibilityLabel="Carregando pedidos de apoio">
+          <ActivityIndicator size="small" color="#111827" />
+        </View>
+      ) : notificationCount === 0 ? (
         <View style={styles.notificationEmpty}>
           <Text style={styles.notificationEmptyTitle}>Nenhum pedido agora</Text>
           <Text style={styles.notificationEmptyText}>
@@ -622,7 +659,7 @@ export function EducatorHomeView({ navigation, route }: Props) {
               onPress={() => setIsTrackListOpen(false)}
             >
               <SvgXml xml={ICON_BELL} width={26} height={26} />
-              {notificationCount > 0 && (
+              {notificationsReady && notificationCount > 0 && (
                 <View style={styles.badge}>
                   <Text style={styles.badgeText}>{notificationBadgeLabel}</Text>
                 </View>
@@ -684,15 +721,12 @@ export function EducatorHomeView({ navigation, route }: Props) {
                 </Text>
               </View>
             ) : (
-              learnersInProgress.map((group) => (
-                <View key={group.title} style={styles.trackGroup}>
+              learnersInProgress.map((stage) => (
+                <View key={stage.stageLabel} style={styles.trackGroup}>
                   <Text style={styles.trackSectionTitle}>
-                    {`Status dos alfabetizandos na ${group.stageLabel}`.toUpperCase()}
+                    {`Status dos alfabetizandos na ${stage.stageLabel}`.toUpperCase()}
                   </Text>
-                  {group.groupName ? (
-                    <Text style={styles.trackGroupSubtitle}>{group.groupName}</Text>
-                  ) : null}
-                  {group.items.map((item) => (
+                  {stage.items.map((item) => (
                     <LearnerStatusCard
                       key={item.id}
                       name={item.name}
@@ -720,12 +754,25 @@ export function EducatorHomeView({ navigation, route }: Props) {
                 hitSlop={12}
                 style={styles.searchToggle}
                 onPress={() => {
-                  setIsTrackListOpen(true);
+                  setIsSearchOpen((current) => !current);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={isSearchOpen ? 'Fechar busca de alfabetizando' : 'Buscar alfabetizando'}
               >
                 <SvgXml xml={ICON_SEARCH} width={22} height={22} />
               </Pressable>
             </View>
+
+            {isSearchOpen ? (
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Buscar por nome"
+                accessibilityLabel="Buscar alfabetizando por nome"
+                autoFocus
+                style={styles.searchInput}
+              />
+            ) : null}
 
             {isLoading ? (
               <ActivityIndicator style={styles.loader} color="#111111" />
@@ -737,9 +784,11 @@ export function EducatorHomeView({ navigation, route }: Props) {
               </Pressable>
             ) : learners.length === 0 ? (
               <Text style={styles.emptyText}>Nenhum alfabetizando cadastrado ainda.</Text>
+            ) : filteredLearners.length === 0 ? (
+              <Text style={styles.emptyText}>Nenhum alfabetizando encontrado.</Text>
             ) : (
               <View>
-                {learners.map((item) => (
+                {visibleLearners.map((item) => (
                   <Pressable key={item.id} style={styles.learnerRow} onPress={() => handleOpenLearner(item)}>
                     {item.mirrorUnlocked ? (
                       <View style={[styles.presenceDot, onlineLearnerIds.has(item.id) ? styles.presenceDotOnline : styles.presenceDotOffline]} />
@@ -753,9 +802,16 @@ export function EducatorHomeView({ navigation, route }: Props) {
               </View>
             )}
 
-            <Pressable style={styles.bottomPlus} onPress={handleNewLearner}>
-              <SvgXml xml={ICON_PLUS} width={20} height={20} />
-            </Pressable>
+            {visibleLearnerCount < filteredLearners.length ? (
+              <Pressable
+                style={styles.bottomPlus}
+                onPress={() => setVisibleLearnerCount((current) => current + LEARNERS_PAGE_SIZE)}
+                accessibilityRole="button"
+                accessibilityLabel="Carregar mais alfabetizandos"
+              >
+                <SvgXml xml={ICON_PLUS} width={20} height={20} />
+              </Pressable>
+            ) : null}
           </>
         )}
       </ScrollView>
@@ -1203,6 +1259,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  searchInput: {
+    borderWidth: 1,
+    borderColor: '#bdbdbd',
+    backgroundColor: '#ffffff',
+    color: '#111111',
+    fontSize: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
   learnerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1278,13 +1344,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.2,
     marginBottom: 16,
-  },
-  trackGroupSubtitle: {
-    color: colors.inkMuted,
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: -10,
-    marginBottom: 14,
   },
   statusCard: {
     marginBottom: 22,

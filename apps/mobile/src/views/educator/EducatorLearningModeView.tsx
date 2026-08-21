@@ -220,7 +220,6 @@ export function EducatorLearningModeView({ navigation, route }: Props) {
                 >
                   <Text style={styles.actionText}>WHATSAPP</Text>
                 </Pressable>
-                {/* RN059/RN070: atividade fotografada pelo aluno -> comparativo. */}
                 <Pressable
                   style={styles.actionButton}
                   onPress={() =>

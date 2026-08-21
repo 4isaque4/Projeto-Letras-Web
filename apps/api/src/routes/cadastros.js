@@ -24,6 +24,12 @@ import {
 import { emitLearnerLockChanged } from "../realtime/dashboardRealtime.js";
 import { removeLearnerLink, replaceLearnerLink } from "../services/learnerLinkService.js";
 import { buildLearnerTrackingMetrics } from "./learnerTracking.js";
+import { orderByNewest } from "../domain/dateOrdering.js";
+import {
+  isValidLearnerDocument,
+  isValidLearnerPhone,
+  validateLearnerRegistrationIdentity,
+} from "../domain/learnerRegistrationValidation.js";
 
 export const cadastrosRouter = Router();
 
@@ -956,7 +962,10 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
       }))
       .sort((a, b) => a.etapa.localeCompare(b.etapa));
 
-    const tentativas = progress
+    const tentativas = orderByNewest(
+      progress,
+      (row) => row.last_interacted_at || row.updated_at || row.created_at,
+    )
       .map((row) => {
         const metadata = row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata) ? row.metadata : {};
         return {
@@ -967,8 +976,7 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
           erros: Number(metadata.errorsCount ?? row.attempts ?? 0),
           taxa: row.score ? `${Number(row.score).toFixed(0)}%` : "-",
         };
-      })
-      .sort((a, b) => b.data.localeCompare(a.data));
+      });
 
     const linkHistory = links.map((link) => ({
         id: link.id,
@@ -979,6 +987,7 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
         status: link.status,
         queueType: "vinculo",
         actionable: link.status === "pendente",
+        sortDate: link.updated_at || link.created_at,
       }));
 
     const supportHistory = supportRequests.map((request) => ({
@@ -990,6 +999,7 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
       status: request.status,
       queueType: "ajuda",
       actionable: request.status === "aberto" || request.status === "em_atendimento",
+      sortDate: request.resolved_at || request.requested_at || request.created_at,
     }));
 
     const progressHistory = progress
@@ -1006,6 +1016,7 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
           status: row.status,
           queueType: "progresso",
           actionable: row.status === "travado",
+          sortDate: row.last_interacted_at || row.updated_at || row.created_at,
         };
       });
 
@@ -1023,10 +1034,13 @@ cadastrosRouter.get("/alfabetizandos/:id", async (req, res) => {
         status: notification.read_at ? "lida" : "aberta",
         queueType: "notificacao",
         actionable: false,
+        sortDate: notification.created_at,
       }));
 
-    const historico = [...supportHistory, ...progressHistory, ...linkHistory, ...notificationHistory]
-      .sort((a, b) => b.data.localeCompare(a.data));
+    const historico = orderByNewest(
+      [...supportHistory, ...progressHistory, ...linkHistory, ...notificationHistory],
+      (item) => item.sortDate,
+    ).map(({ sortDate: _sortDate, ...item }) => item);
     const submissoes = extractSubmissionsFromProgress(progress, activityById);
 
     const activeLink = links.find((item) => item.status === "confirmado");
@@ -1129,6 +1143,15 @@ cadastrosRouter.post("/alfabetizandos", async (req, res) => {
       req.body?.phone ?? req.body?.phoneDigits ?? req.body?.telefone ?? ""
     ).trim();
 
+    const identityError = validateLearnerRegistrationIdentity({
+      document: cpf,
+      phone,
+    });
+    if (identityError) {
+      res.status(400).json({ message: identityError });
+      return;
+    }
+
     let email = String(req.body?.email ?? "").trim().toLowerCase();
     let password = String(req.body?.password ?? "").trim();
 
@@ -1202,32 +1225,9 @@ cadastrosRouter.post("/alfabetizandos", async (req, res) => {
       }
     }
 
-    // Se vier educatorId, cria o vínculo confirmado. Falha de vínculo desfaz
-    // o perfil recém-criado para não deixar um cadastro parcialmente salvo.
-    const rawEducatorId = String(req.body?.educatorId ?? "").trim();
-    if (rawEducatorId && data?.id) {
-      try {
-        const { supabaseAdmin, isSupabaseConfigured } = await import("../lib/supabase.js");
-        const client = isSupabaseConfigured && supabaseAdmin ? supabaseAdmin : null;
-        const supabaseTutorId = client
-          ? (await resolveSupabaseTutorId(rawEducatorId, req.headers.authorization, client)) ?? rawEducatorId
-          : rawEducatorId;
-
-        if (!UUID_PATTERN.test(supabaseTutorId)) {
-          throw Object.assign(new Error("Alfabetizador inválido para o vínculo."), { status: 422 });
-        }
-        const actor = await resolveAuthenticatedActor(req);
-        await replaceLearnerLink({
-          studentId: data.id,
-          tutorId: supabaseTutorId,
-          changedBy: actor?.id ?? supabaseTutorId,
-          reason: "Vínculo criado junto com o cadastro do alfabetizando.",
-        });
-      } catch (linkError) {
-        await deleteProfileRecord({ profileId: data.id, role: "alfabetizando" }).catch(() => {});
-        throw linkError;
-      }
-    }
+    // O cadastro não confirma o vínculo. O educatorId acima identifica quem
+    // iniciou o atendimento, mas RN097-RN101 exigem que o alfabetizando faça a
+    // solicitação no próprio aparelho e que o alfabetizador aceite depois.
 
     res.status(201).json(data);
   } catch (error) {
@@ -1238,6 +1238,15 @@ cadastrosRouter.post("/alfabetizandos", async (req, res) => {
 
 cadastrosRouter.patch("/alfabetizandos/:id", async (req, res) => {
   try {
+    if (req.body?.cpf !== undefined && !isValidLearnerDocument(req.body.cpf)) {
+      res.status(400).json({ message: "Informe um CPF com 11 dígitos ou passaporte com 6 a 20 caracteres." });
+      return;
+    }
+    if (req.body?.phone !== undefined && !isValidLearnerPhone(req.body.phone)) {
+      res.status(400).json({ message: "Informe um celular válido com DDD e 11 dígitos." });
+      return;
+    }
+
     const data = await updateProfileRecord({
       profileId: req.params.id,
       role: "alfabetizando",

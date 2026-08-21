@@ -7,7 +7,6 @@ import { useAuth } from "../../core/auth/AuthProvider";
 interface StudentItem {
   id: string;
   nome: string;
-  grupo: string;
   etapa: string;
   progresso: number;
   status: string;
@@ -36,11 +35,22 @@ const EMPTY_CREATE_FORM: StudentCreateForm = {
 };
 
 function applyCpfMask(value: string): string {
+  if (/[a-z]/i.test(value)) {
+    return value.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 20);
+  }
   const d = value.replace(/\D/g, "").slice(0, 11);
   if (d.length <= 3) return d;
   if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
   if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
+function isValidDocument(document: string): boolean {
+  const normalized = document.trim();
+  if (/[a-z]/i.test(normalized)) {
+    return /^[a-z0-9]{6,20}$/i.test(normalized.replace(/[^a-z0-9]/gi, ""));
+  }
+  return /^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(normalized);
 }
 
 function applyPhoneMask(value: string): string {
@@ -49,6 +59,10 @@ function applyPhoneMask(value: string): string {
   if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
   if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+function isValidPhone(phone: string): boolean {
+  return phone.replace(/\D/g, "").length === 11;
 }
 
 export default function MeusAlfabetizandos() {
@@ -107,17 +121,21 @@ export default function MeusAlfabetizandos() {
     }
 
     // CPF identifica o alfabetizando no mobile. Sem CPF não dá pra vincular depois.
-    if (!cpf) {
-      setError("Informe o CPF do alfabetizando.");
+    if (!cpf || !isValidDocument(cpf)) {
+      setError("Informe um CPF válido ou passaporte com 6 a 20 caracteres.");
+      return;
+    }
+    if (!telefone || !isValidPhone(telefone)) {
+      setError("Informe um celular válido com DDD e 11 dígitos.");
       return;
     }
 
     // Backend exige email/senha pra criar usuário no Supabase Auth.
     // Pro fluxo do alfabetizando (que usa CPF/telefone), geramos automaticamente
     // se o tutor não informar.
-    const cpfDigits = cpf.replace(/[^0-9]/g, "") || `aluno${Date.now()}`;
-    const email = emailInformado || `aluno.${cpfDigits}@mobile.letras.local`;
-    const password = senhaInformada || `Letras@${cpfDigits}`;
+    const documentId = cpf.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    const email = emailInformado || `aluno.${documentId}@mobile.letras.local`;
+    const password = senhaInformada || `Letras@${documentId}`;
 
     try {
       setSaving(true);
@@ -158,7 +176,7 @@ export default function MeusAlfabetizandos() {
     return items.filter((item) => {
       const matchQuery =
         !needle ||
-        [item.nome, item.grupo, item.etapa, item.ultimaAtividade].some((value) =>
+        [item.nome, item.etapa, item.ultimaAtividade].some((value) =>
           String(value ?? "")
             .toLowerCase()
             .includes(needle),
@@ -217,7 +235,7 @@ export default function MeusAlfabetizandos() {
           <div>
             <p className="text-sm font-semibold text-gray-900">Cadastrar alfabetizando</p>
             <p className="text-xs text-gray-600">
-              O vínculo é criado automaticamente com você como alfabetizador responsável.
+              O cadastro fica associado a você; o vínculo é confirmado quando o alfabetizando entrar no app.
             </p>
           </div>
         </div>
@@ -232,8 +250,9 @@ export default function MeusAlfabetizandos() {
           <input
             value={createForm.cpf}
             onChange={(event) => setCreateForm((current) => ({ ...current, cpf: applyCpfMask(event.target.value) }))}
-            placeholder="CPF * (000.000.000-00)"
-            maxLength={14}
+            placeholder="CPF ou passaporte *"
+            maxLength={20}
+            aria-label="CPF ou passaporte do alfabetizando"
             className="border border-gray-300 px-3 py-2 text-sm"
             required
           />
@@ -242,7 +261,9 @@ export default function MeusAlfabetizandos() {
             onChange={(event) => setCreateForm((current) => ({ ...current, telefone: applyPhoneMask(event.target.value) }))}
             placeholder="(00) 00000-0000"
             maxLength={15}
+            aria-label="Celular do alfabetizando"
             className="border border-gray-300 px-3 py-2 text-sm"
+            required
           />
         </div>
         <details className="text-xs text-gray-600">
@@ -284,7 +305,7 @@ export default function MeusAlfabetizandos() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Nome, grupo, etapa..."
+            placeholder="Nome, etapa ou última atividade..."
             className="w-full px-3 py-2 border border-gray-300 bg-gray-50 text-sm"
           />
         </div>
@@ -318,7 +339,6 @@ export default function MeusAlfabetizandos() {
               <thead className="bg-gray-100 border-b border-gray-300">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Nome</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Grupo</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Etapa</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">% Progresso</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Status</th>
@@ -330,7 +350,6 @@ export default function MeusAlfabetizandos() {
                 {filteredItems.map((item) => (
                   <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm text-gray-900 font-medium">{item.nome}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{item.grupo || "-"}</td>
                     <td className="px-4 py-3 text-sm text-gray-700">{item.etapa}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">

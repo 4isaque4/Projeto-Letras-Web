@@ -625,22 +625,13 @@ function normalizeExerciseConfig(
     Number.isFinite(expectedSelectionsRaw) && expectedSelectionsRaw > 0
       ? Math.floor(expectedSelectionsRaw)
       : null;
-  // TEMPORARIO, a pedido do usuario durante o teste funcional em andamento:
-  // piso de 10 tentativas antes de travar, mesmo quando a aula publicada
-  // configura um valor menor (a aula real de Etapa 2/3 em uso tem 3
-  // gravado). So afeta Etapa 2/3 - a Etapa 1 nunca trava por tentativas
-  // (isEducatorConducted, ver LearnerLessonScreenView.tsx). Reverter para
-  // usar soh o valor configurado na aula quando o teste terminar.
-  const TEMP_MIN_ATTEMPTS_BEFORE_LOCK_FOR_TESTING = 10;
   const attemptsRaw = Number(
-    exercise.maxAttemptsBeforeLock ??
-      exercise.maxAttempts ??
-      TEMP_MIN_ATTEMPTS_BEFORE_LOCK_FOR_TESTING,
+    exercise.maxAttemptsBeforeLock ?? exercise.maxAttempts ?? 3,
   );
   const maxAttemptsBeforeLock =
     Number.isFinite(attemptsRaw) && attemptsRaw > 0
-      ? Math.max(Math.floor(attemptsRaw), TEMP_MIN_ATTEMPTS_BEFORE_LOCK_FOR_TESTING)
-      : TEMP_MIN_ATTEMPTS_BEFORE_LOCK_FOR_TESTING;
+      ? Math.floor(attemptsRaw)
+      : 3;
   const progressiveUnlock =
     typeof exercise.progressiveUnlock === "boolean"
       ? exercise.progressiveUnlock

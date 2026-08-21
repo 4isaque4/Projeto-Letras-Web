@@ -17,7 +17,6 @@ interface ProfileResponse {
 }
 
 interface SystemSettings {
-  errorBlockLimit: number;
   inactivityDays: number;
 }
 
@@ -29,7 +28,6 @@ interface SystemSettingsResponse extends SystemSettings {
 const SYSTEM_SETTINGS_STORAGE_KEY = "letras.web.system-settings";
 
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
-  errorBlockLimit: 3,
   inactivityDays: 7,
 };
 
@@ -42,7 +40,6 @@ function loadStoredSettings(): SystemSettings {
 
     const parsed = JSON.parse(raw) as Partial<SystemSettings>;
     return {
-      errorBlockLimit: Number(parsed.errorBlockLimit ?? DEFAULT_SYSTEM_SETTINGS.errorBlockLimit),
       inactivityDays: Number(parsed.inactivityDays ?? DEFAULT_SYSTEM_SETTINGS.inactivityDays),
     };
   } catch {
@@ -52,7 +49,6 @@ function loadStoredSettings(): SystemSettings {
 
 function normalizeSystemSettings(raw?: Partial<SystemSettings> | null): SystemSettings {
   return {
-    errorBlockLimit: Math.max(1, Number(raw?.errorBlockLimit ?? DEFAULT_SYSTEM_SETTINGS.errorBlockLimit)),
     inactivityDays: Math.max(1, Number(raw?.inactivityDays ?? DEFAULT_SYSTEM_SETTINGS.inactivityDays)),
   };
 }
@@ -442,25 +438,11 @@ export default function Configuracoes() {
 
               <div className="space-y-4">
                 <div>
-                  <label className="mb-2 block text-sm text-gray-700">Limite de erros para bloqueio</label>
+                  <label htmlFor="system-inactivity-days" className="mb-2 block text-sm text-gray-700">
+                    Dias para inatividade
+                  </label>
                   <input
-                    type="number"
-                    min={1}
-                    value={systemSettings.errorBlockLimit}
-                    onChange={(event) => {
-                      const nextValue = Number(event.target.value);
-                      setSystemSettings((current) => ({
-                        ...current,
-                        errorBlockLimit: Number.isFinite(nextValue) ? nextValue : current.errorBlockLimit,
-                      }));
-                    }}
-                    className="w-full border border-gray-300 bg-gray-50 px-3 py-2"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm text-gray-700">Dias para inatividade</label>
-                  <input
+                    id="system-inactivity-days"
                     type="number"
                     min={1}
                     value={systemSettings.inactivityDays}

@@ -10,7 +10,6 @@ import AlfabetizandoDetalhe from "./pages/admin/AlfabetizandoDetalhe";
 import Alfabetizadores from "./pages/admin/Alfabetizadores";
 import Vinculos from "./pages/admin/Vinculos";
 import TrilhaAulas from "./pages/admin/TrilhaAulas";
-import Grupos from "./pages/admin/Grupos";
 import Fila from "./pages/admin/Fila";
 import Conteudo from "./pages/admin/Conteudo";
 import ConteudoBibliotecaPage from "./pages/admin/conteudo/ConteudoBibliotecaPage";
@@ -46,7 +45,9 @@ export const router = createBrowserRouter([
       { path: "admin/grade-temas", loader: () => redirect("/admin/trilha-de-aulas") },
       // URL antiga mantida para favoritos/links compartilhados
       { path: "admin/atividades-alfabetizando", loader: () => redirect("/admin/trilha-de-aulas") },
-      { path: "admin/grupos", Component: Grupos },
+      // POC individual: a URL legada de grupos permanece segura para favoritos,
+      // mas a tela fica oculta ate uma decisao posterior de produto.
+      { path: "admin/grupos", loader: () => redirect("/admin/dashboard") },
       { path: "admin/fila", Component: Fila },
       { path: "admin/conteudo", Component: Conteudo },
       { path: "admin/conteudo/biblioteca", Component: ConteudoBibliotecaPage },

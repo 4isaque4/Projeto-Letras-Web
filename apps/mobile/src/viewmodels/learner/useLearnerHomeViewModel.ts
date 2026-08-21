@@ -220,6 +220,7 @@ export function useLearnerHomeViewModel(options: LearnerHomeViewModelOptions = {
       }
 
       const currentState = lastStateRef.current;
+      setErrorMessage(null);
       try {
         await httpClient.post('/painel/support-requests', {
           learnerProfileId,
@@ -234,22 +235,21 @@ export function useLearnerHomeViewModel(options: LearnerHomeViewModelOptions = {
             snapshot: snapshot ?? null,
           },
         });
+
+        emitHelp({
+          learnerProfileId,
+          message,
+          snapshot,
+        });
+
+        // Só entra em espera depois que o pedido durável foi confirmado. Se a
+        // API falhar, o botão continua disponível para uma nova tentativa.
+        setHelpRequestedAt(new Date().toISOString());
       } catch (error) {
         const normalizedMessage =
           error instanceof Error ? error.message : 'Nao foi possivel enviar o pedido de ajuda.';
         setErrorMessage(normalizedMessage);
       }
-
-      emitHelp({
-        learnerProfileId,
-        message,
-        snapshot,
-      });
-
-      // Marca o pedido como pendente no app do aluno; o botao PEDIR AJUDA
-      // vira "AGUARDANDO AJUDA" ate o alfabetizador destravar (chega via
-      // help_received do realtime, que atualiza helpAcknowledgedAt).
-      setHelpRequestedAt(new Date().toISOString());
     },
     [deviceId, emitHelp, learnerProfileId],
   );

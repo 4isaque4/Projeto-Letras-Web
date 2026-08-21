@@ -30,9 +30,8 @@ interface ActivityPhoto {
   created_at: string;
 }
 
-// Figma "Etapa 3 - Comparativo de Atividade": Atividade solicitada × entregue,
-// contato (ligar/WhatsApp) e VOLTAR / APROVAR TAREFA. A avaliação por IA é
-// MVP-3 (decisão 17/05) — aqui a aprovação é manual do alfabetizador (RN082).
+// Comparativo solicitado × entregue com aprovação manual pelo alfabetizador.
+// A avaliação automática por IA continua fora deste fluxo.
 
 const BACK_ARROW_NAVY = `
 <svg width="55" height="46" viewBox="0 0 55 46" fill="none" xmlns="http://www.w3.org/2000/svg">

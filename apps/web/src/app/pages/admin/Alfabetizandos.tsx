@@ -16,7 +16,6 @@ interface StudentItem {
   id: string;
   nome: string;
   email: string;
-  grupo: string;
   etapa: string;
   progresso: number;
   status: string;
@@ -54,6 +53,9 @@ interface StudentEditForm {
 }
 
 function applyCpfMask(value: string): string {
+  if (/[a-z]/i.test(value)) {
+    return value.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 20);
+  }
   const d = value.replace(/\D/g, "").slice(0, 11);
   if (d.length <= 3) return d;
   if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
@@ -61,8 +63,12 @@ function applyCpfMask(value: string): string {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
-function isValidCpfFormat(cpf: string): boolean {
-  return /^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(cpf.trim());
+function isValidDocument(document: string): boolean {
+  const normalized = document.trim();
+  if (/[a-z]/i.test(normalized)) {
+    return /^[a-z0-9]{6,20}$/i.test(normalized.replace(/[^a-z0-9]/gi, ""));
+  }
+  return /^\d{3}\.\d{3}\.\d{3}-\d{2}$/.test(normalized);
 }
 
 function applyPhoneMask(value: string): string {
@@ -72,6 +78,10 @@ function applyPhoneMask(value: string): string {
   if (d.length <= 10)
     return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+function isValidPhone(phone: string): boolean {
+  return phone.replace(/\D/g, "").length === 11;
 }
 
 const EMPTY_CREATE_FORM: StudentCreateForm = {
@@ -137,18 +147,35 @@ export default function Alfabetizandos() {
     event.preventDefault();
 
     const nome = createForm.nome.trim();
-    const email = createForm.email.trim();
-    const password = createForm.password.trim();
+    const emailInformado = createForm.email.trim();
+    const senhaInformada = createForm.password.trim();
+    const document = createForm.cpf.trim();
+    const telefone = createForm.telefone.trim();
 
-    if (!nome || !email || !password || !createForm.educatorId) {
-      setError("Preencha nome, email, senha e alfabetizador responsável.");
+    if (!nome || !document || !telefone || !createForm.educatorId) {
+      setError("Preencha nome, CPF ou passaporte, celular e alfabetizador responsável.");
       return;
     }
-    const cpf = createForm.cpf.trim();
-    if (cpf && !isValidCpfFormat(cpf)) {
-      setError("CPF inválido. Use o formato 000.000.000-00.");
+    if (!isValidDocument(document)) {
+      setError("Informe um CPF válido ou passaporte com 6 a 20 caracteres.");
       return;
     }
+    if (!isValidPhone(telefone)) {
+      setError("Informe um celular válido com DDD e 11 dígitos.");
+      return;
+    }
+    if (emailInformado && !emailInformado.includes("@")) {
+      setError("Informe um email válido ou deixe o campo em branco.");
+      return;
+    }
+    if (senhaInformada && senhaInformada.length < 6) {
+      setError("A senha deve ter ao menos 6 caracteres ou ficar em branco.");
+      return;
+    }
+
+    const identifier = document.replace(/[^a-z0-9]/gi, "").toLowerCase();
+    const email = emailInformado || `aluno.${identifier}@mobile.letras.local`;
+    const password = senhaInformada || `Letras@${identifier}`;
 
     try {
       setSaving(true);
@@ -157,8 +184,8 @@ export default function Alfabetizandos() {
         nome,
         email,
         password,
-        phone: createForm.telefone.trim() || undefined,
-        cpf: createForm.cpf.trim() || undefined,
+        phone: telefone,
+        cpf: document,
         educatorId: createForm.educatorId,
       });
 
@@ -258,8 +285,13 @@ export default function Alfabetizandos() {
       return;
     }
     const cpf = editForm.cpf.trim();
-    if (cpf && !isValidCpfFormat(cpf)) {
-      setError("CPF inválido. Use o formato 000.000.000-00.");
+    const telefone = editForm.telefone.trim();
+    if (!isValidDocument(cpf)) {
+      setError("Informe um CPF válido ou passaporte com 6 a 20 caracteres.");
+      return;
+    }
+    if (!isValidPhone(telefone)) {
+      setError("Informe um celular válido com DDD e 11 dígitos.");
       return;
     }
 
@@ -268,8 +300,8 @@ export default function Alfabetizandos() {
       setError("");
       const payload: Record<string, string | null> = {
         nome,
-        phone: editForm.telefone.trim() || null,
-        cpf: editForm.cpf.trim() || null,
+        phone: telefone,
+        cpf,
       };
       if (email) {
         payload.email = email;
@@ -355,7 +387,7 @@ export default function Alfabetizandos() {
                 email: event.target.value,
               }))
             }
-            placeholder="Email"
+            placeholder="Email (opcional)"
             className="border border-gray-300 px-3 py-2 text-sm"
           />
           <input
@@ -366,7 +398,7 @@ export default function Alfabetizandos() {
                 password: event.target.value,
               }))
             }
-            placeholder="Senha"
+            placeholder="Senha (opcional)"
             className="border border-gray-300 px-3 py-2 text-sm"
           />
           <input
@@ -379,6 +411,8 @@ export default function Alfabetizandos() {
             }
             placeholder="(00) 00000-0000"
             maxLength={15}
+            aria-label="Celular do alfabetizando"
+            required
             className="border border-gray-300 px-3 py-2 text-sm"
           />
           <input
@@ -389,8 +423,10 @@ export default function Alfabetizandos() {
                 cpf: applyCpfMask(event.target.value),
               }))
             }
-            placeholder="000.000.000-00"
-            maxLength={14}
+            placeholder="CPF ou passaporte"
+            maxLength={20}
+            aria-label="CPF ou passaporte do alfabetizando"
+            required
             className="border border-gray-300 px-3 py-2 text-sm"
           />
           <select
@@ -452,9 +488,6 @@ export default function Alfabetizandos() {
                       Tutor
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
-                      Grupo
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
                       Etapa
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
@@ -467,7 +500,7 @@ export default function Alfabetizandos() {
                       Telefone
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
-                      CPF
+                      CPF ou passaporte
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">
                       Última atividade
@@ -519,9 +552,6 @@ export default function Alfabetizandos() {
                         {aluno.tutorNome || "-"}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
-                        {aluno.grupo || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
                         {aluno.etapa}
                       </td>
                       <td className="px-4 py-3">
@@ -568,8 +598,8 @@ export default function Alfabetizandos() {
                                 cpf: applyCpfMask(event.target.value),
                               }))
                             }
-                            placeholder="000.000.000-00"
-                            maxLength={14}
+                            placeholder="CPF ou passaporte"
+                            maxLength={20}
                             className="w-full border border-gray-300 px-2 py-1 text-sm"
                           />
                         ) : (

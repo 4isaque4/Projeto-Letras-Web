@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { parseMobileLockStudentId } from "../domain/queueItem.js";
 import multer from "multer";
 import { supabaseAdmin } from "../lib/supabase.js";
 import {
@@ -1589,6 +1590,19 @@ painelRouter.patch("/fila/:id", async (req, res) => {
     }
 
     if (action === "desbloquear" || action === "liberar") {
+      const mobileLockStudentId = parseMobileLockStudentId(queueItemId);
+      if (mobileLockStudentId) {
+        await setMobileLearnerSessionLockState(mobileLockStudentId, false);
+        emitLearnerLockChanged(mobileLockStudentId, false);
+        res.json({
+          id: queueItemId,
+          queueType: "progresso",
+          action: "desbloquear",
+          result: { student_id: mobileLockStudentId, status: "em_andamento" },
+        });
+        return;
+      }
+
       const data = await updateActivityProgressStatus({
         progressId: queueItemId,
         status: "em_andamento",

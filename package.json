@@ -22,6 +22,10 @@
     "build:mobile:web": "pnpm --filter @letras/mobile build:web",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm --filter @letras/api test && pnpm --filter @letras/mobile test",
+    "e2e": "playwright test",
+    "e2e:painel": "playwright test --project=painel",
+    "e2e:mobile": "playwright test --project=mobile-web",
+    "e2e:report": "playwright show-report e2e-results/html",
     "quality": "node tools/quality/check-production-env.mjs && node tools/quality/check-mobile-env.mjs && node tools/quality/check-product-copy.mjs",
     "check:fast": "pnpm quality && pnpm test",
     "check": "pnpm quality && pnpm build:shared && pnpm typecheck && pnpm test && pnpm build && pnpm build:mobile:web",
@@ -32,6 +36,7 @@
     "conteudo:importar-video-aula": "node tools/scripts/import-video-aula-real.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "concurrently": "^9.2.1"
   },
   "dependencies": {

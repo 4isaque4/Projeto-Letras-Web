@@ -9,7 +9,6 @@ interface StudentRankingItem {
   pos: number;
   id: string;
   nome: string;
-  grupo: string;
   pontos: number;
   etapa: string;
 }
@@ -136,7 +135,6 @@ export default function Ranking() {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Pos</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Nome</th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Grupo</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Etapa</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-gray-700">Pontos</th>
                   </tr>
@@ -161,7 +159,6 @@ export default function Ranking() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900 font-medium">{item.nome}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{item.grupo}</td>
                       <td className="px-4 py-3 text-sm text-gray-700">{item.etapa}</td>
                       <td className="px-4 py-3 text-sm font-bold text-gray-900">{item.pontos}</td>
                     </tr>

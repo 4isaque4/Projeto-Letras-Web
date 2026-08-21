@@ -105,6 +105,7 @@ describe("LessonBlockEditor serialization", () => {
     const parsed = JSON.parse(serializeBlocks(blocks));
     const row = parsed.blocks[0].rows[0];
 
+    expect(parsed.blocks[0].maxAttempts).toBe(3);
     expect(row.options).toEqual(["A", "B", "C"]);
     expect(row.correctOptions).toEqual(["A"]);
     expect(row.imageUrl).toBe("abelha.png");
