@@ -103,7 +103,12 @@ export function UnifiedLoginView({ navigation }: Props) {
       // 1. Busca como alfabetizando (apenas o lookup — erros de sessão ficam fora deste bloco)
       let learner: Awaited<ReturnType<typeof learnerRepo.lookupLearner>> | null = null;
       try {
-        learner = await learnerRepo.lookupLearner(query, undefined);
+        // CPF e celular brasileiros podem ter 11 digitos. Enviar o valor nos
+        // dois campos permite que a API aplique a busca OR prevista na RN101,
+        // sem tentar adivinhar qual identificador a pessoa informou.
+        learner = looksLikeCpf
+          ? await learnerRepo.lookupLearner(query, query)
+          : await learnerRepo.lookupLearner(query, undefined);
       } catch (learnerError) {
         if (!isNotFoundError(learnerError)) throw learnerError;
       }
@@ -201,6 +206,7 @@ export function UnifiedLoginView({ navigation }: Props) {
             value={cpf}
             onChangeText={handleChange}
             style={[styles.input, cpf.length > 0 && !isValid ? styles.inputInvalid : null]}
+            accessibilityLabel="CPF"
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="number-pad"
@@ -213,6 +219,8 @@ export function UnifiedLoginView({ navigation }: Props) {
             style={[styles.loginButton, (!isValid || isLoading) ? styles.loginButtonDisabled : null]}
             onPress={() => void handleEntrar()}
             disabled={!isValid || isLoading}
+            accessibilityRole="button"
+            accessibilityLabel="Entrar"
           >
             {isLoading ? (
               <ActivityIndicator size="small" color="#f5f5f5" />

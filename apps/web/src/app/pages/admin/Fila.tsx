@@ -386,13 +386,14 @@ export default function Fila() {
                 selectedItem.queueType === "progresso" ||
                 selectedItem.queueType === "ajuda") ? (
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">
+                  <label htmlFor="queue-action-reason" className="block text-xs text-gray-500 mb-1">
                     Observacao / motivo
                     {selectedItem.queueType === "vinculo" || selectedItem.queueType === "progresso" ? (
                       <span className="ml-1 text-red-600">*</span>
                     ) : null}
                   </label>
                   <textarea
+                    id="queue-action-reason"
                     value={actionReason}
                     onChange={(event) => setActionReason(event.target.value)}
                     rows={3}

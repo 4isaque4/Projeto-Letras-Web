@@ -179,9 +179,9 @@ export function LearnerScreenLayout({
             </View>
           ) : null}
           {onRequestHelp && !isHelpPending && canRequestHelp ? (
-            // Botao visual de pedir ajuda. So aparece quando o aluno
-            // travou em um exercicio (3 erros). Visual (icone de mao
-            // levantada) em vez de texto, ja que o aluno nao le ainda.
+            // O pedido manual fica disponível antes do limite. Se o exercício
+            // atingir o limite configurado, o mesmo estado visual também é
+            // usado enquanto o alfabetizador não liberar a tela.
             <View style={styles.helpRow}>
               <Pressable
                 style={styles.helpVisualButton}

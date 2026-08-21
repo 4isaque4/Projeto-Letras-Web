@@ -75,8 +75,9 @@ export default function Login() {
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-sm text-gray-700 mb-2">Email</label>
+              <label htmlFor="login-email" className="block text-sm text-gray-700 mb-2">Email</label>
               <input
+                id="login-email"
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
@@ -87,8 +88,9 @@ export default function Login() {
             </div>
 
             <div>
-              <label className="block text-sm text-gray-700 mb-2">Senha</label>
+              <label htmlFor="login-password" className="block text-sm text-gray-700 mb-2">Senha</label>
               <input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}

@@ -2072,7 +2072,7 @@ export default function ConteudoNovaAulaPage() {
           <input
             value={lockReason}
             onChange={(event) => setLockReason(event.target.value)}
-            placeholder="Ex.: pedido_ajuda ou 3_tentativas_sem_acerto"
+            placeholder="Ex.: pedido_ajuda_manual"
             className="w-full border border-red-200 bg-white px-3 py-2 text-sm"
           />
           <input
@@ -2108,7 +2108,7 @@ export default function ConteudoNovaAulaPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold uppercase text-slate-600">Max tentativas</label>
+              <label className="block text-xs font-semibold uppercase text-slate-600">Limite de erros</label>
               <input
                 type="number"
                 min={1}
@@ -2485,7 +2485,7 @@ export default function ConteudoNovaAulaPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold uppercase text-slate-600">Max tentativas</label>
+              <label className="block text-xs font-semibold uppercase text-slate-600">Limite de erros</label>
               <input
                 type="number"
                 min={1}

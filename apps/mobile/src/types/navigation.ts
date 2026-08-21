@@ -54,7 +54,6 @@ export type EducatorRootStackParamList = {
     learnerId?: string;
     educatorId?: string;
   };
-  // Fase 2 (RN076-RN083): comparativo da atividade enviada + APROVAR TAREFA.
   EducatorComparativo: {
     educatorId?: string;
     learnerId: string;

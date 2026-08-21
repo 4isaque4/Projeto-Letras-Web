@@ -102,7 +102,6 @@ interface StudentDetailResponse {
   cpf: string;
   tutor: string;
   educator?: { id: string; name: string } | null;
-  grupo: string;
   etapa: string;
   currentStageNumber?: number;
   etapa1Completed?: boolean;
@@ -352,10 +351,6 @@ export default function AlfabetizandoDetalhe() {
               <div>
                 <p className="text-xs text-gray-500 mb-1">Tutor</p>
                 <p className="text-sm text-gray-700">{detail.tutor}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 mb-1">Grupo</p>
-                <p className="text-sm text-gray-700">{detail.grupo}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-500 mb-1">Tema</p>
